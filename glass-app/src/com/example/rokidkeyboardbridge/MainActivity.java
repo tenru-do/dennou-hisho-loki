@@ -414,14 +414,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (i == 22 || i == 20) {
             return view == this.sendButton ? requestFocusSafely(this.voiceButton)
                     : view == this.voiceButton ? requestFocusSafely(this.wifiButton)
-                    : view == this.wifiButton ? requestFocusSafely(this.zoomButton)
+                    : view == this.wifiButton ? requestFocusSafely(this.settingsButton)
+                    : view == this.settingsButton ? requestFocusSafely(this.zoomButton)
                     : requestFocusSafely(this.sendButton);
         }
         if (i == 21 || i == 19) {
             return view == this.sendButton ? requestFocusSafely(this.zoomButton)
                     : view == this.voiceButton ? requestFocusSafely(this.sendButton)
                     : view == this.wifiButton ? requestFocusSafely(this.voiceButton)
-                    : view == this.zoomButton ? requestFocusSafely(this.wifiButton)
+                    : view == this.settingsButton ? requestFocusSafely(this.wifiButton)
+                    : view == this.zoomButton ? requestFocusSafely(this.settingsButton)
                     : requestFocusSafely(this.sendButton);
         }
         return false;
@@ -632,8 +634,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.addView(this.zoomButton, 0, zoomLayout);
         this.settingsButton = new Button(this);
         this.settingsButton.setText("APIキー設定");
-        this.settingsButton.setText("API");
-        this.settingsButton.setTextSize(11.0f);
+        this.settingsButton.setText("SET");
+        this.settingsButton.setTextSize(10.0f);
         this.settingsButton.setMinHeight(0);
         this.settingsButton.setMinWidth(0);
         this.settingsButton.setPadding(2, 0, 2, 0);
@@ -641,13 +643,21 @@ public final class MainActivity extends Activity implements SensorEventListener 
             @Override // android.view.View.OnClickListener
             public void onClick(View view) {
                 MainActivity.this.showControlsTemporarily();
-                MainActivity.this.showApiKeyDialog();
+                MainActivity.this.hudHoldUntil = Math.max(MainActivity.this.hudHoldUntil,
+                        System.currentTimeMillis() + 120000L);
+                String token = MainActivity.this.getPreferences()
+                        .getString(MainActivity.KEY_BRIDGE_TOKEN, "").trim();
+                if (token.length() < 16) {
+                    MainActivity.this.pairWithPhone();
+                } else {
+                    MainActivity.this.showApiKeyDialog();
+                }
             }
         });
-        focusLabel(this.settingsButton, "API");
-        LinearLayout.LayoutParams layoutParams3 = new LinearLayout.LayoutParams(0, dp(38), 0.8f);
+        focusLabel(this.settingsButton, "SET");
+        LinearLayout.LayoutParams layoutParams3 = new LinearLayout.LayoutParams(0, dp(38), 0.7f);
         layoutParams3.leftMargin = 4;
-        this.settingsButton.setVisibility(8);
+        this.buttonPanel.addView(this.settingsButton, layoutParams3);
         this.imeButton = new Button(this);
         this.imeButton.setText("日本語入力を切替");
         this.imeButton.setText("IME");
@@ -1041,6 +1051,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             return;
         }
         if (this.glanceHudVisible == visible) {
+            if (visible) {
+                restoreNormalScreenTimeout();
+                getWindow().addFlags(128);
+                wakeDisplayForGlance();
+            }
             setScreenBrightness(visible ? (this.headGlanceWake ? 0.28f : -1.0f) : 0.0f);
             return;
         }
@@ -1049,6 +1064,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (visible) {
             bringTaskForwardForGlance();
             restoreNormalScreenTimeout();
+            getWindow().addFlags(128);
             wakeDisplayForGlance();
             setScreenBrightness(this.headGlanceWake ? 0.28f : -1.0f);
             this.hudRoot.setVisibility(View.VISIBLE);
@@ -1103,7 +1119,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void rememberNormalScreenTimeout() {
         try {
             int current = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT, 6000);
-            if (current >= 2000) this.normalScreenTimeoutMs = current;
+            if (current >= 2000) {
+                this.normalScreenTimeoutMs = current;
+            } else {
+                this.normalScreenTimeoutMs = 6000;
+                restoreNormalScreenTimeout();
+            }
         } catch (Exception e) {
             Log.w(TAG, "screen timeout read failed", e);
         }
@@ -1112,9 +1133,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void requestFastDisplaySleep() {
         try {
             getWindow().clearFlags(128);
-            if (Settings.System.canWrite(this)) {
-                Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT, 1000);
-            }
         } catch (Exception e) {
             Log.w(TAG, "fast display sleep failed", e);
         }
@@ -1309,6 +1327,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
     /* JADX INFO: Access modifiers changed from: private */
     public void showControlsTemporarily() {
         this.headGlanceWake = false;
+        this.hudHoldUntil = Math.max(this.hudHoldUntil, System.currentTimeMillis() + 20000L);
+        this.handler.removeCallbacks(this.hideGlanceHudRunnable);
+        this.handler.postDelayed(this.hideGlanceHudRunnable, 20050L);
         setGlanceHudVisible(true);
         this.lastUpwardGlanceAt = System.currentTimeMillis();
         if (this.conversationActive) {
@@ -3864,6 +3885,49 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (token.length() > 0) {
             connection.setRequestProperty("X-Roki-Token", token);
         }
+    }
+
+    private void pairWithPhone() {
+        setStatus("スマホを検索中…", Color.YELLOW);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                Exception last = null;
+                String[] urls = buildPhoneEndpointUrls("pair");
+                for (int i = 0; i < urls.length; i++) {
+                    HttpURLConnection connection = null;
+                    try {
+                        connection = (HttpURLConnection) new URL(urls[i]).openConnection();
+                        connection.setRequestMethod("GET");
+                        connection.setConnectTimeout(1200);
+                        connection.setReadTimeout(1800);
+                        int code = connection.getResponseCode();
+                        String response = readAll((code >= 200 && code < 300)
+                                ? connection.getInputStream() : connection.getErrorStream());
+                        if (code != 200) throw new IllegalStateException("HTTP " + code);
+                        final String token = new JSONObject(response).optString("token", "").trim();
+                        if (token.length() < 16) throw new IllegalStateException("token missing");
+                        getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
+                        rememberPhoneHostFromUrl(urls[i]);
+                        handler.post(new Runnable() {
+                            @Override public void run() {
+                                setStatus("スマホとのペアリング完了", Color.rgb(90, 220, 120));
+                            }
+                        });
+                        return;
+                    } catch (Exception e) {
+                        last = e;
+                    } finally {
+                        if (connection != null) connection.disconnect();
+                    }
+                }
+                final String detail = last == null ? "" : last.getMessage();
+                handler.post(new Runnable() {
+                    @Override public void run() {
+                        setStatus("スマホでペアリング開始を押してください " + detail, Color.YELLOW);
+                    }
+                });
+            }
+        }, "PhonePairing").start();
     }
 
     /* JADX INFO: Access modifiers changed from: private */
