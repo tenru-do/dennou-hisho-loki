@@ -104,6 +104,7 @@ public final class MainActivity extends Activity {
     private Button toggleCustomButton;
     private Button toolsButton;
     private volatile boolean running;
+    private volatile long pairingUntilMs;
     private ServerSocket serverSocket;
     private final Handler healthHandler = new Handler(Looper.getMainLooper());
     private final Runnable healthRefresh = new Runnable() {
@@ -264,7 +265,25 @@ public final class MainActivity extends Activity {
         bridgeTokenInput.setHint("グラス連携トークン");
         bridgeTokenInput.setText(getPreferences().getString(KEY_BRIDGE_TOKEN, ""));
         bridgeTokenInput.setTextSize(14);
+        bridgeTokenInput.setVisibility(View.GONE);
         customPanel.addView(bridgeTokenInput);
+
+        Button pairGlass = new Button(this);
+        pairGlass.setText("グラスをペアリング（60秒）");
+        pairGlass.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
+                if (token.length() < 16) {
+                    token = createBridgeToken();
+                    getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
+                    bridgeTokenInput.setText(token);
+                }
+                pairingUntilMs = System.currentTimeMillis() + 60000L;
+                updateStatus("ペアリング待機中", "60秒以内にグラスのSETを押してください。");
+            }
+        });
+        customPanel.addView(pairGlass);
 
         Button sendCustom = new Button(this);
         sendCustom.setText("カスタム指示をグラスへ保存");
@@ -636,8 +655,26 @@ public final class MainActivity extends Activity {
             boolean codex = request != null && request.startsWith("GET /codex");
             boolean postCodex = request != null && request.startsWith("POST /codex");
             boolean stt = request != null && request.startsWith("POST /stt");
+            boolean pair = request != null && request.startsWith("GET /pair");
             RequestPayload payload = readRequestPayload(reader);
             String bodyText = payload.body;
+            if (pair) {
+                if (System.currentTimeMillis() > pairingUntilMs) {
+                    writeJsonResponse(socket, 403, "{\"ok\":false,\"error\":\"pairing_closed\"}");
+                    return;
+                }
+                pairingUntilMs = 0L;
+                JSONObject paired = new JSONObject();
+                paired.put("ok", true);
+                paired.put("token", getPreferences().getString(KEY_BRIDGE_TOKEN, ""));
+                writeJsonResponse(socket, 200, paired.toString());
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        updateStatus("ペアリング完了", "グラスへ認証情報を安全に転送しました。");
+                    }
+                });
+                return;
+            }
             if (!constantTimeEquals(getPreferences().getString(KEY_BRIDGE_TOKEN, ""), payload.token)) {
                 writeJsonResponse(socket, 401, "{\"ok\":false,\"error\":\"unauthorized\"}");
                 return;
