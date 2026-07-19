@@ -1,0 +1,51 @@
+# Build outputs
+build/
+build*/
+classes/
+classes*/
+dex/
+dex*/
+*.apk
+*.aab
+*.ap_
+*.idsig
+*.class
+*.dex
+*.jar
+
+# Android/Gradle local state
+.gradle/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing keys and secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+secrets.properties
+api-keys.properties
+google-services.json
+client_secret*.json
+credentials*.json
+token*.json
+
+# Device dumps / logs / screenshots
+*.log
+*.hprof
+*.trace
+*.png.tmp
+window*.xml
+*-dump.xml
+*-ui.xml
+*-scene.xml
+*-dump.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
