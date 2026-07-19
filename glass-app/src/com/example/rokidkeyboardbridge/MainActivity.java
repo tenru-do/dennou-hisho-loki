@@ -106,7 +106,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private LinearLayout buttonPanel;
     private volatile boolean conversationActive;
     private PowerManager.WakeLock conversationWakeLock;
-    private PowerManager.WakeLock notificationWakeLock;
     private volatile long geminiCooldownUntil;
     private volatile boolean geminiRequestActive;
     private Button imeButton;
@@ -115,9 +114,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile String healthCompactLine = "";
     private volatile long healthUpdatedAt;
     private volatile boolean healthPollInFlight;
-    private volatile String codexStatusLine = "CODEX --";
-    private volatile String codexEventKey = "";
-    private volatile boolean codexPollInFlight;
     private volatile long hudHoldUntil;
     private volatile long lastNavigationAt;
     private volatile int lastNavigationKeyCode;
@@ -208,13 +204,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
             MainActivity.this.handler.postDelayed(this, 20000L);
         }
     };
-    private final Runnable codexUpdater = new Runnable() {
-        @Override
-        public void run() {
-            MainActivity.this.pollCodexStatusAsync();
-            MainActivity.this.handler.postDelayed(this, 5000L);
-        }
-    };
     private final Runnable hideGlanceHudRunnable = new Runnable() {
         @Override
         public void run() {
@@ -256,7 +245,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.postDelayed(this.commandPoller, 2500L);
         this.handler.post(this.infoUpdater);
         this.handler.post(this.healthUpdater);
-        this.handler.post(this.codexUpdater);
     }
 
     @Override // android.app.Activity
@@ -302,7 +290,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.removeCallbacks(this.commandPoller);
         this.handler.removeCallbacks(this.infoUpdater);
         this.handler.removeCallbacks(this.healthUpdater);
-        this.handler.removeCallbacks(this.codexUpdater);
         this.handler.removeCallbacks(this.hideInputRunnable);
         this.handler.removeCallbacks(this.dimConversationRunnable);
         this.handler.removeCallbacks(this.hideGlanceHudRunnable);
@@ -1165,42 +1152,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
-    private void holdDisplayForNotification() {
-        try {
-            PowerManager manager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (manager != null) {
-                if (this.notificationWakeLock == null) {
-                    this.notificationWakeLock = manager.newWakeLock(
-                            PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                            TAG + ":codexNotification");
-                    this.notificationWakeLock.setReferenceCounted(false);
-                }
-                this.notificationWakeLock.acquire(6500L);
-            }
-            getWindow().addFlags(128);
-            this.handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    if (!MainActivity.this.conversationActive) {
-                        try {
-                            MainActivity.this.getWindow().clearFlags(128);
-                        } catch (Exception ignored) {
-                        }
-                    }
-                    if (MainActivity.this.notificationWakeLock != null
-                            && MainActivity.this.notificationWakeLock.isHeld()) {
-                        try {
-                            MainActivity.this.notificationWakeLock.release();
-                        } catch (Exception ignored) {
-                        }
-                    }
-                }
-            }, 6500L);
-        } catch (Exception e) {
-            Log.w(TAG, "notification display hold failed", e);
-        }
-    }
-
     /* JADX INFO: Access modifiers changed from: private */
     public void setMascotMode(int i) {
         this.mascotMode = i;
@@ -1619,8 +1570,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         String str7 = str2 + "(" + str4 + ") " + str3;
         String healthLine = compactHealthInfoLine();
-        String codexLine = this.codexStatusLine == null ? "CODEX --" : this.codexStatusLine;
-        String str8 = str7 + "\n" + batteryLabel + "  " + str5 + "/" + str6 + str + "\n" + healthLine + "\n" + codexLine;
+        String str8 = str7 + "\n" + batteryLabel + "  " + str5 + "/" + str6 + str + "\n" + healthLine;
         SpannableString spannableString = new SpannableString(str8);
         spannableString.setSpan(new RelativeSizeSpan(1.70f), 0, str7.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         int healthStart = str8.indexOf(healthLine);
@@ -1628,69 +1578,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
             spannableString.setSpan(new RelativeSizeSpan(1.05f), healthStart, healthStart + healthLine.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         this.info.setText(spannableString);
-    }
-
-    private void pollCodexStatusAsync() {
-        if (this.codexPollInFlight) return;
-        this.codexPollInFlight = true;
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                HttpURLConnection connection = null;
-                try {
-                    JSONObject latest = null;
-                    try {
-                        JSONObject phone = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("codex"));
-                        if (phone.optBoolean("ok", false)) latest = phone;
-                    } catch (Exception phoneError) {
-                        Log.w(TAG, "phone Codex status unavailable", phoneError);
-                    }
-                    if (latest != null) {
-                        final String state = latest.optString("state", "").toLowerCase(Locale.US);
-                        final long updated = latest.optLong("updatedAt", latest.optLong("time", 0L));
-                        final String key = state + ":" + updated;
-                        String label = "CODEX --";
-                        if ("working".equals(state)) label = "CODEX ● 作業中";
-                        else if ("waiting".equals(state)) label = "CODEX ! 許可待ち";
-                        else if ("done".equals(state)) label = "CODEX ✓ 回答完了";
-                        else if ("failed".equals(state)) label = "CODEX × エラー";
-                        final String display = label;
-                        MainActivity.this.handler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                boolean changed = !key.equals(MainActivity.this.codexEventKey);
-                                MainActivity.this.codexEventKey = key;
-                                MainActivity.this.codexStatusLine = display;
-                                MainActivity.this.updateInfoLine();
-                                if (changed && ("waiting".equals(state) || "done".equals(state) || "failed".equals(state))) {
-                                    MainActivity.this.hudHoldUntil = System.currentTimeMillis() + 6000L;
-                                    MainActivity.this.handler.removeCallbacks(MainActivity.this.hideGlanceHudRunnable);
-                                    MainActivity.this.setGlanceHudVisible(true);
-                                    MainActivity.this.holdDisplayForNotification();
-                                    MainActivity.this.handler.postDelayed(MainActivity.this.hideGlanceHudRunnable, 6050L);
-                                    if (updated > 0L && Math.abs(System.currentTimeMillis() - updated) < 60000L) {
-                                        String spoken = "done".equals(state)
-                                                ? "お知らせします。回答が届きました。"
-                                                : "waiting".equals(state)
-                                                ? "確認をお願いします。作業の許可が必要です。"
-                                                : "お知らせします。作業中にエラーが発生しました。";
-                                        // The local Rokid engine only synthesizes a small static phrase map.
-                                        // Route notification prose through the phone TTS path so arbitrary
-                                        // Japanese is spoken through the glasses.
-                                        MainActivity.this.speakWithPhoneTts(spoken);
-                                    }
-                                }
-                            }
-                        });
-                    }
-                } catch (Exception e) {
-                    Log.w(TAG, "Codex status poll failed", e);
-                } finally {
-                    if (connection != null) connection.disconnect();
-                    MainActivity.this.codexPollInFlight = false;
-                }
-            }
-        }, "CodexStatusPoll").start();
     }
 
     private String compactHealthInfoLine() {

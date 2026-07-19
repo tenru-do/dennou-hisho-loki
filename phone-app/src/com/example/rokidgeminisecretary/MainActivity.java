@@ -83,9 +83,6 @@ public final class MainActivity extends Activity {
     private static final String KEY_HEALTH_COMPACT = "health_compact";
     private static final String KEY_HEALTH_TIME = "health_time";
     private static final String KEY_HEALTH_DATE = "health_date";
-    private static final String KEY_CODEX_STATE = "codex_state";
-    private static final String KEY_CODEX_TIME = "codex_time";
-    private static final String KEY_CODEX_ACTIVITY = "codex_activity";
     private static final String KEY_PENDING_COMMAND = "pending_command";
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
@@ -652,8 +649,6 @@ public final class MainActivity extends Activity {
             boolean custom = request != null && request.startsWith("GET /custom");
             boolean health = request != null && request.startsWith("GET /health");
             boolean postHealth = request != null && request.startsWith("POST /health");
-            boolean codex = request != null && request.startsWith("GET /codex");
-            boolean postCodex = request != null && request.startsWith("POST /codex");
             boolean stt = request != null && request.startsWith("POST /stt");
             boolean pair = request != null && request.startsWith("GET /pair");
             RequestPayload payload = readRequestPayload(reader);
@@ -690,8 +685,6 @@ public final class MainActivity extends Activity {
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
-                    : postCodex ? buildPostCodexResult(bodyText).toString()
-                    : codex ? buildCodexJson().toString()
                     : postLog ? buildPostLogResult(bodyText).toString()
                     : log ? buildLogResult(request).toString()
                     : custom ? buildCustomJson().toString()
@@ -1363,28 +1356,6 @@ public final class MainActivity extends Activity {
         root.put("compact", compact);
         root.put("time", now);
         return root;
-    }
-
-    private JSONObject buildPostCodexResult(String bodyText) throws Exception {
-        JSONObject incoming = new JSONObject(bodyText == null || bodyText.trim().length() == 0 ? "{}" : bodyText);
-        String state = incoming.optString("state", "").trim().toLowerCase(Locale.US);
-        if (!("working".equals(state) || "waiting".equals(state) || "done".equals(state) || "failed".equals(state))) {
-            return new JSONObject().put("ok", false).put("error", "invalid_state");
-        }
-        long time = incoming.optLong("updatedAt", System.currentTimeMillis());
-        String activity = incoming.optString("activity", "").trim();
-        getPreferences().edit().putString(KEY_CODEX_STATE, state).putLong(KEY_CODEX_TIME, time)
-                .putString(KEY_CODEX_ACTIVITY, activity).apply();
-        return new JSONObject().put("ok", true).put("state", state).put("activity", activity).put("updatedAt", time);
-    }
-
-    private JSONObject buildCodexJson() throws Exception {
-        String state = getPreferences().getString(KEY_CODEX_STATE, "");
-        long time = getPreferences().getLong(KEY_CODEX_TIME, 0L);
-        String activity = getPreferences().getString(KEY_CODEX_ACTIVITY, "");
-        return new JSONObject().put("ok", state != null && state.length() > 0)
-                .put("state", state == null ? "" : state).put("activity", activity == null ? "" : activity)
-                .put("updatedAt", time);
     }
 
     private String compactHealthFromBody(String bodyText) {
