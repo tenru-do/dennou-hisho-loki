@@ -1,6 +1,6 @@
 # Setup notes
 
-> 公開版ではスマホ–グラス間の全エンドポイントに共有トークン認証が必要です。スマホ側の「指示」パネルに表示されるトークンを、グラス側のGemini設定へ同じ文字列で保存してください。トークンは16文字未満にするとスマホ側で再生成されます。
+> 公開版ではスマホ–グラス間の通常エンドポイントに共有トークン認証が必要です。トークンは手入力しません。スマホ側で60秒のペアリング受付を明示的に開始し、その間にグラス側の `SET` を押すと、一回限りのペアリングエンドポイントからアプリ専用領域へ直接保存されます。信頼できるLANまたは自分のテザリングで実行してください。
 
 These notes describe the original prototype flow. They are not yet a polished installation guide.
 
@@ -19,9 +19,10 @@ These notes describe the original prototype flow. They are not yet a polished in
    - notification access for mail summaries
    - microphone permission if using phone-side speech recognition
 3. Build and install the glasses app.
-4. Open the glasses app and set the Gemini API key.
-5. Open the phone app and confirm that its local server is running.
-6. Use text input from:
+4. In the phone app, open `指示` and press `グラスをペアリング（60秒）`.
+5. Within 60 seconds, press `SET` in the glasses app. The shared token is transferred automatically and the pairing window closes after the first successful claim.
+6. Open the glasses `SET` screen and save the Gemini API key and optional custom instructions.
+7. Confirm that the phone app local server is running, then use text input from:
    - Bluetooth keyboard connected to the glasses
    - the phone companion app
    - glasses-side voice input, where supported
