@@ -114,6 +114,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile String healthCompactLine = "";
     private volatile long healthUpdatedAt;
     private volatile boolean healthPollInFlight;
+    private volatile String weatherLocation = "";
+    private volatile String weatherCondition = "";
+    private volatile String weatherTemperature = "";
+    private volatile long weatherUpdatedAt;
+    private volatile boolean weatherPollInFlight;
     private volatile long hudHoldUntil;
     private volatile long lastNavigationAt;
     private volatile int lastNavigationKeyCode;
@@ -204,6 +209,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
             MainActivity.this.handler.postDelayed(this, 20000L);
         }
     };
+    private final Runnable weatherUpdater = new Runnable() {
+        @Override
+        public void run() {
+            MainActivity.this.pollPhoneWeatherAsync();
+            MainActivity.this.handler.postDelayed(this,
+                    MainActivity.this.weatherUpdatedAt <= 0L ? 20000L : 300000L);
+        }
+    };
     private final Runnable hideGlanceHudRunnable = new Runnable() {
         @Override
         public void run() {
@@ -245,6 +258,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.postDelayed(this.commandPoller, 2500L);
         this.handler.post(this.infoUpdater);
         this.handler.post(this.healthUpdater);
+        this.handler.post(this.weatherUpdater);
     }
 
     @Override // android.app.Activity
@@ -290,6 +304,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.removeCallbacks(this.commandPoller);
         this.handler.removeCallbacks(this.infoUpdater);
         this.handler.removeCallbacks(this.healthUpdater);
+        this.handler.removeCallbacks(this.weatherUpdater);
         this.handler.removeCallbacks(this.hideInputRunnable);
         this.handler.removeCallbacks(this.dimConversationRunnable);
         this.handler.removeCallbacks(this.hideGlanceHudRunnable);
@@ -1570,14 +1585,54 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         String str7 = str2 + "(" + str4 + ") " + str3;
         String healthLine = compactHealthInfoLine();
-        String str8 = str7 + "\n" + batteryLabel + "  " + str5 + "/" + str6 + str + "\n" + healthLine;
+        String locationLine = compactLocationInfoLine();
+        String weatherLine = compactWeatherInfoLine();
+        String str8 = str7 + "\n" + batteryLabel + "  " + str5 + "/" + str6 + str
+                + "\n" + healthLine + "\n" + locationLine + "\n" + weatherLine;
         SpannableString spannableString = new SpannableString(str8);
         spannableString.setSpan(new RelativeSizeSpan(1.70f), 0, str7.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         int healthStart = str8.indexOf(healthLine);
         if (healthStart >= 0) {
             spannableString.setSpan(new RelativeSizeSpan(1.05f), healthStart, healthStart + healthLine.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
+        int locationStart = str8.indexOf(locationLine);
+        if (locationStart >= 0) {
+            spannableString.setSpan(new RelativeSizeSpan(0.96f), locationStart, locationStart + locationLine.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        int weatherStart = str8.indexOf(weatherLine);
+        if (weatherStart >= 0) {
+            spannableString.setSpan(new RelativeSizeSpan(0.96f), weatherStart, weatherStart + weatherLine.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
         this.info.setText(spannableString);
+    }
+
+    private String compactLocationInfoLine() {
+        String value = this.weatherLocation == null ? "" : this.weatherLocation.trim();
+        if (value.length() == 0) {
+            return "現在地 --";
+        }
+        if (value.length() > 20) {
+            value = value.substring(0, 19) + "…";
+        }
+        return "現在地 " + value;
+    }
+
+    private String compactWeatherInfoLine() {
+        String condition = this.weatherCondition == null ? "" : this.weatherCondition.trim();
+        String temperature = this.weatherTemperature == null ? "" : this.weatherTemperature.trim();
+        if (condition.length() == 0 && temperature.length() == 0) {
+            return "天気 --";
+        }
+        StringBuilder result = new StringBuilder("天気 ");
+        result.append(condition.length() == 0 ? "--" : condition);
+        if (temperature.length() > 0) {
+            result.append(' ').append(temperature).append("℃");
+        }
+        if (this.weatherUpdatedAt > 0L
+                && System.currentTimeMillis() - this.weatherUpdatedAt > 7200000L) {
+            result.append(" old");
+        }
+        return result.toString();
     }
 
     private String compactHealthInfoLine() {
@@ -1643,6 +1698,35 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             }
         }, "PhoneHealthPoll").start();
+    }
+
+    private void pollPhoneWeatherAsync() {
+        if (this.weatherPollInFlight) {
+            return;
+        }
+        this.weatherPollInFlight = true;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    JSONObject json = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("weather"));
+                    MainActivity.this.weatherLocation = json.optString("location", "").trim();
+                    MainActivity.this.weatherCondition = json.optString("condition", "").trim();
+                    MainActivity.this.weatherTemperature = json.optString("temperature", "").trim();
+                    MainActivity.this.weatherUpdatedAt = json.optLong("time", 0L);
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            MainActivity.this.updateInfoLine();
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.w(TAG, "pollPhoneWeather failed", e);
+                } finally {
+                    MainActivity.this.weatherPollInFlight = false;
+                }
+            }
+        }, "PhoneWeatherPoll").start();
     }
 
     private String wifiShortState() {

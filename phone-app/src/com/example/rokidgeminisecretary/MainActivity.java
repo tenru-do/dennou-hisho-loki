@@ -7,6 +7,10 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
+import android.location.LocationManager;
 import android.media.AudioFormat;
 import android.net.Uri;
 import android.os.Build;
@@ -83,6 +87,11 @@ public final class MainActivity extends Activity {
     private static final String KEY_HEALTH_COMPACT = "health_compact";
     private static final String KEY_HEALTH_TIME = "health_time";
     private static final String KEY_HEALTH_DATE = "health_date";
+    private static final String KEY_WEATHER_LOCATION = "weather_location";
+    private static final String KEY_WEATHER_CONDITION = "weather_condition";
+    private static final String KEY_WEATHER_TEMPERATURE = "weather_temperature";
+    private static final String KEY_WEATHER_FEELS_LIKE = "weather_feels_like";
+    private static final String KEY_WEATHER_TIME = "weather_time";
     private static final String KEY_PENDING_COMMAND = "pending_command";
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
@@ -104,10 +113,18 @@ public final class MainActivity extends Activity {
     private volatile long pairingUntilMs;
     private ServerSocket serverSocket;
     private final Handler healthHandler = new Handler(Looper.getMainLooper());
+    private final Handler weatherHandler = new Handler(Looper.getMainLooper());
+    private volatile boolean weatherRefreshInFlight;
     private final Runnable healthRefresh = new Runnable() {
         @Override public void run() {
             refreshHealthConnectSteps();
             healthHandler.postDelayed(this, 60000L);
+        }
+    };
+    private final Runnable weatherRefresh = new Runnable() {
+        @Override public void run() {
+            refreshWeatherAsync();
+            weatherHandler.postDelayed(this, 600000L);
         }
     };
 
@@ -128,6 +145,25 @@ public final class MainActivity extends Activity {
         }
         ensureHealthConnectPermission();
         healthHandler.post(healthRefresh);
+        weatherHandler.postDelayed(new Runnable() {
+            @Override public void run() {
+                ensureLocationPermission();
+                weatherHandler.post(weatherRefresh);
+            }
+        }, 1600L);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            weatherHandler.post(new Runnable() {
+                @Override public void run() {
+                    refreshWeatherAsync();
+                }
+            });
+        }
     }
 
     private void startBridgeForegroundService() {
@@ -147,6 +183,7 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         running = false;
         healthHandler.removeCallbacks(healthRefresh);
+        weatherHandler.removeCallbacksAndMessages(null);
         try {
             if (serverSocket != null) serverSocket.close();
         } catch (Exception ignored) {
@@ -589,6 +626,10 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode == 205) {
+            refreshWeatherAsync();
+            return;
+        }
         ensureCalendarPermission();
     }
 
@@ -649,6 +690,7 @@ public final class MainActivity extends Activity {
             boolean custom = request != null && request.startsWith("GET /custom");
             boolean health = request != null && request.startsWith("GET /health");
             boolean postHealth = request != null && request.startsWith("POST /health");
+            boolean weather = request != null && request.startsWith("GET /weather");
             boolean stt = request != null && request.startsWith("POST /stt");
             boolean pair = request != null && request.startsWith("GET /pair");
             RequestPayload payload = readRequestPayload(reader);
@@ -685,6 +727,7 @@ public final class MainActivity extends Activity {
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
+                    : weather ? buildWeatherJson().toString()
                     : postLog ? buildPostLogResult(bodyText).toString()
                     : log ? buildLogResult(request).toString()
                     : custom ? buildCustomJson().toString()
@@ -1211,6 +1254,199 @@ public final class MainActivity extends Activity {
         root.put("ok", true);
         root.put("custom", custom == null ? "" : custom);
         return root;
+    }
+
+    private void ensureLocationPermission() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 205);
+        }
+    }
+
+    private JSONObject buildWeatherJson() throws Exception {
+        SharedPreferences preferences = getPreferences();
+        String location = preferences.getString(KEY_WEATHER_LOCATION, "").trim();
+        String condition = preferences.getString(KEY_WEATHER_CONDITION, "").trim();
+        String temperature = preferences.getString(KEY_WEATHER_TEMPERATURE, "").trim();
+        String feelsLike = preferences.getString(KEY_WEATHER_FEELS_LIKE, "").trim();
+        long updatedAt = preferences.getLong(KEY_WEATHER_TIME, 0L);
+        if (updatedAt == 0L || System.currentTimeMillis() - updatedAt > 600000L) {
+            refreshWeatherAsync();
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", location.length() > 0 && condition.length() > 0 && temperature.length() > 0);
+        root.put("location", location);
+        root.put("condition", condition);
+        root.put("temperature", temperature);
+        root.put("feelsLike", feelsLike);
+        root.put("time", updatedAt);
+        root.put("source", "Open-Meteo");
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            root.put("error", "location_permission_missing");
+        }
+        return root;
+    }
+
+    private void refreshWeatherAsync() {
+        if (weatherRefreshInFlight
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        weatherRefreshInFlight = true;
+        Log.i(TAG, "weather refresh started");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    refreshWeatherNow();
+                } catch (Exception error) {
+                    Log.w(TAG, "weather refresh failed", error);
+                } finally {
+                    weatherRefreshInFlight = false;
+                }
+            }
+        }, "WeatherRefresh").start();
+    }
+
+    private void refreshWeatherNow() throws Exception {
+        Location location = getBestAvailableLocation();
+        if (location == null) {
+            throw new IllegalStateException("phone location unavailable");
+        }
+        String latitude = String.format(Locale.US, "%.5f", location.getLatitude());
+        String longitude = String.format(Locale.US, "%.5f", location.getLongitude());
+        String url = "https://api.open-meteo.com/v1/forecast?latitude=" + latitude
+                + "&longitude=" + longitude
+                + "&current=temperature_2m,apparent_temperature,weather_code&timezone=auto";
+        JSONObject current = new JSONObject(fetchText(url)).optJSONObject("current");
+        if (current == null) {
+            throw new IllegalStateException("weather response has no current data");
+        }
+        double temperature = current.optDouble("temperature_2m", Double.NaN);
+        double feelsLike = current.optDouble("apparent_temperature", Double.NaN);
+        int weatherCode = current.optInt("weather_code", -1);
+        if (Double.isNaN(temperature) || weatherCode < 0) {
+            throw new IllegalStateException("weather response is incomplete");
+        }
+        String place = getPreferences().getString(KEY_WEATHER_LOCATION, "").trim();
+        if (place.length() == 0) place = "取得済";
+        SharedPreferences.Editor editor = getPreferences().edit()
+                .putString(KEY_WEATHER_LOCATION, shortInline(place, 20))
+                .putString(KEY_WEATHER_CONDITION, weatherCondition(weatherCode))
+                .putString(KEY_WEATHER_TEMPERATURE,
+                        String.format(Locale.JAPAN, "%.1f", temperature))
+                .putLong(KEY_WEATHER_TIME, System.currentTimeMillis());
+        if (!Double.isNaN(feelsLike)) {
+            editor.putString(KEY_WEATHER_FEELS_LIKE,
+                    String.format(Locale.JAPAN, "%.1f", feelsLike));
+        } else {
+            editor.remove(KEY_WEATHER_FEELS_LIKE);
+        }
+        editor.apply();
+        Log.i(TAG, "weather data cached: " + weatherCondition(weatherCode)
+                + " " + String.format(Locale.JAPAN, "%.1f", temperature) + "C");
+        String resolvedPlace = readMunicipality(location);
+        if (resolvedPlace.length() > 0) {
+            getPreferences().edit()
+                    .putString(KEY_WEATHER_LOCATION, shortInline(resolvedPlace, 20))
+                    .apply();
+            Log.i(TAG, "weather municipality resolved");
+        }
+    }
+
+    private Location getBestAvailableLocation() throws Exception {
+        LocationManager manager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (manager == null) {
+            return null;
+        }
+        Location best = null;
+        for (String provider : manager.getProviders(true)) {
+            try {
+                Location candidate = manager.getLastKnownLocation(provider);
+                if (candidate != null && (best == null || candidate.getTime() > best.getTime())) {
+                    best = candidate;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (best != null && System.currentTimeMillis() - best.getTime() <= 900000L) {
+            return best;
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            String provider = null;
+            if (manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                provider = LocationManager.NETWORK_PROVIDER;
+            } else if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                provider = LocationManager.GPS_PROVIDER;
+            }
+            if (provider != null) {
+                final Location[] result = new Location[1];
+                final CountDownLatch latch = new CountDownLatch(1);
+                final android.os.CancellationSignal cancellation = new android.os.CancellationSignal();
+                manager.getCurrentLocation(provider, cancellation, getMainExecutor(),
+                        new java.util.function.Consumer<Location>() {
+                            @Override public void accept(Location value) {
+                                result[0] = value;
+                                latch.countDown();
+                            }
+                        });
+                latch.await(8L, TimeUnit.SECONDS);
+                cancellation.cancel();
+                if (result[0] != null) {
+                    return result[0];
+                }
+            }
+        }
+        return best;
+    }
+
+    private String readMunicipality(Location location) {
+        try {
+            if (!Geocoder.isPresent()) {
+                return "";
+            }
+            List<Address> addresses = new Geocoder(this, Locale.JAPAN)
+                    .getFromLocation(location.getLatitude(), location.getLongitude(), 1);
+            if (addresses == null || addresses.isEmpty()) {
+                return "";
+            }
+            Address address = addresses.get(0);
+            String region = safe(address.getAdminArea()).trim();
+            String municipality = safe(address.getLocality()).trim();
+            if (municipality.length() == 0) {
+                municipality = safe(address.getSubAdminArea()).trim();
+            }
+            if (municipality.length() == 0) {
+                municipality = safe(address.getSubLocality()).trim();
+            }
+            if (region.length() == 0) {
+                return municipality;
+            }
+            if (municipality.length() == 0 || region.equals(municipality)
+                    || region.endsWith(municipality)) {
+                return region;
+            }
+            return region + " " + municipality;
+        } catch (Exception error) {
+            Log.d(TAG, "reverse geocoding unavailable: " + error.getMessage());
+            return "";
+        }
+    }
+
+    private String weatherCondition(int code) {
+        if (code == 0) return "快晴";
+        if (code == 1) return "晴れ";
+        if (code == 2) return "晴れ時々曇り";
+        if (code == 3) return "曇り";
+        if (code == 45 || code == 48) return "霧";
+        if (code >= 51 && code <= 57) return "霧雨";
+        if (code >= 61 && code <= 67) return "雨";
+        if (code >= 71 && code <= 77) return "雪";
+        if (code >= 80 && code <= 82) return "にわか雨";
+        if (code == 85 || code == 86) return "にわか雪";
+        if (code >= 95 && code <= 99) return "雷雨";
+        return "天気不明";
     }
 
     private JSONObject buildHealthJson() throws Exception {
