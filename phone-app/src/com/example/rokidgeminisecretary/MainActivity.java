@@ -91,6 +91,7 @@ public final class MainActivity extends Activity {
     private static final String KEY_WEATHER_CONDITION = "weather_condition";
     private static final String KEY_WEATHER_TEMPERATURE = "weather_temperature";
     private static final String KEY_WEATHER_FEELS_LIKE = "weather_feels_like";
+    private static final String KEY_WEATHER_FORECAST = "weather_forecast";
     private static final String KEY_WEATHER_TIME = "weather_time";
     private static final String KEY_PENDING_COMMAND = "pending_command";
     private static final List<String> LOGS = new ArrayList<String>();
@@ -727,7 +728,7 @@ public final class MainActivity extends Activity {
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
-                    : weather ? buildWeatherJson().toString()
+                    : weather ? buildWeatherJson(parseIntQuery(request, "offset", 0)).toString()
                     : postLog ? buildPostLogResult(bodyText).toString()
                     : log ? buildLogResult(request).toString()
                     : custom ? buildCustomJson().toString()
@@ -1263,7 +1264,7 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private JSONObject buildWeatherJson() throws Exception {
+    private JSONObject buildWeatherJson(int dayOffset) throws Exception {
         SharedPreferences preferences = getPreferences();
         String location = preferences.getString(KEY_WEATHER_LOCATION, "").trim();
         String condition = preferences.getString(KEY_WEATHER_CONDITION, "").trim();
@@ -1281,6 +1282,14 @@ public final class MainActivity extends Activity {
         root.put("feelsLike", feelsLike);
         root.put("time", updatedAt);
         root.put("source", "Open-Meteo");
+        JSONArray forecast = new JSONArray(preferences.getString(KEY_WEATHER_FORECAST, "[]"));
+        if (dayOffset >= 0 && dayOffset < forecast.length()) {
+            JSONObject day = forecast.optJSONObject(dayOffset);
+            if (day != null) {
+                root.put("forecast", day);
+            }
+        }
+        root.put("dayOffset", dayOffset);
         if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             root.put("error", "location_permission_missing");
@@ -1318,8 +1327,11 @@ public final class MainActivity extends Activity {
         String longitude = String.format(Locale.US, "%.5f", location.getLongitude());
         String url = "https://api.open-meteo.com/v1/forecast?latitude=" + latitude
                 + "&longitude=" + longitude
-                + "&current=temperature_2m,apparent_temperature,weather_code&timezone=auto";
-        JSONObject current = new JSONObject(fetchText(url)).optJSONObject("current");
+                + "&current=temperature_2m,apparent_temperature,weather_code"
+                + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+                + "&forecast_days=3&timezone=auto";
+        JSONObject response = new JSONObject(fetchText(url));
+        JSONObject current = response.optJSONObject("current");
         if (current == null) {
             throw new IllegalStateException("weather response has no current data");
         }
@@ -1337,6 +1349,33 @@ public final class MainActivity extends Activity {
                 .putString(KEY_WEATHER_TEMPERATURE,
                         String.format(Locale.JAPAN, "%.1f", temperature))
                 .putLong(KEY_WEATHER_TIME, System.currentTimeMillis());
+        JSONObject daily = response.optJSONObject("daily");
+        JSONArray forecast = new JSONArray();
+        if (daily != null) {
+            JSONArray dates = daily.optJSONArray("time");
+            JSONArray codes = daily.optJSONArray("weather_code");
+            JSONArray maximums = daily.optJSONArray("temperature_2m_max");
+            JSONArray minimums = daily.optJSONArray("temperature_2m_min");
+            JSONArray rain = daily.optJSONArray("precipitation_probability_max");
+            int count = dates == null ? 0 : Math.min(3, dates.length());
+            for (int index = 0; index < count; index++) {
+                JSONObject day = new JSONObject();
+                int code = codes == null ? -1 : codes.optInt(index, -1);
+                day.put("date", dates.optString(index, ""));
+                day.put("condition", weatherCondition(code));
+                if (maximums != null && !maximums.isNull(index)) {
+                    day.put("max", String.format(Locale.JAPAN, "%.1f", maximums.optDouble(index)));
+                }
+                if (minimums != null && !minimums.isNull(index)) {
+                    day.put("min", String.format(Locale.JAPAN, "%.1f", minimums.optDouble(index)));
+                }
+                if (rain != null && !rain.isNull(index)) {
+                    day.put("rain", rain.optInt(index, -1));
+                }
+                forecast.put(day);
+            }
+        }
+        editor.putString(KEY_WEATHER_FORECAST, forecast.toString());
         if (!Double.isNaN(feelsLike)) {
             editor.putString(KEY_WEATHER_FEELS_LIKE,
                     String.format(Locale.JAPAN, "%.1f", feelsLike));

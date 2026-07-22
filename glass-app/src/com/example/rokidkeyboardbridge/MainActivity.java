@@ -145,8 +145,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private float neutralPitch;
     private boolean neutralPitchReady;
     private int neutralPitchSamples;
+    private long headSensorStartedAt;
+    private float filteredPitch;
+    private boolean filteredPitchReady;
     private boolean glanceHudVisible = true;
     private boolean headGlanceWake;
+    private boolean headTiltActive;
+    private long headTiltStartedAt;
     private boolean activityForeground;
     private long lastUpwardGlanceAt;
     private int normalScreenTimeoutMs = 6000;
@@ -175,6 +180,29 @@ public final class MainActivity extends Activity implements SensorEventListener 
         @Override
         public void run() {
             MainActivity.this.hideInputIfIdle();
+        }
+    };
+    private final Runnable idleHudCleanupRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (MainActivity.this.conversationActive || MainActivity.this.geminiRequestActive
+                    || MainActivity.this.voiceRecording || MainActivity.this.voiceLoopMode
+                    || MainActivity.this.proactiveMode) {
+                return;
+            }
+            MainActivity.this.clearSubmittedInput();
+            if (MainActivity.this.answer != null) {
+                MainActivity.this.answer.setText("");
+            }
+            if (MainActivity.this.answerScroll != null) {
+                MainActivity.this.answerScroll.setVisibility(View.GONE);
+            }
+            if (MainActivity.this.status != null) {
+                MainActivity.this.status.setVisibility(View.GONE);
+            }
+            if (!MainActivity.this.headTiltActive) {
+                MainActivity.this.setGlanceHudVisible(false);
+            }
         }
     };
     private final Runnable dimConversationRunnable = new Runnable() {
@@ -220,12 +248,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private final Runnable hideGlanceHudRunnable = new Runnable() {
         @Override
         public void run() {
-            long remaining = MainActivity.this.hudHoldUntil - System.currentTimeMillis();
+            if (MainActivity.this.headTiltActive || MainActivity.this.conversationActive
+                    || MainActivity.this.geminiRequestActive || MainActivity.this.voiceRecording) {
+                return;
+            }
+            long remaining = MainActivity.this.headGlanceWake ? 0L
+                    : MainActivity.this.hudHoldUntil - System.currentTimeMillis();
             if (remaining > 0L) {
                 MainActivity.this.handler.postDelayed(this, remaining + 50L);
                 return;
             }
-            if (System.currentTimeMillis() - MainActivity.this.lastUpwardGlanceAt >= 2800L) {
+            if (System.currentTimeMillis() - MainActivity.this.lastUpwardGlanceAt >= 1000L) {
+                MainActivity.this.headGlanceWake = false;
                 MainActivity.this.setGlanceHudVisible(false);
             }
         }
@@ -272,8 +306,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.postDelayed(this.commandPoller, 800L);
         if (this.conversationActive || this.geminiRequestActive || this.voiceRecording || this.voiceLoopMode) {
             setConversationActive(true);
+        } else if (this.headTiltActive || this.headGlanceWake) {
+            setGlanceHudVisible(true);
         } else {
-            setScreenBrightness(-1.0f);
+            setGlanceHudVisible(false);
         }
         try {
             getWindow().getDecorView().requestFocus();
@@ -306,6 +342,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.removeCallbacks(this.healthUpdater);
         this.handler.removeCallbacks(this.weatherUpdater);
         this.handler.removeCallbacks(this.hideInputRunnable);
+        this.handler.removeCallbacks(this.idleHudCleanupRunnable);
         this.handler.removeCallbacks(this.dimConversationRunnable);
         this.handler.removeCallbacks(this.hideGlanceHudRunnable);
         unregisterHeadPoseSensor();
@@ -497,6 +534,22 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
+    private void clearSubmittedInput() {
+        if (this.input == null) {
+            return;
+        }
+        this.handler.removeCallbacks(this.hideInputRunnable);
+        this.input.setText("");
+        this.input.clearFocus();
+        this.input.setVisibility(View.GONE);
+        hideKeyboard();
+    }
+
+    private void scheduleIdleHudCleanup() {
+        this.handler.removeCallbacks(this.idleHudCleanupRunnable);
+        this.handler.postDelayed(this.idleHudCleanupRunnable, 1000L);
+    }
+
     private void setInputTextVisible(String text) {
         if (this.input == null) {
             return;
@@ -509,7 +562,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void buildUi() {
         LinearLayout linearLayout = new LinearLayout(this);
         linearLayout.setOrientation(1);
-        linearLayout.setPadding(6, dp(100), 6, 2);
+        linearLayout.setPadding(6, dp(130), 6, 2);
         linearLayout.setBackgroundColor(-16777216);
         TextView textView = new TextView(this);
         textView.setText("Gemini for Rokid");
@@ -874,20 +927,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.mascotView = new MascotView(this);
         FrameLayout.LayoutParams layoutParams6 = new FrameLayout.LayoutParams(dp(96), dp(96), 51);
         layoutParams6.leftMargin = dp(0);
-        layoutParams6.topMargin = dp(34);
+        layoutParams6.topMargin = dp(0);
         frameLayout.addView(this.mascotView, layoutParams6);
         FrameLayout.LayoutParams layoutParams7 = new FrameLayout.LayoutParams(dp(312), dp(34), 51);
         layoutParams7.leftMargin = dp(0);
-        layoutParams7.topMargin = dp(0);
+        layoutParams7.topMargin = dp(96);
         frameLayout.addView(this.buttonPanel, layoutParams7);
         FrameLayout.LayoutParams layoutParams8 = new FrameLayout.LayoutParams(dp(216), dp(96), 51);
         layoutParams8.leftMargin = dp(96);
-        layoutParams8.topMargin = dp(34);
+        layoutParams8.topMargin = dp(0);
         frameLayout.addView(this.info, layoutParams8);
         setContentView(frameLayout);
         setMascotMode(0);
         updateInfoLine();
-        showControlsTemporarily();
+        this.glanceHudVisible = false;
+        this.headGlanceWake = false;
+        this.hudRoot.setAlpha(0.0f);
+        this.hudRoot.setVisibility(View.INVISIBLE);
+        setScreenBrightness(0.0f);
         hideKeyboard();
         if (this.zoomButton != null) {
             this.zoomButton.requestFocus();
@@ -1003,7 +1060,22 @@ public final class MainActivity extends Activity implements SensorEventListener 
         } catch (Exception e) {
             return;
         }
-        float pitch = orientation[1];
+        float rawPitch = orientation[1];
+        long poseNow = System.currentTimeMillis();
+        if (this.headSensorStartedAt == 0L) {
+            this.headSensorStartedAt = poseNow;
+        }
+        if (!this.filteredPitchReady) {
+            this.filteredPitch = rawPitch;
+            this.filteredPitchReady = true;
+        } else {
+            this.filteredPitch = wrapAngle(this.filteredPitch
+                    + (wrapAngle(rawPitch - this.filteredPitch) * 0.12f));
+        }
+        float pitch = this.filteredPitch;
+        if (poseNow - this.headSensorStartedAt < 1800L) {
+            return;
+        }
         if (!this.neutralPitchReady) {
             if (this.neutralPitchSamples == 0) {
                 this.neutralPitch = pitch;
@@ -1011,11 +1083,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 this.neutralPitch = (this.neutralPitch * this.neutralPitchSamples + pitch) / (this.neutralPitchSamples + 1);
             }
             this.neutralPitchSamples++;
-            if (this.neutralPitchSamples >= 4) {
+            if (this.neutralPitchSamples >= 12) {
                 this.neutralPitchReady = true;
+                this.headTiltActive = false;
                 this.lastUpwardGlanceAt = System.currentTimeMillis();
                 this.handler.removeCallbacks(this.hideGlanceHudRunnable);
-                this.handler.postDelayed(this.hideGlanceHudRunnable, 3000L);
+                this.handler.postDelayed(this.hideGlanceHudRunnable, 1100L);
                 Log.i(TAG, "head pose calibrated pitch=" + this.neutralPitch);
             }
             return;
@@ -1024,13 +1097,34 @@ public final class MainActivity extends Activity implements SensorEventListener 
         // Sensor mounting differs between Rokid revisions. Detect a deliberate
         // vertical head tilt in either pitch direction, with hysteresis.
         float tilt = Math.abs(delta);
-        if (tilt >= 0.045f) {
+        if (tilt >= 0.055f) {
+            if (!this.headTiltActive) {
+                this.headTiltStartedAt = poseNow;
+            }
+            this.headTiltActive = true;
+            if (!this.conversationActive && !this.geminiRequestActive && !this.voiceRecording
+                    && poseNow - this.headTiltStartedAt >= 8000L) {
+                this.neutralPitch = pitch;
+                this.headTiltActive = false;
+                this.headGlanceWake = false;
+                this.lastUpwardGlanceAt = poseNow;
+                this.handler.removeCallbacks(this.hideGlanceHudRunnable);
+                this.handler.postDelayed(this.hideGlanceHudRunnable, 1050L);
+                return;
+            }
             this.lastUpwardGlanceAt = System.currentTimeMillis();
             this.handler.removeCallbacks(this.hideGlanceHudRunnable);
             showHeadGlanceHud();
-        } else if (tilt <= 0.022f) {
+        } else if (tilt <= 0.025f) {
+            if (this.headTiltActive) {
+                this.lastUpwardGlanceAt = System.currentTimeMillis();
+            }
+            this.headTiltActive = false;
+            this.headTiltStartedAt = 0L;
+            this.neutralPitch = wrapAngle(this.neutralPitch
+                    + (wrapAngle(pitch - this.neutralPitch) * 0.006f));
             this.handler.removeCallbacks(this.hideGlanceHudRunnable);
-            this.handler.postDelayed(this.hideGlanceHudRunnable, 3000L);
+            this.handler.postDelayed(this.hideGlanceHudRunnable, 1050L);
         }
     }
 
@@ -1087,7 +1181,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void showHeadGlanceHud() {
         this.headGlanceWake = true;
-        this.hudHoldUntil = Math.max(this.hudHoldUntil, System.currentTimeMillis() + 3000L);
+        this.handler.removeCallbacks(this.idleHudCleanupRunnable);
         if (this.input != null) {
             String draft = this.input.getText() == null ? "" : this.input.getText().toString().trim();
             if (draft.length() == 0) {
@@ -1097,7 +1191,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         if (this.answerScroll != null && this.answer != null) {
             String response = this.answer.getText() == null ? "" : this.answer.getText().toString().trim();
-            this.answerScroll.setVisibility(response.length() == 0 ? View.GONE : View.VISIBLE);
+            boolean active = this.conversationActive || this.geminiRequestActive || this.voiceRecording;
+            this.answerScroll.setVisibility(active && response.length() > 0 ? View.VISIBLE : View.GONE);
         }
         if (this.status != null && !this.conversationActive && !this.geminiRequestActive && !this.voiceRecording) {
             this.status.setVisibility(View.GONE);
@@ -1293,6 +1388,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     /* JADX INFO: Access modifiers changed from: private */
     public void showControlsTemporarily() {
         this.headGlanceWake = false;
+        this.handler.removeCallbacks(this.idleHudCleanupRunnable);
         this.hudHoldUntil = Math.max(this.hudHoldUntil, System.currentTimeMillis() + 20000L);
         this.handler.removeCallbacks(this.hideGlanceHudRunnable);
         this.handler.postDelayed(this.hideGlanceHudRunnable, 20050L);
@@ -1309,7 +1405,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         hideInputIfIdle();
         if (this.answerScroll != null && this.answer != null) {
             String response = this.answer.getText() == null ? "" : this.answer.getText().toString().trim();
-            this.answerScroll.setVisibility(response.length() == 0 ? View.GONE : View.VISIBLE);
+            boolean active = this.conversationActive || this.geminiRequestActive || this.voiceRecording;
+            this.answerScroll.setVisibility(active && response.length() > 0 ? View.VISIBLE : View.GONE);
         }
         if (this.status != null) {
             this.status.setVisibility((this.conversationActive || this.geminiRequestActive || this.voiceRecording) ? View.VISIBLE : View.GONE);
@@ -1405,6 +1502,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     public void setConversationActive(boolean z) {
         this.conversationActive = z;
         if (z) {
+            this.handler.removeCallbacks(this.idleHudCleanupRunnable);
             getWindow().addFlags(128);
             acquireConversationWakeLock();
             setScreenBrightness(-1.0f);
@@ -1422,6 +1520,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
         setScreenBrightness(-1.0f);
         this.handler.removeCallbacks(this.hideControlsRunnable);
         setMascotMode(0);
+        resetHeadPoseCalibration();
+        scheduleIdleHudCleanup();
+    }
+
+    private void resetHeadPoseCalibration() {
+        this.headTiltActive = false;
+        this.headTiltStartedAt = 0L;
+        this.headGlanceWake = false;
+        this.neutralPitchReady = false;
+        this.neutralPitchSamples = 0;
+        this.filteredPitchReady = false;
+        this.headSensorStartedAt = System.currentTimeMillis();
     }
 
     private void initConversationWakeLock() {
@@ -1832,7 +1942,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             return;
         }
-        if (handleLocalCommand(strTrim) || handleDirectDataQuestion(strTrim) || handleUnsupportedNewsQuestion(strTrim) || handleSmallTalkQuestion(strTrim)) {
+        if (handleLocalCommand(strTrim) || handleDirectWeatherQuestion(strTrim) || handleDirectDataQuestion(strTrim) || handleUnsupportedNewsQuestion(strTrim) || handleSmallTalkQuestion(strTrim)) {
             return;
         }
         final String strTrim2 = getPreferences().getString(KEY_API_KEY, "").trim();
@@ -1846,6 +1956,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         String strApplyCustomInstructionFromText = applyCustomInstructionFromText(strTrim);
         if (strApplyCustomInstructionFromText != null) {
+            clearSubmittedInput();
             this.answer.setText(strApplyCustomInstructionFromText);
             setStatus("カスタム指示を更新しました", Color.rgb(90, 220, 120));
             logToPhoneAsync("カスタム指示", strApplyCustomInstructionFromText);
@@ -1864,6 +1975,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ttsGeneration++;
         this.voiceLoopMode = false;
         this.voiceRecording = false;
+        clearSubmittedInput();
         hideKeyboard();
         this.answer.setText("考えています…");
         setStatus("Geminiへ接続中", -3355444);
@@ -1918,6 +2030,89 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }, "GeminiRequest").start();
     }
 
+    private boolean isWeatherQuestion(String str) {
+        String value = str == null ? "" : str.trim().toLowerCase(Locale.JAPAN);
+        return value.contains("天気") || value.contains("気温") || value.contains("降水")
+                || value.contains("雨降") || value.contains("傘")
+                || value.contains("weather") || value.contains("temperature");
+    }
+
+    private int weatherDayOffset(String str) {
+        String value = str == null ? "" : str.trim().toLowerCase(Locale.JAPAN);
+        if (value.contains("明後日") || value.contains("あさって") || value.contains("day after tomorrow")) {
+            return 2;
+        }
+        if (value.contains("明日") || value.contains("あした") || value.contains("tomorrow")) {
+            return 1;
+        }
+        return 0;
+    }
+
+    private boolean handleDirectWeatherQuestion(final String query) {
+        if (!isWeatherQuestion(query)) {
+            return false;
+        }
+        this.sendButton.setEnabled(false);
+        this.ttsGeneration++;
+        this.voiceLoopMode = false;
+        this.voiceRecording = false;
+        clearSubmittedInput();
+        this.answer.setText("スマホから天気を確認中…");
+        setStatus("天気を確認中", -3355444);
+        setMascotExpression(15);
+        setConversationActive(true);
+        final int generation = this.requestGeneration + 1;
+        this.requestGeneration = generation;
+        final int dayOffset = weatherDayOffset(query);
+        logToPhoneAsync("ユーザー", query);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String weatherJson = MainActivity.this.fetchPhoneEndpointJson("weather?offset=" + dayOffset);
+                    JSONObject first = new JSONObject(weatherJson);
+                    if (dayOffset > 0 && first.optJSONObject("forecast") == null) {
+                        Thread.sleep(1600L);
+                        weatherJson = MainActivity.this.fetchPhoneEndpointJson("weather?offset=" + dayOffset);
+                    }
+                    final String result = MainActivity.this.buildDirectWeatherText(weatherJson, dayOffset);
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (generation != MainActivity.this.requestGeneration) {
+                                return;
+                            }
+                            MainActivity.this.sendButton.setEnabled(true);
+                            MainActivity.this.answer.setText(result);
+                            MainActivity.this.setMascotExpression(1);
+                            MainActivity.this.scrollAnswerToTop();
+                            MainActivity.this.setStatus("天気を取得しました", Color.rgb(90, 220, 120));
+                            MainActivity.this.logToPhoneAsync("直接回答", result);
+                            MainActivity.this.speakWithPhoneTtsChunked(result);
+                        }
+                    });
+                } catch (final Exception error) {
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (generation != MainActivity.this.requestGeneration) {
+                                return;
+                            }
+                            MainActivity.this.sendButton.setEnabled(true);
+                            String message = "天気を取得できませんでした。\nスマホ側アプリと通信状態を確認してください。\n" + error.getMessage();
+                            MainActivity.this.answer.setText(message);
+                            MainActivity.this.setMascotExpression(6);
+                            MainActivity.this.setStatus("天気取得エラー", Color.YELLOW);
+                            MainActivity.this.logToPhoneAsync("直接回答", message);
+                            MainActivity.this.setConversationActive(false);
+                        }
+                    });
+                }
+            }
+        }, "DirectWeatherRequest").start();
+        return true;
+    }
+
     private boolean handleDirectDataQuestion(final String str) {
         if (!isScheduleQuestion(str) && !isMailQuestion(str)) {
             return false;
@@ -1926,6 +2121,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ttsGeneration++;
         this.voiceLoopMode = false;
         this.voiceRecording = false;
+        clearSubmittedInput();
         hideKeyboard();
         this.answer.setText("スマホの実データを確認中…");
         setStatus("Geminiなしで確認中", -3355444);
@@ -1986,6 +2182,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ttsGeneration++;
         this.voiceLoopMode = false;
         this.voiceRecording = false;
+        clearSubmittedInput();
         hideKeyboard();
         this.answer.setText("ニュースを取得しています…");
         setStatus("スマホからニュース取得中", -3355444);
@@ -2082,6 +2279,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ttsGeneration++;
         this.voiceLoopMode = false;
         this.voiceRecording = false;
+        clearSubmittedInput();
         hideKeyboard();
         this.handler.removeCallbacks(this.hideInputRunnable);
         this.handler.postDelayed(this.hideInputRunnable, 3500L);
@@ -2104,14 +2302,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
         String lowerCase = str == null ? "" : str.trim().toLowerCase(Locale.JAPAN);
         if (lowerCase.contains("プロアクティブオン") || lowerCase.contains("proactive on") || lowerCase.contains("watch on")) {
             setProactiveMode(true);
-            setInputTextVisible("");
+            clearSubmittedInput();
             return true;
         }
         if (!lowerCase.contains("プロアクティブオフ") && !lowerCase.contains("proactive off") && !lowerCase.contains("watch off")) {
             return false;
         }
         setProactiveMode(false);
-        setInputTextVisible("");
+        clearSubmittedInput();
         return true;
     }
 
@@ -3171,11 +3369,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private boolean isScheduleQuestion(String str) {
         String strTrim = str == null ? "" : str.trim();
+        if (isWeatherQuestion(strTrim)) {
+            return false;
+        }
         return strTrim.contains("予定") || strTrim.contains("スケジュール") || strTrim.contains("カレンダー") || strTrim.contains("calendar") || strTrim.contains("Calendar") || strTrim.contains("いつだっけ") || strTrim.contains("いつだった") || (strTrim.contains("いつ") && strTrim.contains("だっけ")) || ((strTrim.contains("いつ") && strTrim.contains("行く")) || ((strTrim.contains("いつ") && strTrim.contains("いく")) || strTrim.contains("いつある") || strTrim.contains("何日") || strTrim.contains("何時") || (isBareDateScheduleQuestion(strTrim) && !isNewsQuestion(strTrim))));
     }
 
     private boolean isBareDateScheduleQuestion(String str) {
         String strTrim = str == null ? "" : str.trim();
+        if (isWeatherQuestion(strTrim)) {
+            return false;
+        }
         return strTrim.length() <= 16 && (strTrim.contains("昨日") || strTrim.contains("明日") || strTrim.contains("明後日") || strTrim.contains("あした") || strTrim.contains("あさって"));
     }
 
@@ -3902,6 +4106,51 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     /* JADX INFO: Access modifiers changed from: private */
+    public String buildDirectWeatherText(String str, int dayOffset) throws Exception {
+        JSONObject root = new JSONObject(str);
+        if (!root.optBoolean("ok", false)) {
+            throw new IllegalStateException("スマホで位置情報と天気を取得中です。少し待ってからもう一度お試しください。");
+        }
+        String location = root.optString("location", "現在地").trim();
+        if (location.length() == 0) {
+            location = "現在地";
+        }
+        String dayLabel = dayOffset == 2 ? "明後日" : dayOffset == 1 ? "明日" : "今日";
+        StringBuilder result = new StringBuilder();
+        result.append(dayLabel).append("の").append(location).append("の天気は");
+        if (dayOffset == 0) {
+            String condition = root.optString("condition", "").trim();
+            String temperature = root.optString("temperature", "").trim();
+            result.append(condition.length() == 0 ? "不明" : condition).append("です。");
+            if (temperature.length() > 0) {
+                result.append("現在").append(temperature).append("℃です。");
+            }
+            return result.toString();
+        }
+        JSONObject forecast = root.optJSONObject("forecast");
+        if (forecast == null) {
+            throw new IllegalStateException("予報データを更新中です。少し待ってからもう一度お試しください。");
+        }
+        String condition = forecast.optString("condition", "").trim();
+        result.append(condition.length() == 0 ? "不明" : condition).append("の予報です。");
+        String maximum = forecast.optString("max", "").trim();
+        String minimum = forecast.optString("min", "").trim();
+        if (maximum.length() > 0) {
+            result.append("最高").append(maximum).append("℃");
+        }
+        if (minimum.length() > 0) {
+            result.append(maximum.length() > 0 ? "、" : "").append("最低").append(minimum).append("℃");
+        }
+        if (maximum.length() > 0 || minimum.length() > 0) {
+            result.append("です。");
+        }
+        int rain = forecast.optInt("rain", -1);
+        if (rain >= 0) {
+            result.append("降水確率は").append(rain).append("％です。");
+        }
+        return result.toString();
+    }
+
     public String buildDirectScheduleText(String str, ScheduleRange scheduleRange) throws Exception {
         JSONObject jSONObject = new JSONObject(str);
         JSONArray jSONArrayOptJSONArray = jSONObject.optJSONArray("events");
