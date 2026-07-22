@@ -1073,7 +1073,7 @@ public final class MainActivity extends Activity {
             String[] hospitalWords = new String[] {
                     "病院", "医療", "医療センター", "クリニック",
                     "診察", "治療", "検査", "MRI", "CT",
-                    "カンファレンス", "多摩総合", "東京都立多摩総合医療センター"
+                    "カンファレンス", "通院", "外来", "健診"
             };
             for (String word : hospitalWords) {
                 if (haystack.contains(word.toLowerCase(Locale.JAPAN))) {
