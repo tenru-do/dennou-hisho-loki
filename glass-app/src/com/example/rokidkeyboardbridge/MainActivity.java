@@ -562,7 +562,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void buildUi() {
         LinearLayout linearLayout = new LinearLayout(this);
         linearLayout.setOrientation(1);
-        linearLayout.setPadding(6, dp(130), 6, 2);
+        linearLayout.setPadding(6, dp(106), 6, 2);
         linearLayout.setBackgroundColor(-16777216);
         TextView textView = new TextView(this);
         textView.setText("Gemini for Rokid");
@@ -655,7 +655,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         layoutParams2.leftMargin = 4;
         this.buttonPanel.addView(this.wifiButton, layoutParams2);
         this.zoomButton = new Button(this);
-        this.zoomButton.setText("ZOOM");
+        this.zoomButton.setText("CAM");
         this.zoomButton.setTextSize(10.0f);
         this.zoomButton.setMinHeight(0);
         this.zoomButton.setMinWidth(0);
@@ -680,7 +680,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             }
         });
-        focusLabel(this.zoomButton, "ZOOM");
+        focusLabel(this.zoomButton, "CAM");
         LinearLayout.LayoutParams zoomLayout = new LinearLayout.LayoutParams(0, dp(38), 1.0f);
         zoomLayout.leftMargin = 4;
         this.buttonPanel.addView(this.zoomButton, zoomLayout);
@@ -931,9 +931,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         frameLayout.addView(this.mascotView, layoutParams6);
         FrameLayout.LayoutParams layoutParams7 = new FrameLayout.LayoutParams(dp(312), dp(34), 51);
         layoutParams7.leftMargin = dp(0);
-        layoutParams7.topMargin = dp(96);
+        layoutParams7.topMargin = dp(72);
         frameLayout.addView(this.buttonPanel, layoutParams7);
-        FrameLayout.LayoutParams layoutParams8 = new FrameLayout.LayoutParams(dp(216), dp(96), 51);
+        FrameLayout.LayoutParams layoutParams8 = new FrameLayout.LayoutParams(dp(216), dp(72), 51);
         layoutParams8.leftMargin = dp(96);
         layoutParams8.topMargin = dp(0);
         frameLayout.addView(this.info, layoutParams8);
@@ -1097,7 +1097,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         // Sensor mounting differs between Rokid revisions. Detect a deliberate
         // vertical head tilt in either pitch direction, with hysteresis.
         float tilt = Math.abs(delta);
-        if (tilt >= 0.055f) {
+        if (tilt >= 0.070f) {
             if (!this.headTiltActive) {
                 this.headTiltStartedAt = poseNow;
             }
@@ -1115,7 +1115,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.lastUpwardGlanceAt = System.currentTimeMillis();
             this.handler.removeCallbacks(this.hideGlanceHudRunnable);
             showHeadGlanceHud();
-        } else if (tilt <= 0.025f) {
+        } else if (tilt <= 0.030f) {
             if (this.headTiltActive) {
                 this.lastUpwardGlanceAt = System.currentTimeMillis();
             }
@@ -1907,6 +1907,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void focusLabel(final Button button, final String str) {
+        button.setGravity(49);
+        button.setIncludeFontPadding(false);
         button.setBackgroundColor(Color.TRANSPARENT);
         button.setTextColor(Color.rgb(90, 255, 130));
         try {
