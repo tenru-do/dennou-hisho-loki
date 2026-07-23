@@ -1,0 +1,10 @@
+*.png binary
+*.apk binary
+*.jks binary
+*.keystore binary
+*.p12 binary
+
+*.java text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+*.gitignore text eol=lf
