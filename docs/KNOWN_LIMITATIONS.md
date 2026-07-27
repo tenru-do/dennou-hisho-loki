@@ -32,7 +32,6 @@ Areas that still need refinement:
 - Gemini model selection
 - long prompt handling
 - proactive AI behavior
-- mascot expression selection
 - calendar search ranking
 - mail notification summarization
 - Gradle/reproducible build setup
