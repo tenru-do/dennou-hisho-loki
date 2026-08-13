@@ -2,6 +2,8 @@ package com.example.rokidgeminisecretary;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -30,11 +32,16 @@ import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.TextWatcher;
 import android.text.format.DateFormat;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -45,9 +52,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -80,9 +92,21 @@ import java.util.regex.Pattern;
 public final class MainActivity extends Activity {
     private static final String TAG = "RokidPhoneSecretary";
     private static final int PORT = 8765;
-    private static final int MAX_LOGS = 30;
+    private static final int MAX_LOGS = 60;
+    private static final int MAX_LOG_ENTRY_CHARS = 12000;
+    private static final int MAX_MEMORY_ENTRIES = 800;
+    private static final int MAX_MEMORY_ENTRY_CHARS = 2400;
+    private static final int MAX_MEMORY_RESPONSE_CHARS = 2600;
+    private static final long MEMORY_RETENTION_MS = 90L * 24L * 60L * 60L * 1000L;
+    private static final long MAX_MEMORY_FILE_BYTES = 4L * 1024L * 1024L;
+    private static final String MEMORY_FILE_NAME = "conversation_memory.jsonl";
+    private static final Object MEMORY_LOCK = new Object();
+    private static final int MAX_REQUEST_BODY_CHARS = 131072;
+    private static final int MAX_COMMAND_CHARS = 3000;
+    private static final int MAX_CUSTOM_CHARS = 2400;
     private static final String PREFS = "phone_secretary";
     private static final String KEY_CUSTOM = "custom_instructions";
+    private static final String KEY_CUSTOM_DIRTY = "custom_instructions_dirty";
     private static final String KEY_BRIDGE_TOKEN = "bridge_token";
     private static final String KEY_HEALTH_COMPACT = "health_compact";
     private static final String KEY_HEALTH_TIME = "health_time";
@@ -94,13 +118,25 @@ public final class MainActivity extends Activity {
     private static final String KEY_WEATHER_FORECAST = "weather_forecast";
     private static final String KEY_WEATHER_TIME = "weather_time";
     private static final String KEY_PENDING_COMMAND = "pending_command";
+    private static final String KEY_GLASS_RUNTIME_STATE = "glass_runtime_state";
+    private static final String KEY_GLASS_RUNTIME_MESSAGE = "glass_runtime_message";
+    private static final String KEY_GLASS_WAIT_UNTIL = "glass_wait_until";
+    private static final String KEY_GLASS_STATE_SENT_AT = "glass_state_sent_at";
+    private static final String KEY_MEMORY_COMPACTED_AT = "memory_compacted_at";
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
     private static String pendingCustomInstructions = "";
+    private static boolean pendingCustomUpdate;
+    private static boolean pendingCustomStateRequest;
     private static String pendingControl = "";
+    private static String glassRuntimeState = "UNKNOWN";
+    private static String glassRuntimeMessage = "";
+    private static long glassWaitUntilMs;
+    private static long glassStateSentAtMs;
     private TextView status;
     private TextView details;
+    private TextView glassStateView;
     private TextView logView;
     private TextView customInfo;
     private EditText commandInput;
@@ -110,11 +146,16 @@ public final class MainActivity extends Activity {
     private LinearLayout toolsPanel;
     private Button toggleCustomButton;
     private Button toolsButton;
-    private volatile boolean running;
+    private AlertDialog customEditorDialog;
+    private boolean customEditorDirty;
+    private boolean customEditorApplyingRemote;
+    private boolean customStateWaiting;
+    private static volatile boolean running;
     private volatile long pairingUntilMs;
-    private ServerSocket serverSocket;
+    private static ServerSocket serverSocket;
     private final Handler healthHandler = new Handler(Looper.getMainLooper());
     private final Handler weatherHandler = new Handler(Looper.getMainLooper());
+    private final Handler glassStateHandler = new Handler(Looper.getMainLooper());
     private volatile boolean weatherRefreshInFlight;
     private final Runnable healthRefresh = new Runnable() {
         @Override public void run() {
@@ -128,14 +169,25 @@ public final class MainActivity extends Activity {
             weatherHandler.postDelayed(this, 600000L);
         }
     };
+    private final Runnable glassStateRefresh = new Runnable() {
+        @Override public void run() {
+            refreshGlassStateView();
+            glassStateHandler.postDelayed(this, 1000L);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         activeActivity = this;
         ensureBridgeToken();
+        restoreGlassRuntimeState();
+        restoreRecentConversationLogs();
         buildUi();
         startBridgeForegroundService();
+        // The bridge must be available even while permission dialogs are still
+        // pending. Individual endpoints perform their own permission checks.
+        startServer();
         ensureCalendarPermission();
         String oldHealth = getPreferences().getString(KEY_HEALTH_COMPACT, "");
         String savedHealthDate = getPreferences().getString(KEY_HEALTH_DATE, "");
@@ -146,6 +198,7 @@ public final class MainActivity extends Activity {
         }
         ensureHealthConnectPermission();
         healthHandler.post(healthRefresh);
+        glassStateHandler.post(glassStateRefresh);
         weatherHandler.postDelayed(new Runnable() {
             @Override public void run() {
                 ensureLocationPermission();
@@ -157,6 +210,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshCustomInfo();
         if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             weatherHandler.post(new Runnable() {
@@ -182,13 +236,12 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        running = false;
         healthHandler.removeCallbacks(healthRefresh);
         weatherHandler.removeCallbacksAndMessages(null);
-        try {
-            if (serverSocket != null) serverSocket.close();
-        } catch (Exception ignored) {
-        }
+        glassStateHandler.removeCallbacksAndMessages(null);
+        // Keep the HTTP bridge owned by the foreground-service process when the
+        // activity is backgrounded or removed from Recents. Closing it here
+        // made glass voice input silently fall back to Gemini transcription.
         if (activeActivity == this) {
             activeActivity = null;
         }
@@ -219,6 +272,13 @@ public final class MainActivity extends Activity {
         details.setMaxLines(2);
         root.addView(details);
 
+        glassStateView = new TextView(this);
+        glassStateView.setTextSize(14);
+        glassStateView.setTextColor(Color.rgb(30, 90, 30));
+        glassStateView.setPadding(0, 4, 0, 6);
+        glassStateView.setText("グラス: 接続待ち");
+        root.addView(glassStateView);
+
         Button notificationAccess = new Button(this);
         notificationAccess.setText("MAIL");
         notificationAccess.setTextSize(12);
@@ -233,6 +293,7 @@ public final class MainActivity extends Activity {
 
         commandInput = new EditText(this);
         commandInput.setSingleLine(false);
+        commandInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_COMMAND_CHARS)});
         commandInput.setMinLines(2);
         commandInput.setHint("スマホからグラスへ質問");
         commandInput.setTextSize(14);
@@ -254,7 +315,7 @@ public final class MainActivity extends Activity {
                     pendingCommand = text;
                 }
                 getPreferences().edit().putString(KEY_PENDING_COMMAND, text).apply();
-                addAiLog("ユーザー: " + shortText(text, 160));
+                addAiLog("ユーザー: " + text);
                 updateStatus("送信待ち", "グラスが受け取るまで保持します: " + shortText(text, 80));
                 commandInput.setText("");
             }
@@ -267,10 +328,7 @@ public final class MainActivity extends Activity {
         toggleCustomButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                boolean show = customPanel.getVisibility() != View.VISIBLE;
-                customPanel.setVisibility(show ? View.VISIBLE : View.GONE);
-                refreshCustomInfo();
-                toggleCustomButton.setText(show ? "閉じる" : "指示");
+                showCustomEditorDialog();
             }
         });
         actionRow.addView(toggleCustomButton, new LinearLayout.LayoutParams(
@@ -284,13 +342,14 @@ public final class MainActivity extends Activity {
         customInfo.setTextSize(12);
         customInfo.setTextColor(Color.DKGRAY);
         customInfo.setPadding(0, 6, 0, 4);
+        customInfo.setTextIsSelectable(true);
         customPanel.addView(customInfo);
 
         customInput = new EditText(this);
         customInput.setSingleLine(false);
         customInput.setMinLines(2);
-        customInput.setMaxLines(5);
-        customInput.setHint("Geminiへのカスタム指示");
+        customInput.setMaxLines(10);
+        customInput.setHint("グラスのGeminiへ渡すカスタム指示");
         customInput.setText(getPreferences().getString(KEY_CUSTOM, ""));
         customInput.setTextSize(14);
         customPanel.addView(customInput);
@@ -308,36 +367,17 @@ public final class MainActivity extends Activity {
         pairGlass.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
-                if (token.length() < 16) {
-                    token = createBridgeToken();
-                    getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
-                    bridgeTokenInput.setText(token);
-                }
-                pairingUntilMs = System.currentTimeMillis() + 60000L;
-                updateStatus("ペアリング待機中", "60秒以内にグラスのSETを押してください。");
+                beginGlassPairing();
             }
         });
         customPanel.addView(pairGlass);
 
         Button sendCustom = new Button(this);
-        sendCustom.setText("カスタム指示をグラスへ保存");
+        sendCustom.setText("保存してグラスへ同期");
         sendCustom.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                String text = customInput.getText().toString().trim();
-                String token = bridgeTokenInput.getText().toString().trim();
-                if (token.length() < 16) {
-                    token = createBridgeToken();
-                    bridgeTokenInput.setText(token);
-                }
-                getPreferences().edit().putString(KEY_CUSTOM, text).putString(KEY_BRIDGE_TOKEN, token).apply();
-                synchronized (MainActivity.class) {
-                    pendingCustomInstructions = text;
-                }
-                refreshCustomInfo();
-                addAiLog("カスタム指示を更新: " + shortText(text, 160));
-                updateStatus("指示を保存", "次にグラスが同期したら反映します。");
+                saveCustomInstructionsFromPhone(customInput.getText().toString());
             }
         });
         customPanel.addView(sendCustom);
@@ -348,10 +388,7 @@ public final class MainActivity extends Activity {
         clearLogs.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                synchronized (LOGS) {
-                    LOGS.clear();
-                }
-                refreshLogs();
+                clearConversationLogs();
             }
         });
         actionRow.addView(clearLogs, new LinearLayout.LayoutParams(
@@ -427,10 +464,7 @@ public final class MainActivity extends Activity {
         clearTool.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                synchronized (LOGS) {
-                    LOGS.clear();
-                }
-                refreshLogs();
+                clearConversationLogs();
             }
         });
         miscRow.addView(clearTool, new LinearLayout.LayoutParams(
@@ -579,16 +613,162 @@ public final class MainActivity extends Activity {
         refreshLogs();
     }
 
-    private void refreshCustomInfo() {
-        if (customInfo == null || customInput == null) return;
-        String saved = getPreferences().getString(KEY_CUSTOM, "");
-        if (saved == null || saved.trim().length() == 0) {
-            customInfo.setText("現在のカスタム情報: 未設定\n下の欄に入力して保存すると、グラス側Geminiへ反映されます。");
-        } else {
-            customInfo.setText("現在のカスタム情報:\n" + saved.trim());
+    private void showCustomEditorDialog() {
+        if (customEditorDialog != null && customEditorDialog.isShowing()) {
+            return;
         }
-        if (customPanel != null && customPanel.getVisibility() == View.VISIBLE) {
+        if (customPanel != null) {
+            customPanel.setVisibility(View.GONE);
+        }
+        customEditorDirty = false;
+        customStateWaiting = true;
+
+        LinearLayout editorLayout = new LinearLayout(this);
+        editorLayout.setOrientation(LinearLayout.VERTICAL);
+        editorLayout.setPadding(24, 8, 24, 8);
+
+        customInfo = new TextView(this);
+        customInfo.setTextSize(13);
+        customInfo.setTextColor(Color.DKGRAY);
+        customInfo.setText("グラスから現在の指示を読み込み中…");
+        customInfo.setPadding(0, 0, 0, 6);
+        editorLayout.addView(customInfo);
+
+        customInput = new EditText(this);
+        customInput.setSingleLine(false);
+        customInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_CUSTOM_CHARS)});
+        customInput.setMinLines(8);
+        customInput.setMaxLines(14);
+        customInput.setGravity(Gravity.TOP);
+        customInput.setTextSize(16);
+        customInput.setHint("グラスのGeminiへ渡すカスタム指示");
+        customEditorApplyingRemote = true;
+        String cached = getPreferences().getString(KEY_CUSTOM, "");
+        customInput.setText(cached == null ? "" : cached);
+        customInput.setSelection(customInput.getText().length());
+        customEditorApplyingRemote = false;
+        customInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (!customEditorApplyingRemote) {
+                    customEditorDirty = true;
+                }
+            }
+            @Override public void afterTextChanged(Editable editable) {}
+        });
+
+        ScrollView editorScroll = new ScrollView(this);
+        editorScroll.addView(customInput);
+        editorLayout.addView(editorScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        customEditorDialog = new AlertDialog.Builder(this)
+                .setTitle("カスタム指示")
+                .setView(editorLayout)
+                .setPositiveButton("グラスへ反映", null)
+                .setNegativeButton("キャンセル", null)
+                .setNeutralButton("再ペアリング", null)
+                .create();
+        customEditorDialog.setOnShowListener(new DialogInterface.OnShowListener() {
+            @Override
+            public void onShow(DialogInterface dialogInterface) {
+                customEditorDialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                        .setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                saveCustomInstructionsFromPhone(customInput.getText().toString());
+                                customEditorDialog.dismiss();
+                            }
+                        });
+                customEditorDialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                        .setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                beginGlassPairing();
+                            }
+                        });
+            }
+        });
+        customEditorDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialogInterface) {
+                customEditorDialog = null;
+                customStateWaiting = false;
+                customEditorDirty = false;
+                synchronized (MainActivity.class) {
+                    pendingCustomStateRequest = false;
+                }
+                if (toggleCustomButton != null) {
+                    toggleCustomButton.setText("指示");
+                }
+            }
+        });
+        customEditorDialog.show();
+        Window dialogWindow = customEditorDialog.getWindow();
+        if (dialogWindow != null) {
+            dialogWindow.setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+            dialogWindow.setGravity(Gravity.TOP);
+            dialogWindow.setLayout(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+        synchronized (MainActivity.class) {
+            pendingCustomStateRequest = true;
+        }
+        toggleCustomButton.setText("編集中");
+        updateStatus("指示を取得中", "グラスの現在値を待っています。");
+    }
+
+    private void beginGlassPairing() {
+        String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
+        if (token.length() < 16) {
+            token = createBridgeToken();
+            getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
+            if (bridgeTokenInput != null) {
+                bridgeTokenInput.setText(token);
+            }
+        }
+        pairingUntilMs = System.currentTimeMillis() + 60000L;
+        updateStatus("ペアリング待機中", "60秒以内にグラスのSETを押してください。");
+    }
+
+    private void saveCustomInstructionsFromPhone(String value) {
+        String text = value == null ? "" : value.trim();
+        String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
+        if (token.length() < 16) {
+            token = createBridgeToken();
+        }
+        getPreferences().edit()
+                .putString(KEY_CUSTOM, text)
+                .putBoolean(KEY_CUSTOM_DIRTY, true)
+                .putString(KEY_BRIDGE_TOKEN, token)
+                .apply();
+        synchronized (MainActivity.class) {
+            pendingCustomInstructions = text;
+            pendingCustomUpdate = true;
+        }
+        customEditorDirty = false;
+        addAiLog("カスタム指示を更新 (" + text.length() + "文字): " + shortText(text, 1200));
+        updateStatus("指示を保存", "グラスの現在値を上書きします。");
+    }
+
+    private void refreshCustomInfo() {
+        if (customEditorDialog == null || !customEditorDialog.isShowing()
+                || customInfo == null || customInput == null) {
+            return;
+        }
+        customInfo.setText(customStateWaiting
+                ? "グラスから現在の指示を読み込み中…"
+                : "グラスから取得しました。編集後に「グラスへ反映」を押してください。");
+        if (!customEditorDirty) {
+            String saved = getPreferences().getString(KEY_CUSTOM, "");
+            customEditorApplyingRemote = true;
             customInput.setText(saved == null ? "" : saved);
+            customInput.setSelection(customInput.getText().length());
+            customEditorApplyingRemote = false;
         }
     }
 
@@ -686,12 +866,16 @@ public final class MainActivity extends Activity {
             boolean command = request != null && request.startsWith("GET /command");
             boolean ackCommand = request != null && request.startsWith("GET /ack_command");
             boolean control = request != null && request.startsWith("GET /control");
+            boolean memory = request != null && request.startsWith("GET /memory");
             boolean log = request != null && request.startsWith("GET /log");
             boolean postLog = request != null && request.startsWith("POST /log");
             boolean custom = request != null && request.startsWith("GET /custom");
+            boolean postCustomState = request != null && request.startsWith("POST /custom_state");
+            boolean postGlassState = request != null && request.startsWith("POST /state");
             boolean health = request != null && request.startsWith("GET /health");
             boolean postHealth = request != null && request.startsWith("POST /health");
             boolean weather = request != null && request.startsWith("GET /weather");
+            boolean transit = request != null && request.startsWith("GET /transit");
             boolean stt = request != null && request.startsWith("POST /stt");
             boolean pair = request != null && request.startsWith("GET /pair");
             RequestPayload payload = readRequestPayload(reader);
@@ -729,8 +913,12 @@ public final class MainActivity extends Activity {
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
                     : weather ? buildWeatherJson(parseIntQuery(request, "offset", 0)).toString()
+                    : transit ? MailNotificationService.recentTransitJson().toString()
+                    : memory ? buildConversationMemoryJson(request).toString()
                     : postLog ? buildPostLogResult(bodyText).toString()
                     : log ? buildLogResult(request).toString()
+                    : postCustomState ? buildPostCustomStateResult(bodyText).toString()
+                    : postGlassState ? buildPostGlassStateResult(bodyText).toString()
                     : custom ? buildCustomJson().toString()
                     : stt ? buildSpeechTextJson(bodyText).toString()
                     : "{\"ok\":true}";
@@ -785,7 +973,7 @@ public final class MainActivity extends Activity {
         if (transcript.length() == 0) {
             root.put("error", "no_match");
         }
-        addAiLog("音声入力: " + shortText(transcript.length() == 0 ? "(聞き取りなし)" : transcript, 160));
+        addAiLog("音声入力: " + (transcript.length() == 0 ? "(聞き取りなし)" : transcript));
         return root;
     }
 
@@ -1011,7 +1199,8 @@ public final class MainActivity extends Activity {
         int safeDays = Math.max(1, Math.min(days, 730));
         String safeQuery = safe(query).trim();
         long start = startOfDayOffsetMillis(offsetDays);
-        long end = endOfDayOffsetMillis(offsetDays + safeDays - 1);
+        long endExclusive = startOfDayOffsetMillis(offsetDays + safeDays);
+        long end = endExclusive - 1L;
         Uri.Builder builder = CalendarContract.Instances.CONTENT_URI.buildUpon();
         android.content.ContentUris.appendId(builder, start);
         android.content.ContentUris.appendId(builder, end);
@@ -1032,11 +1221,17 @@ public final class MainActivity extends Activity {
         if (cursor != null) {
             try {
                 while (cursor.moveToNext()) {
+                    long eventBegin = cursor.getLong(1);
+                    long eventEnd = cursor.getLong(2);
+                    boolean allDay = cursor.getInt(3) != 0;
+                    if (!isScheduleEventInRange(eventBegin, eventEnd, allDay, start, endExclusive)) {
+                        continue;
+                    }
                     JSONObject event = new JSONObject();
                     event.put("title", shortText(cursor.getString(0), 60));
-                    event.put("begin", cursor.getLong(1));
-                    event.put("end", cursor.getLong(2));
-                    event.put("allDay", cursor.getInt(3) != 0);
+                    event.put("begin", eventBegin);
+                    event.put("end", eventEnd);
+                    event.put("allDay", allDay);
                     event.put("location", shortText(cursor.getString(4), 40));
                     event.put("calendar", safe(cursor.getString(5)));
                     if (matchesScheduleQuery(event, safeQuery)) {
@@ -1061,6 +1256,23 @@ public final class MainActivity extends Activity {
         return root;
     }
 
+    private boolean isScheduleEventInRange(long eventBegin, long eventEnd, boolean allDay,
+                                            long rangeStart, long rangeEndExclusive) {
+        if (!allDay) {
+            return eventBegin < rangeEndExclusive && eventEnd > rangeStart;
+        }
+        SimpleDateFormat utcDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+        utcDate.setTimeZone(TimeZone.getTimeZone("UTC"));
+        SimpleDateFormat localDate = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+        localDate.setTimeZone(TimeZone.getDefault());
+        String eventStartDate = utcDate.format(new Date(eventBegin));
+        String eventEndDateExclusive = utcDate.format(new Date(Math.max(eventEnd, eventBegin + 86400000L)));
+        String rangeStartDate = localDate.format(new Date(rangeStart));
+        String rangeEndDateExclusive = localDate.format(new Date(rangeEndExclusive));
+        return eventStartDate.compareTo(rangeEndDateExclusive) < 0
+                && eventEndDateExclusive.compareTo(rangeStartDate) > 0;
+    }
+
     private boolean matchesScheduleQuery(JSONObject event, String query) {
         if (query == null || query.trim().length() == 0) {
             return true;
@@ -1069,21 +1281,53 @@ public final class MainActivity extends Activity {
                 + event.optString("location", "") + " "
                 + event.optString("calendar", "")).toLowerCase(Locale.JAPAN);
         String normalized = query.toLowerCase(Locale.JAPAN).trim();
-        if (normalized.contains("病院")) {
-            String[] hospitalWords = new String[] {
-                    "病院", "医療", "医療センター", "クリニック",
-                    "診察", "治療", "検査", "MRI", "CT",
-                    "カンファレンス", "通院", "外来", "健診"
-            };
-            for (String word : hospitalWords) {
-                if (haystack.contains(word.toLowerCase(Locale.JAPAN))) {
-                    return true;
-                }
+        boolean hospitalIntent = normalized.contains("病院");
+        boolean motherIntent = containsScheduleWord(normalized,
+                "おふくろ", "お袋", "母親", "母さん", "お母さん", "母", "ママ");
+        boolean fatherIntent = containsScheduleWord(normalized,
+                "親父", "おやじ", "父親", "父さん", "お父さん", "父", "パパ");
+        boolean accompanyIntent = containsScheduleWord(normalized,
+                "同行", "付き添", "付添", "つきそ", "一緒");
+        boolean hospitalMatch = containsScheduleWord(haystack,
+                "病院", "医療", "医療センター", "クリニック", "診察", "治療",
+                "検査", "mri", "ct", "カンファレンス", "通院", "外来", "健診");
+        boolean motherMatch = containsScheduleWord(haystack,
+                "おふくろ", "お袋", "母親", "母さん", "お母さん", "母", "ママ");
+        boolean fatherMatch = containsScheduleWord(haystack,
+                "親父", "おやじ", "父親", "父さん", "お父さん", "父", "パパ");
+        boolean accompanyMatch = containsScheduleWord(haystack,
+                "同行", "付き添", "付添", "つきそ", "一緒");
+        if (hospitalIntent) {
+            if (!hospitalMatch) {
+                return false;
             }
+            if (motherIntent && !motherMatch && !accompanyMatch) {
+                return false;
+            }
+            if (fatherIntent && !fatherMatch && !accompanyMatch) {
+                return false;
+            }
+            if (accompanyIntent && !accompanyMatch && !motherMatch && !fatherMatch) {
+                return false;
+            }
+            return true;
         }
         String[] words = normalized.split("[\\s　,、]+");
         for (String word : words) {
             if (word.length() > 0 && haystack.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsScheduleWord(String value, String... words) {
+        if (value == null || words == null) {
+            return false;
+        }
+        for (String word : words) {
+            if (word != null && word.length() > 0
+                    && value.contains(word.toLowerCase(Locale.JAPAN))) {
                 return true;
             }
         }
@@ -1128,6 +1372,9 @@ public final class MainActivity extends Activity {
         }
         if (contentLength <= 0) {
             return new RequestPayload("", token);
+        }
+        if (contentLength > MAX_REQUEST_BODY_CHARS) {
+            throw new IllegalArgumentException("request body too large");
         }
         char[] chars = new char[contentLength];
         int offset = 0;
@@ -1208,6 +1455,63 @@ public final class MainActivity extends Activity {
         return root;
     }
 
+    private JSONObject buildPostGlassStateResult(String bodyText) throws Exception {
+        JSONObject body = new JSONObject(
+                bodyText == null || bodyText.trim().length() == 0 ? "{}" : bodyText);
+        String state = body.optString("state", "UNKNOWN").trim().toUpperCase(Locale.US);
+        if (!"READY".equals(state) && !"WAIT".equals(state)
+                && !"THINKING".equals(state) && !"ERROR".equals(state)) {
+            state = "UNKNOWN";
+        }
+        String message = shortText(body.optString("message", "").trim(), 80);
+        long waitMs = Math.max(0L, Math.min(600000L, body.optLong("waitMs", 0L)));
+        long sentAt = body.optLong("sentAt", System.currentTimeMillis());
+        long waitUntil = System.currentTimeMillis() + waitMs;
+        boolean accepted = false;
+        synchronized (MainActivity.class) {
+            if (sentAt >= glassStateSentAtMs) {
+                glassStateSentAtMs = sentAt;
+                glassRuntimeState = state;
+                glassRuntimeMessage = message;
+                glassWaitUntilMs = waitUntil;
+                accepted = true;
+            }
+        }
+        if (accepted) {
+            getPreferences().edit()
+                    .putString(KEY_GLASS_RUNTIME_STATE, state)
+                    .putString(KEY_GLASS_RUNTIME_MESSAGE, message)
+                    .putLong(KEY_GLASS_WAIT_UNTIL, waitUntil)
+                    .putLong(KEY_GLASS_STATE_SENT_AT, sentAt)
+                    .apply();
+            Log.i(TAG, "glass state received=" + state + " waitMs=" + waitMs);
+        }
+        if (activeActivity != null) {
+            activeActivity.runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    activeActivity.refreshGlassStateView();
+                }
+            });
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        return root;
+    }
+
+    private void restoreGlassRuntimeState() {
+        SharedPreferences preferences = getPreferences();
+        synchronized (MainActivity.class) {
+            glassRuntimeState = preferences.getString(
+                    KEY_GLASS_RUNTIME_STATE, glassRuntimeState);
+            glassRuntimeMessage = preferences.getString(
+                    KEY_GLASS_RUNTIME_MESSAGE, glassRuntimeMessage);
+            glassWaitUntilMs = preferences.getLong(
+                    KEY_GLASS_WAIT_UNTIL, glassWaitUntilMs);
+            glassStateSentAtMs = preferences.getLong(
+                    KEY_GLASS_STATE_SENT_AT, glassStateSentAtMs);
+        }
+    }
+
     private JSONObject buildPostLogResult(String bodyText) throws Exception {
         if (bodyText != null && bodyText.length() > 0) {
             String kind;
@@ -1222,11 +1526,221 @@ public final class MainActivity extends Activity {
             }
             if (message.length() > 0 && isAiLogKind(kind)) {
                 addAiLog((kind.length() > 0 ? kind + ": " : "") + message);
+                if (isConversationMemoryKind(kind) && !isFailedAnswer(message)) {
+                    appendConversationMemorySafely(kind, message);
+                }
             }
         }
         JSONObject root = new JSONObject();
         root.put("ok", true);
         return root;
+    }
+
+    private boolean isConversationMemoryKind(String kind) {
+        return "ユーザー".equals(kind)
+                || "ユーザー音声".equals(kind)
+                || "Gemini".equals(kind)
+                || "直接回答".equals(kind);
+    }
+
+    private boolean isFailedAnswer(String message) {
+        String value = safe(message).trim();
+        return value.startsWith("Geminiエラー")
+                || value.startsWith("通信エラー")
+                || value.startsWith("スマホの実データを取得できませんでした")
+                || value.startsWith("ニュースを取得できませんでした")
+                || value.startsWith("天気を取得できませんでした");
+    }
+
+    private File conversationMemoryFile() {
+        return new File(getFilesDir(), MEMORY_FILE_NAME);
+    }
+
+    private void appendConversationMemorySafely(String kind, String message) {
+        try {
+            appendConversationMemory(kind, message);
+        } catch (Exception error) {
+            Log.w(TAG, "conversation memory append failed", error);
+        }
+    }
+
+    private void appendConversationMemory(String kind, String message) throws Exception {
+        JSONObject entry = new JSONObject();
+        long now = System.currentTimeMillis();
+        entry.put("time", now);
+        entry.put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.JAPAN).format(new Date(now)));
+        entry.put("kind", shortText(kind, 20));
+        entry.put("message", shortText(message, MAX_MEMORY_ENTRY_CHARS));
+        synchronized (MEMORY_LOCK) {
+            File file = conversationMemoryFile();
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                    new FileOutputStream(file, true), StandardCharsets.UTF_8));
+            try {
+                writer.write(entry.toString());
+                writer.newLine();
+            } finally {
+                writer.close();
+            }
+            long lastCompactedAt = getPreferences().getLong(KEY_MEMORY_COMPACTED_AT, 0L);
+            if (file.length() > MAX_MEMORY_FILE_BYTES
+                    || now - lastCompactedAt >= 24L * 60L * 60L * 1000L) {
+                compactConversationMemoryLocked();
+                getPreferences().edit().putLong(KEY_MEMORY_COMPACTED_AT, now).apply();
+            }
+        }
+    }
+
+    private ArrayList<JSONObject> readConversationMemory() {
+        synchronized (MEMORY_LOCK) {
+            return readConversationMemoryLocked();
+        }
+    }
+
+    private ArrayList<JSONObject> readConversationMemoryLocked() {
+        ArrayList<JSONObject> entries = new ArrayList<JSONObject>();
+        File file = conversationMemoryFile();
+        if (!file.isFile()) {
+            return entries;
+        }
+        long cutoff = System.currentTimeMillis() - MEMORY_RETENTION_MS;
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    new FileInputStream(file), StandardCharsets.UTF_8));
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    try {
+                        JSONObject entry = new JSONObject(line);
+                        if (entry.optLong("time", 0L) >= cutoff
+                                && isConversationMemoryKind(entry.optString("kind", ""))) {
+                            entries.add(entry);
+                            if (entries.size() > MAX_MEMORY_ENTRIES) {
+                                entries.remove(0);
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            } finally {
+                reader.close();
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "conversation memory read failed", error);
+        }
+        return entries;
+    }
+
+    private void compactConversationMemoryLocked() {
+        ArrayList<JSONObject> entries = readConversationMemoryLocked();
+        File file = conversationMemoryFile();
+        try {
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                    new FileOutputStream(file, false), StandardCharsets.UTF_8));
+            try {
+                for (JSONObject entry : entries) {
+                    writer.write(entry.toString());
+                    writer.newLine();
+                }
+            } finally {
+                writer.close();
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "conversation memory compact failed", error);
+        }
+    }
+
+    private JSONObject buildConversationMemoryJson(String request) throws Exception {
+        int offset = Math.max(-90, Math.min(1, parseIntQuery(request, "offset", 0)));
+        int days = Math.max(1, Math.min(90, parseIntQuery(request, "days", 1)));
+        String query = shortText(parseStringQuery(request, "q", ""), 100).trim();
+        Calendar start = Calendar.getInstance();
+        start.set(Calendar.HOUR_OF_DAY, 0);
+        start.set(Calendar.MINUTE, 0);
+        start.set(Calendar.SECOND, 0);
+        start.set(Calendar.MILLISECOND, 0);
+        start.add(Calendar.DAY_OF_MONTH, offset);
+        Calendar end = (Calendar) start.clone();
+        end.add(Calendar.DAY_OF_MONTH, days);
+
+        ArrayList<JSONObject> all = readConversationMemory();
+        ArrayList<JSONObject> inRange = new ArrayList<JSONObject>();
+        for (JSONObject entry : all) {
+            long time = entry.optLong("time", 0L);
+            if (time >= start.getTimeInMillis() && time < end.getTimeInMillis()) {
+                inRange.add(entry);
+            }
+        }
+
+        boolean[] selected = new boolean[inRange.size()];
+        if (query.length() == 0) {
+            int from = Math.max(0, inRange.size() - 12);
+            for (int i = from; i < inRange.size(); i++) {
+                selected[i] = true;
+            }
+        } else {
+            for (int i = 0; i < inRange.size(); i++) {
+                JSONObject entry = inRange.get(i);
+                if (memoryMatches(entry.optString("message", ""), query)) {
+                    selected[i] = true;
+                    if (i > 0) selected[i - 1] = true;
+                    if (i + 1 < inRange.size()) selected[i + 1] = true;
+                }
+            }
+        }
+
+        ArrayList<JSONObject> chosenNewestFirst = new ArrayList<JSONObject>();
+        int usedChars = 0;
+        for (int i = inRange.size() - 1; i >= 0 && chosenNewestFirst.size() < 12; i--) {
+            if (!selected[i]) continue;
+            JSONObject source = inRange.get(i);
+            String message = shortText(source.optString("message", ""), 900);
+            if (message.length() == 0) continue;
+            if (!chosenNewestFirst.isEmpty()
+                    && usedChars + message.length() > MAX_MEMORY_RESPONSE_CHARS) {
+                continue;
+            }
+            JSONObject compact = new JSONObject();
+            compact.put("time", source.optLong("time", 0L));
+            compact.put("kind", source.optString("kind", ""));
+            compact.put("message", message);
+            chosenNewestFirst.add(compact);
+            usedChars += message.length();
+        }
+
+        JSONArray entries = new JSONArray();
+        for (int i = chosenNewestFirst.size() - 1; i >= 0; i--) {
+            entries.put(chosenNewestFirst.get(i));
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("from", new SimpleDateFormat("yyyy-MM-dd", Locale.JAPAN).format(start.getTime()));
+        root.put("to", new SimpleDateFormat("yyyy-MM-dd", Locale.JAPAN).format(
+                new Date(end.getTimeInMillis() - 1L)));
+        root.put("query", query);
+        root.put("count", entries.length());
+        root.put("entries", entries);
+        return root;
+    }
+
+    private boolean memoryMatches(String message, String query) {
+        String haystack = normalizeMemoryText(message);
+        String needle = normalizeMemoryText(query);
+        if (needle.length() == 0 || haystack.contains(needle)) {
+            return true;
+        }
+        String[] tokens = query.toLowerCase(Locale.JAPAN).split("[\\s、。・,./]+?");
+        for (String token : tokens) {
+            String normalized = normalizeMemoryText(token);
+            if (normalized.length() >= 2 && haystack.contains(normalized)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeMemoryText(String value) {
+        return safe(value).toLowerCase(Locale.JAPAN)
+                .replaceAll("[\\s\\p{Punct}、。！？・「」『』（）()]+", "");
     }
 
     private String formValue(String bodyText, String key) {
@@ -1248,12 +1762,58 @@ public final class MainActivity extends Activity {
     private JSONObject buildCustomJson() throws Exception {
         JSONObject root = new JSONObject();
         String custom;
+        boolean hasUpdate;
+        boolean requestState;
         synchronized (MainActivity.class) {
             custom = pendingCustomInstructions;
+            hasUpdate = pendingCustomUpdate;
+            requestState = pendingCustomStateRequest;
             pendingCustomInstructions = "";
+            pendingCustomUpdate = false;
+        }
+        if (!hasUpdate && getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false)) {
+            custom = getPreferences().getString(KEY_CUSTOM, "");
+            hasUpdate = true;
+        }
+        if (hasUpdate) {
+            getPreferences().edit().remove(KEY_CUSTOM_DIRTY).apply();
         }
         root.put("ok", true);
         root.put("custom", custom == null ? "" : custom);
+        root.put("hasUpdate", hasUpdate);
+        root.put("requestState", requestState);
+        root.put("current", getPreferences().getString(KEY_CUSTOM, ""));
+        return root;
+    }
+
+    private JSONObject buildPostCustomStateResult(String bodyText) throws Exception {
+        String custom = "";
+        if (bodyText != null && bodyText.trim().length() > 0) {
+            if (bodyText.trim().startsWith("{")) {
+                custom = new JSONObject(bodyText).optString("custom", "");
+            } else {
+                custom = formValue(bodyText, "custom");
+            }
+        }
+        final String syncedCustom = custom == null ? "" : custom;
+        boolean localEditPending = getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false);
+        if (!localEditPending) {
+            getPreferences().edit().putString(KEY_CUSTOM, syncedCustom).apply();
+            synchronized (MainActivity.class) {
+                pendingCustomStateRequest = false;
+            }
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    customStateWaiting = false;
+                    refreshCustomInfo();
+                }
+            });
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("saved", !localEditPending);
+        root.put("localEditPending", localEditPending);
         return root;
     }
 
@@ -1683,6 +2243,9 @@ public final class MainActivity extends Activity {
         String kind = queryParam(request, "kind");
         if (message.length() > 0 && isAiLogKind(kind)) {
             addAiLog((kind.length() > 0 ? kind + ": " : "") + message);
+            if (isConversationMemoryKind(kind) && !isFailedAnswer(message)) {
+                appendConversationMemorySafely(kind, message);
+            }
         }
         JSONObject root = new JSONObject();
         root.put("ok", true);
@@ -1942,6 +2505,44 @@ public final class MainActivity extends Activity {
         refreshLogs();
     }
 
+    private void refreshGlassStateView() {
+        if (glassStateView == null) {
+            return;
+        }
+        String state;
+        String message;
+        long waitUntil;
+        synchronized (MainActivity.class) {
+            state = glassRuntimeState;
+            message = glassRuntimeMessage;
+            waitUntil = glassWaitUntilMs;
+        }
+        long remainingSeconds = Math.max(0L,
+                (Math.max(0L, waitUntil - System.currentTimeMillis()) + 999L) / 1000L);
+        if ("WAIT".equals(state) && waitUntil > 0L && remainingSeconds == 0L) {
+            glassStateView.setText("グラス: READY");
+            glassStateView.setTextColor(Color.rgb(30, 130, 30));
+        } else if ("WAIT".equals(state)) {
+            glassStateView.setText("グラス: WAIT " + remainingSeconds + "秒"
+                    + (message.length() == 0 ? "" : " / " + message));
+            glassStateView.setTextColor(Color.rgb(180, 110, 0));
+        } else if ("THINKING".equals(state)) {
+            glassStateView.setText("グラス: 回答生成中"
+                    + (message.length() == 0 ? "" : " / " + message));
+            glassStateView.setTextColor(Color.rgb(30, 90, 160));
+        } else if ("ERROR".equals(state)) {
+            glassStateView.setText("グラス: エラー"
+                    + (message.length() == 0 ? "" : " / " + message));
+            glassStateView.setTextColor(Color.rgb(180, 30, 30));
+        } else if ("READY".equals(state)) {
+            glassStateView.setText("グラス: READY");
+            glassStateView.setTextColor(Color.rgb(30, 130, 30));
+        } else {
+            glassStateView.setText("グラス: 接続待ち");
+            glassStateView.setTextColor(Color.DKGRAY);
+        }
+    }
+
     private SharedPreferences getPreferences() {
         return getSharedPreferences(PREFS, MODE_PRIVATE);
     }
@@ -1952,8 +2553,12 @@ public final class MainActivity extends Activity {
 
     public static void addAiLog(String message) {
         String time = new SimpleDateFormat("HH:mm:ss", Locale.JAPAN).format(new Date());
+        String safeMessage = message == null ? "" : message;
+        if (safeMessage.length() > MAX_LOG_ENTRY_CHARS) {
+            safeMessage = safeMessage.substring(0, MAX_LOG_ENTRY_CHARS) + "\n…";
+        }
         synchronized (LOGS) {
-            LOGS.add(0, time + " " + message);
+            LOGS.add(0, time + " " + safeMessage);
             while (LOGS.size() > MAX_LOGS) {
                 LOGS.remove(LOGS.size() - 1);
             }
@@ -1969,10 +2574,40 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void restoreRecentConversationLogs() {
+        synchronized (LOGS) {
+            if (!LOGS.isEmpty()) {
+                return;
+            }
+            ArrayList<JSONObject> entries = readConversationMemory();
+            SimpleDateFormat timeFormat = new SimpleDateFormat("MM/dd HH:mm:ss", Locale.JAPAN);
+            for (int i = entries.size() - 1; i >= 0 && LOGS.size() < MAX_LOGS; i--) {
+                JSONObject entry = entries.get(i);
+                long time = entry.optLong("time", 0L);
+                String prefix = time > 0L ? timeFormat.format(new Date(time)) : "--/-- --:--:--";
+                LOGS.add(prefix + " " + entry.optString("kind", "") + ": "
+                        + entry.optString("message", ""));
+            }
+        }
+    }
+
+    private void clearConversationLogs() {
+        synchronized (LOGS) {
+            LOGS.clear();
+        }
+        synchronized (MEMORY_LOCK) {
+            File file = conversationMemoryFile();
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "conversation memory file could not be deleted");
+            }
+        }
+        refreshLogs();
+    }
+
     private void refreshLogs() {
         if (logView == null) return;
         StringBuilder builder = new StringBuilder();
-        builder.append("AI会話ログ\n");
+        builder.append("AI会話ログ（端末内・最大90日）\n");
         synchronized (LOGS) {
             if (LOGS.isEmpty()) {
                 builder.append("まだログはありません。");

@@ -15,6 +15,7 @@ public final class MailNotificationService extends NotificationListenerService {
     private static final int MAX_ITEMS = 20;
     private static final List<MailItem> MAILS = new ArrayList<MailItem>();
     private static HealthItem latestHealth;
+    private static TransitItem latestTransit;
 
     @Override
     public void onListenerConnected() {
@@ -28,6 +29,23 @@ public final class MailNotificationService extends NotificationListenerService {
     @Override
     public void onNotificationPosted(StatusBarNotification notification) {
         collect(notification);
+    }
+
+    @Override
+    public void onNotificationRemoved(StatusBarNotification notification) {
+        if (notification == null || !isGoogleMapsPackage(notification.getPackageName())) {
+            return;
+        }
+        synchronized (MAILS) {
+            latestTransit = null;
+        }
+        StatusBarNotification[] notifications = getActiveNotifications();
+        if (notifications == null) return;
+        for (StatusBarNotification active : notifications) {
+            if (active != null && isGoogleMapsPackage(active.getPackageName())) {
+                collect(active);
+            }
+        }
     }
 
     private static boolean isMailPackage(String packageName) {
@@ -46,6 +64,10 @@ public final class MailNotificationService extends NotificationListenerService {
         return lower.contains("healbe") || lower.contains("gobe");
     }
 
+    private static boolean isGoogleMapsPackage(String packageName) {
+        return "com.google.android.apps.maps".equals(packageName);
+    }
+
     private static void collect(StatusBarNotification status) {
         if (status == null) {
             return;
@@ -59,6 +81,10 @@ public final class MailNotificationService extends NotificationListenerService {
         String bigText = text(notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
         String subText = text(notification.extras.getCharSequence(Notification.EXTRA_SUB_TEXT));
         String body = bigText.length() > text.length() ? bigText : text;
+        if (isGoogleMapsPackage(status.getPackageName())) {
+            collectTransit(status.getPackageName(), title, body, subText);
+            return;
+        }
         if (isHealthPackage(status.getPackageName()) || looksLikeHealth(title, body, subText)) {
             collectHealth(status.getPostTime(), status.getPackageName(), title, body, subText);
             return;
@@ -121,6 +147,20 @@ public final class MailNotificationService extends NotificationListenerService {
         return root;
     }
 
+    public static JSONObject recentTransitJson() throws Exception {
+        JSONObject root = new JSONObject();
+        synchronized (MAILS) {
+            boolean fresh = latestTransit != null
+                    && latestTransit.compact.length() > 0
+                    && System.currentTimeMillis() - latestTransit.time <= 900000L;
+            root.put("ok", fresh);
+            root.put("compact", fresh ? latestTransit.compact : "");
+            root.put("time", fresh ? latestTransit.time : 0L);
+            root.put("source", fresh ? "Google Maps notification" : "");
+        }
+        return root;
+    }
+
     private static boolean looksLikeHealth(String title, String body, String subText) {
         String combined = ((title == null ? "" : title) + " " + (body == null ? "" : body) + " " + (subText == null ? "" : subText)).toLowerCase();
         return combined.contains("healbe")
@@ -138,6 +178,62 @@ public final class MailNotificationService extends NotificationListenerService {
         synchronized (MAILS) {
             latestHealth = new HealthItem(time, packageName == null ? "" : packageName, compact);
         }
+    }
+
+    private static void collectTransit(String packageName, String title, String body, String subText) {
+        String compact = compactTransitText(title, body, subText);
+        if (compact.length() == 0) {
+            return;
+        }
+        synchronized (MAILS) {
+            latestTransit = new TransitItem(System.currentTimeMillis(),
+                    packageName == null ? "" : packageName, compact);
+        }
+    }
+
+    private static String compactTransitText(String title, String body, String subText) {
+        String cleanTitle = cleanTransitText(title);
+        String cleanBody = cleanTransitText(body);
+        String cleanSubText = cleanTransitText(subText);
+        boolean titleTransit = looksLikeTransitGuidance(cleanTitle);
+        boolean bodyTransit = looksLikeTransitGuidance(cleanBody);
+        boolean subTransit = looksLikeTransitGuidance(cleanSubText);
+        String candidate;
+        if (titleTransit && bodyTransit && !cleanBody.equals(cleanTitle)) {
+            candidate = cleanTitle + " " + cleanBody;
+        } else if (bodyTransit) {
+            candidate = cleanBody;
+        } else if (titleTransit) {
+            candidate = cleanTitle;
+        } else if (subTransit) {
+            candidate = cleanSubText;
+        } else {
+            return "";
+        }
+        return shortText(candidate, 42);
+    }
+
+    private static String cleanTransitText(String value) {
+        return (value == null ? "" : value)
+                .replace("Google マップ", "")
+                .replace("Google Maps", "")
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static boolean looksLikeTransitGuidance(String value) {
+        if (value == null || value.length() == 0) return false;
+        return value.contains("駅")
+                || value.contains("停留所")
+                || value.contains("次は")
+                || value.contains("次の停車")
+                || value.contains("乗換")
+                || value.contains("乗り換え")
+                || value.contains("下車")
+                || value.contains("番線")
+                || value.contains("ホーム");
     }
 
     private static String compactHealthText(String title, String body, String subText) {
@@ -196,6 +292,18 @@ public final class MailNotificationService extends NotificationListenerService {
         final String compact;
 
         HealthItem(long time, String packageName, String compact) {
+            this.time = time;
+            this.packageName = packageName;
+            this.compact = compact;
+        }
+    }
+
+    private static final class TransitItem {
+        final long time;
+        final String packageName;
+        final String compact;
+
+        TransitItem(long time, String packageName, String compact) {
             this.time = time;
             this.packageName = packageName;
             this.compact = compact;

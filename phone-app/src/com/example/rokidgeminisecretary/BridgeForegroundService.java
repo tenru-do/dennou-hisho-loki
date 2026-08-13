@@ -48,9 +48,9 @@ public final class BridgeForegroundService extends Service {
             if (manager != null) {
                 NotificationChannel channel = new NotificationChannel(
                         CHANNEL_ID,
-                        "Rokid Secretary Bridge",
+                        "Denno Hisho Loki Bridge",
                         NotificationManager.IMPORTANCE_LOW);
-                channel.setDescription("Keeps the Rokid phone bridge available in the background.");
+                channel.setDescription("Keeps the Rokid bridge active.");
                 manager.createNotificationChannel(channel);
             }
         }
@@ -58,8 +58,8 @@ public final class BridgeForegroundService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
-        builder.setContentTitle("Rokid Secretary")
-                .setContentText("グラス連携をバックグラウンドで維持しています")
+        builder.setContentTitle("Denno Hisho Loki")
+                .setContentText("Rokid bridge is active")
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)
                 .setOngoing(true);
         return builder.build();

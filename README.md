@@ -11,14 +11,14 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 
 1. [Releases](https://github.com/tenru-do/dennou-hisho-loki/releases/latest) を開きます。
 2. `Assets` から次の2ファイルをダウンロードします。
-   - `DennouHishoLoki-phone-v0.9.4-alpha.apk`：Androidスマホ側
-   - `DennouHishoLoki-glass-v0.9.4-alpha.apk`：Rokidグラス側
+   - `DennouHishoLoki-phone-v0.9.5-alpha.apk`：Androidスマホ側
+   - `DennouHishoLoki-glass-v0.9.5-alpha.apk`：Rokidグラス側
 3. スマホ版はスマホでAPKを開いてインストールします。
 4. グラス版は開発者ケーブルとADBを使用してインストールします。
 
 ```powershell
 adb devices
-adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.4-alpha.apk
+adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.5-alpha.apk
 ```
 
 Androidが警告を表示した場合は、内容を確認したうえで、このAPKを開いたアプリに限って「不明なアプリのインストール」を許可してください。APKはアルファ版用のテスト署名です。導入手順の詳細は [docs/INSTALL.md](docs/INSTALL.md) を参照してください。
