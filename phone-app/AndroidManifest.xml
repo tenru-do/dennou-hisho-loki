@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.rokidgeminisecretary"
-    android:versionCode="51"
-    android:versionName="0.9.5-alpha">
+    android:versionCode="52"
+    android:versionName="0.9.6-alpha">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />

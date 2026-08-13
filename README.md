@@ -10,14 +10,14 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 ## APKのダウンロード
 
 1. 次のAPKをダウンロードします。
-   - [DennouHishoLoki-phone-v0.9.5-alpha.apk](apk/DennouHishoLoki-phone-v0.9.5-alpha.apk?raw=1)：Androidスマホ側
-   - [DennouHishoLoki-glass-v0.9.5-alpha.apk](apk/DennouHishoLoki-glass-v0.9.5-alpha.apk?raw=1)：Rokidグラス側
+   - [DennouHishoLoki-phone-v0.9.6-alpha.apk](apk/DennouHishoLoki-phone-v0.9.6-alpha.apk?raw=1)：Androidスマホ側
+   - [DennouHishoLoki-glass-v0.9.6-alpha.apk](apk/DennouHishoLoki-glass-v0.9.6-alpha.apk?raw=1)：Rokidグラス側
 2. スマホ版はスマホでAPKを開いてインストールします。
 3. グラス版は開発者ケーブルとADBを使用してインストールします。
 
 ```powershell
 adb devices
-adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.5-alpha.apk
+adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.6-alpha.apk
 ```
 
 Androidが警告を表示した場合は、内容を確認したうえで、このAPKを開いたアプリに限って「不明なアプリのインストール」を許可してください。APKはアルファ版用のテスト署名です。導入手順の詳細は [docs/INSTALL.md](docs/INSTALL.md) を参照してください。
@@ -31,6 +31,7 @@ Androidが警告を表示した場合は、内容を確認したうえで、こ�
 - 単色緑マスコット
 - 頭を上げたときのHUD表示、正面復帰後の自動消灯、回答中の画面保持
 - 別途インストールした自作Zoomカメラを起動する `CAM` ショートカット、Wi-Fi操作
+- 直近90日の会話と、それ以前を圧縮した端末内の長期記憶をキーワード検索
 
 `CAM` はカメラ機能を内蔵しているボタンではありません。パッケージ名 `com.example.rokidzoomcamera` のZoomカメラアプリがグラスにインストールされている場合、そのアプリを起動します。未導入の場合は起動しません。
 
@@ -68,6 +69,7 @@ Gemini APIは無料枠・課金・モデル別クォータ・混雑の影響を�
 - APIキー、個人用カスタム指示、予定、メール、会話ログ、端末識別子はリポジトリに含まれていません。
 - Gemini APIキーとカスタム指示はグラスのアプリ専用領域に保存されます。
 - スマホ側のカスタム指示と連携トークンはスマホのアプリ専用領域に保存されます。
+- AI会話は直近90日を通常保存し、それ以前は質問と回答を短く圧縮してスマホのアプリ専用領域へ残します。ログ削除で両方を削除できます。
 - メール機能はメールボックス全体ではなく、許可したAndroid通知を利用します。
 - 天気機能ではスマホの概算座標をOpen-Meteoへ送り、市区町村名・天気・気温だけを認証済みローカル接続でグラスへ渡します。
 - 予定・メール・音声・質問内容は、機能に応じてローカルLAN、Google/Gemini、Android音声認識へ送られる場合があります。

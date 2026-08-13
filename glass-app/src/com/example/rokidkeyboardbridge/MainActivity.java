@@ -4302,7 +4302,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             JSONObject entry = entries.optJSONObject(i);
             if (entry == null) continue;
             String kind = entry.optString("kind", "");
-            String role = kind.startsWith("ユーザー") ? "ユーザー" : "ロキ";
+            String role = kind.startsWith("ユーザー") ? "ユーザー"
+                    : "長期記憶".equals(kind) ? "要約" : "ロキ";
             long time = entry.optLong("time", 0L);
             result.append(time > 0L ? format.format(new Date(time)) : "日時不明")
                     .append(' ')
@@ -4348,8 +4349,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
             return new MemoryRange(-(today.get(Calendar.DAY_OF_MONTH) - 1),
                     today.get(Calendar.DAY_OF_MONTH), "今月");
         }
-        if (value.contains("以前") || value.contains("過去") || value.contains("前に")) {
-            return new MemoryRange(-90, 90, "過去90日");
+        if (value.contains("一昨年")) {
+            Calendar first = (Calendar) today.clone();
+            first.add(Calendar.YEAR, -2);
+            first.set(Calendar.DAY_OF_YEAR, 1);
+            return new MemoryRange(daysBetween(today, first),
+                    first.getActualMaximum(Calendar.DAY_OF_YEAR), "一昨年");
+        }
+        if (value.contains("昨年") || value.contains("去年")) {
+            Calendar first = (Calendar) today.clone();
+            first.add(Calendar.YEAR, -1);
+            first.set(Calendar.DAY_OF_YEAR, 1);
+            return new MemoryRange(daysBetween(today, first),
+                    first.getActualMaximum(Calendar.DAY_OF_YEAR), "昨年");
+        }
+        if (value.contains("以前") || value.contains("過去") || value.contains("前に")
+                || value.contains("昔") || value.contains("ずっと前")
+                || value.contains("覚えて") || value.contains("いつ話")) {
+            return new MemoryRange(-36500, 36501, "保存された全期間");
         }
         return new MemoryRange(-30, 31, "最近30日");
     }

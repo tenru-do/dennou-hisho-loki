@@ -97,9 +97,12 @@ public final class MainActivity extends Activity {
     private static final int MAX_MEMORY_ENTRIES = 800;
     private static final int MAX_MEMORY_ENTRY_CHARS = 2400;
     private static final int MAX_MEMORY_RESPONSE_CHARS = 2600;
+    private static final int MAX_ARCHIVE_QUESTION_CHARS = 420;
+    private static final int MAX_ARCHIVE_ANSWER_CHARS = 620;
     private static final long MEMORY_RETENTION_MS = 90L * 24L * 60L * 60L * 1000L;
     private static final long MAX_MEMORY_FILE_BYTES = 4L * 1024L * 1024L;
     private static final String MEMORY_FILE_NAME = "conversation_memory.jsonl";
+    private static final String MEMORY_ARCHIVE_FILE_NAME = "conversation_memory_archive.jsonl";
     private static final Object MEMORY_LOCK = new Object();
     private static final int MAX_REQUEST_BODY_CHARS = 131072;
     private static final int MAX_COMMAND_CHARS = 3000;
@@ -123,6 +126,7 @@ public final class MainActivity extends Activity {
     private static final String KEY_GLASS_WAIT_UNTIL = "glass_wait_until";
     private static final String KEY_GLASS_STATE_SENT_AT = "glass_state_sent_at";
     private static final String KEY_MEMORY_COMPACTED_AT = "memory_compacted_at";
+    private static final String KEY_MEMORY_ARCHIVE_VERSION = "memory_archive_version";
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
@@ -181,6 +185,7 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         activeActivity = this;
         ensureBridgeToken();
+        ensureConversationMemoryArchive();
         restoreGlassRuntimeState();
         restoreRecentConversationLogs();
         buildUi();
@@ -1556,12 +1561,27 @@ public final class MainActivity extends Activity {
         return new File(getFilesDir(), MEMORY_FILE_NAME);
     }
 
+    private File conversationMemoryArchiveFile() {
+        return new File(getFilesDir(), MEMORY_ARCHIVE_FILE_NAME);
+    }
+
     private void appendConversationMemorySafely(String kind, String message) {
         try {
             appendConversationMemory(kind, message);
         } catch (Exception error) {
             Log.w(TAG, "conversation memory append failed", error);
         }
+    }
+
+    private void ensureConversationMemoryArchive() {
+        if (getPreferences().getInt(KEY_MEMORY_ARCHIVE_VERSION, 0) >= 1) {
+            return;
+        }
+        synchronized (MEMORY_LOCK) {
+            compactConversationMemoryLocked();
+        }
+        getPreferences().edit().putInt(KEY_MEMORY_ARCHIVE_VERSION, 1)
+                .putLong(KEY_MEMORY_COMPACTED_AT, System.currentTimeMillis()).apply();
     }
 
     private void appendConversationMemory(String kind, String message) throws Exception {
@@ -1598,11 +1618,25 @@ public final class MainActivity extends Activity {
 
     private ArrayList<JSONObject> readConversationMemoryLocked() {
         ArrayList<JSONObject> entries = new ArrayList<JSONObject>();
+        ArrayList<JSONObject> all = readAllConversationMemoryLocked();
+        long cutoff = System.currentTimeMillis() - MEMORY_RETENTION_MS;
+        for (JSONObject entry : all) {
+            if (entry.optLong("time", 0L) >= cutoff) {
+                entries.add(entry);
+                if (entries.size() > MAX_MEMORY_ENTRIES) {
+                    entries.remove(0);
+                }
+            }
+        }
+        return entries;
+    }
+
+    private ArrayList<JSONObject> readAllConversationMemoryLocked() {
+        ArrayList<JSONObject> entries = new ArrayList<JSONObject>();
         File file = conversationMemoryFile();
         if (!file.isFile()) {
             return entries;
         }
-        long cutoff = System.currentTimeMillis() - MEMORY_RETENTION_MS;
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(
                     new FileInputStream(file), StandardCharsets.UTF_8));
@@ -1611,12 +1645,9 @@ public final class MainActivity extends Activity {
                 while ((line = reader.readLine()) != null) {
                     try {
                         JSONObject entry = new JSONObject(line);
-                        if (entry.optLong("time", 0L) >= cutoff
+                        if (entry.optLong("time", 0L) > 0L
                                 && isConversationMemoryKind(entry.optString("kind", ""))) {
                             entries.add(entry);
-                            if (entries.size() > MAX_MEMORY_ENTRIES) {
-                                entries.remove(0);
-                            }
                         }
                     } catch (Exception ignored) {
                     }
@@ -1631,13 +1662,30 @@ public final class MainActivity extends Activity {
     }
 
     private void compactConversationMemoryLocked() {
-        ArrayList<JSONObject> entries = readConversationMemoryLocked();
+        ArrayList<JSONObject> all = readAllConversationMemoryLocked();
+        ArrayList<JSONObject> recent = new ArrayList<JSONObject>();
+        ArrayList<JSONObject> archiveCandidates = new ArrayList<JSONObject>();
+        long cutoff = System.currentTimeMillis() - MEMORY_RETENTION_MS;
+        for (JSONObject entry : all) {
+            if (entry.optLong("time", 0L) < cutoff) {
+                archiveCandidates.add(entry);
+            } else {
+                recent.add(entry);
+            }
+        }
+        while (recent.size() > MAX_MEMORY_ENTRIES) {
+            archiveCandidates.add(recent.remove(0));
+        }
+        if (!archiveConversationMemoryLocked(archiveCandidates)) {
+            // Never discard raw history if the archive could not be written.
+            recent = all;
+        }
         File file = conversationMemoryFile();
         try {
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                     new FileOutputStream(file, false), StandardCharsets.UTF_8));
             try {
-                for (JSONObject entry : entries) {
+                for (JSONObject entry : recent) {
                     writer.write(entry.toString());
                     writer.newLine();
                 }
@@ -1649,9 +1697,164 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private boolean archiveConversationMemoryLocked(ArrayList<JSONObject> rawEntries) {
+        if (rawEntries == null || rawEntries.isEmpty()) {
+            return true;
+        }
+        try {
+            ArrayList<JSONObject> archive = readConversationArchiveLocked();
+            java.util.HashSet<String> ids = new java.util.HashSet<String>();
+            for (JSONObject entry : archive) {
+                ids.add(entry.optString("id", ""));
+            }
+            ArrayList<JSONObject> compressed = buildCompressedArchiveEntries(rawEntries);
+            for (JSONObject entry : compressed) {
+                if (ids.add(entry.optString("id", ""))) {
+                    archive.add(entry);
+                }
+            }
+            Collections.sort(archive, new java.util.Comparator<JSONObject>() {
+                @Override public int compare(JSONObject left, JSONObject right) {
+                    return Long.compare(left.optLong("time", 0L), right.optLong("time", 0L));
+                }
+            });
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                    new FileOutputStream(conversationMemoryArchiveFile(), false), StandardCharsets.UTF_8));
+            try {
+                for (JSONObject entry : archive) {
+                    writer.write(entry.toString());
+                    writer.newLine();
+                }
+            } finally {
+                writer.close();
+            }
+            return true;
+        } catch (Exception error) {
+            Log.w(TAG, "conversation memory archive failed", error);
+            return false;
+        }
+    }
+
+    private ArrayList<JSONObject> readConversationArchive() {
+        synchronized (MEMORY_LOCK) {
+            return readConversationArchiveLocked();
+        }
+    }
+
+    private ArrayList<JSONObject> readConversationArchiveLocked() {
+        ArrayList<JSONObject> entries = new ArrayList<JSONObject>();
+        File file = conversationMemoryArchiveFile();
+        if (!file.isFile()) {
+            return entries;
+        }
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    new FileInputStream(file), StandardCharsets.UTF_8));
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    try {
+                        JSONObject entry = new JSONObject(line);
+                        if (entry.optLong("time", 0L) > 0L
+                                && entry.optString("message", "").length() > 0) {
+                            entries.add(entry);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            } finally {
+                reader.close();
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "conversation memory archive read failed", error);
+        }
+        return entries;
+    }
+
+    private ArrayList<JSONObject> buildCompressedArchiveEntries(ArrayList<JSONObject> rawEntries)
+            throws Exception {
+        ArrayList<JSONObject> result = new ArrayList<JSONObject>();
+        JSONObject pendingUser = null;
+        for (JSONObject entry : rawEntries) {
+            String kind = entry.optString("kind", "");
+            if (kind.startsWith("ユーザー")) {
+                if (pendingUser != null) {
+                    result.add(buildCompressedArchiveEntry(pendingUser, null));
+                }
+                pendingUser = entry;
+            } else if (pendingUser != null) {
+                result.add(buildCompressedArchiveEntry(pendingUser, entry));
+                pendingUser = null;
+            } else {
+                result.add(buildCompressedArchiveEntry(null, entry));
+            }
+        }
+        if (pendingUser != null) {
+            result.add(buildCompressedArchiveEntry(pendingUser, null));
+        }
+        return result;
+    }
+
+    private JSONObject buildCompressedArchiveEntry(JSONObject user, JSONObject answer)
+            throws Exception {
+        long time = user != null ? user.optLong("time", 0L) : answer.optLong("time", 0L);
+        String question = user == null ? ""
+                : compressMemoryExcerpt(user.optString("message", ""), MAX_ARCHIVE_QUESTION_CHARS);
+        String response = answer == null ? ""
+                : compressMemoryExcerpt(answer.optString("message", ""), MAX_ARCHIVE_ANSWER_CHARS);
+        StringBuilder summary = new StringBuilder();
+        if (question.length() > 0) {
+            summary.append("質問: ").append(question);
+        }
+        if (response.length() > 0) {
+            if (summary.length() > 0) summary.append('\n');
+            summary.append("回答: ").append(response);
+        }
+        String month = new SimpleDateFormat("yyyy-MM", Locale.JAPAN).format(new Date(time));
+        String idSource = time + "|" + summary.toString();
+        JSONObject compact = new JSONObject();
+        compact.put("id", month + "-" + time + "-" + Integer.toHexString(idSource.hashCode()));
+        compact.put("time", time);
+        compact.put("month", month);
+        compact.put("kind", "長期記憶");
+        compact.put("message", summary.toString());
+        compact.put("sourceCount", user != null && answer != null ? 2 : 1);
+        return compact;
+    }
+
+    private String compressMemoryExcerpt(String message, int maxChars) {
+        String value = safe(message).replace('\r', ' ').replace('\n', ' ')
+                .replaceAll("\\s+", " ").trim();
+        if (value.length() <= maxChars) {
+            return value;
+        }
+        String[] sentences = value.split("(?<=[。！？!?])\\s*");
+        java.util.HashSet<String> seen = new java.util.HashSet<String>();
+        StringBuilder summary = new StringBuilder();
+        for (String sentence : sentences) {
+            String part = sentence.trim();
+            String normalized = normalizeMemoryText(part);
+            if (part.length() == 0 || normalized.length() == 0 || !seen.add(normalized)) {
+                continue;
+            }
+            if (summary.length() > 0 && summary.length() + part.length() + 1 > maxChars) {
+                continue;
+            }
+            if (summary.length() > 0) summary.append(' ');
+            summary.append(part);
+            if (summary.length() >= maxChars * 3 / 4) {
+                break;
+            }
+        }
+        if (summary.length() == 0) {
+            return shortText(value, maxChars);
+        }
+        return shortText(summary.toString(), maxChars);
+    }
+
     private JSONObject buildConversationMemoryJson(String request) throws Exception {
-        int offset = Math.max(-90, Math.min(1, parseIntQuery(request, "offset", 0)));
-        int days = Math.max(1, Math.min(90, parseIntQuery(request, "days", 1)));
+        int offset = Math.max(-36500, Math.min(1, parseIntQuery(request, "offset", 0)));
+        int days = Math.max(1, Math.min(36501, parseIntQuery(request, "days", 1)));
         String query = shortText(parseStringQuery(request, "q", ""), 100).trim();
         Calendar start = Calendar.getInstance();
         start.set(Calendar.HOUR_OF_DAY, 0);
@@ -1663,6 +1866,12 @@ public final class MainActivity extends Activity {
         end.add(Calendar.DAY_OF_MONTH, days);
 
         ArrayList<JSONObject> all = readConversationMemory();
+        all.addAll(readConversationArchive());
+        Collections.sort(all, new java.util.Comparator<JSONObject>() {
+            @Override public int compare(JSONObject left, JSONObject right) {
+                return Long.compare(left.optLong("time", 0L), right.optLong("time", 0L));
+            }
+        });
         ArrayList<JSONObject> inRange = new ArrayList<JSONObject>();
         for (JSONObject entry : all) {
             long time = entry.optLong("time", 0L);
@@ -1673,17 +1882,36 @@ public final class MainActivity extends Activity {
 
         boolean[] selected = new boolean[inRange.size()];
         if (query.length() == 0) {
-            int from = Math.max(0, inRange.size() - 12);
-            for (int i = from; i < inRange.size(); i++) {
-                selected[i] = true;
+            boolean includesArchivePeriod = start.getTimeInMillis()
+                    < System.currentTimeMillis() - MEMORY_RETENTION_MS;
+            if (includesArchivePeriod) {
+                int recentCount = 0;
+                int archiveCount = 0;
+                for (int i = inRange.size() - 1; i >= 0; i--) {
+                    boolean archived = "長期記憶".equals(inRange.get(i).optString("kind", ""));
+                    if (archived && archiveCount < 6) {
+                        selected[i] = true;
+                        archiveCount++;
+                    } else if (!archived && recentCount < 6) {
+                        selected[i] = true;
+                        recentCount++;
+                    }
+                }
+            } else {
+                int from = Math.max(0, inRange.size() - 12);
+                for (int i = from; i < inRange.size(); i++) {
+                    selected[i] = true;
+                }
             }
         } else {
             for (int i = 0; i < inRange.size(); i++) {
                 JSONObject entry = inRange.get(i);
                 if (memoryMatches(entry.optString("message", ""), query)) {
                     selected[i] = true;
-                    if (i > 0) selected[i - 1] = true;
-                    if (i + 1 < inRange.size()) selected[i + 1] = true;
+                    if (!"長期記憶".equals(entry.optString("kind", ""))) {
+                        if (i > 0) selected[i - 1] = true;
+                        if (i + 1 < inRange.size()) selected[i + 1] = true;
+                    }
                 }
             }
         }
@@ -2600,6 +2828,10 @@ public final class MainActivity extends Activity {
             if (file.exists() && !file.delete()) {
                 Log.w(TAG, "conversation memory file could not be deleted");
             }
+            File archive = conversationMemoryArchiveFile();
+            if (archive.exists() && !archive.delete()) {
+                Log.w(TAG, "conversation memory archive could not be deleted");
+            }
         }
         refreshLogs();
     }
@@ -2607,7 +2839,7 @@ public final class MainActivity extends Activity {
     private void refreshLogs() {
         if (logView == null) return;
         StringBuilder builder = new StringBuilder();
-        builder.append("AI会話ログ（端末内・最大90日）\n");
+        builder.append("AI会話ログ（端末内・直近90日＋圧縮長期記憶）\n");
         synchronized (LOGS) {
             if (LOGS.isEmpty()) {
                 builder.append("まだログはありません。");
