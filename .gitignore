@@ -13,6 +13,10 @@ dex*/
 *.dex
 *.jar
 
+# Published alpha APKs kept intentionally for direct download
+!apk/
+!apk/DennouHishoLoki-*-v*-alpha.apk
+
 # Android/Gradle local state
 .gradle/
 local.properties
