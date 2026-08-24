@@ -298,7 +298,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (MainActivity.this.answer != null) {
                 String value = MainActivity.this.answer.getText() == null ? ""
                         : MainActivity.this.answer.getText().toString();
-                if (value.startsWith("【周辺ワード") || value.startsWith("AMBIENT ON")) {
+                // Keep the latest explanation visible until a newer one replaces it.
+                // Only the short startup guidance is cleared when AMBIENT becomes idle.
+                if (value.startsWith("AMBIENT ON")) {
                     MainActivity.this.answer.setText("");
                 }
             }
