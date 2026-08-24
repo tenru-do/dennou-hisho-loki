@@ -34,6 +34,7 @@ Areas that still need refinement:
 - proactive AI behavior
 - calendar search ranking
 - mail notification summarization
+- Loki Topic news/event selection and station inference
 - Gradle/reproducible build setup
 
 Use this repository as a research prototype, not as a finished product.
@@ -56,7 +57,7 @@ Known environment-dependent areas include:
 
 This project does not currently provide full Google Workspace API integration.
 
-Calendar lookup reads events exposed through the Android Calendar Provider on the companion phone. Mail summary support reads recent Android notifications when notification access is granted.
+Calendar lookup reads events exposed through the Android Calendar Provider on the companion phone. Mail summary support reads recent Android notifications when notification access is granted. If the Gmail label permission is granted, the app can also read the inbox unread count, but not message subjects or bodies through that provider.
 
 It does not guarantee complete Gmail search, complete Workspace search, Drive access, server-side OAuth integration, or cross-device consistency.
 
