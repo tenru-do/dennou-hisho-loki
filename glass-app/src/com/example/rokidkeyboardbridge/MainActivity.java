@@ -19,7 +19,9 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -2205,12 +2207,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
             str = "  WAIT " + Math.max(1L, ((this.geminiCooldownUntil - System.currentTimeMillis()) + 999) / 1000) + "s";
         }
         String str7 = str2 + "(" + str4 + ") " + str3;
+        String ambientState = this.ambientMode
+                ? "  AMB:" + (this.ambientInputMode == AMBIENT_INPUT_MIC ? "外"
+                : (this.ambientInputMode == AMBIENT_INPUT_PLAYBACK ? "BT" : "両"))
+                : (this.pendingAmbientStart ? "  AMB:待" : "");
         String healthLine = compactHealthInfoLine();
         String locationLine = compactLocationInfoLine();
         String weatherLine = compactWeatherInfoLine();
         String healthWeatherLine = healthLine + "  " + weatherLine;
         String str8 = str7 + "\n" + batteryLabel + "  " + str5 + "/" + str6 + str
-                + "\n" + healthWeatherLine + "\n" + locationLine;
+                + ambientState + "\n" + healthWeatherLine + "\n" + locationLine;
         SpannableString spannableString = new SpannableString(str8);
         spannableString.setSpan(new RelativeSizeSpan(1.70f), 0, str7.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         int healthStart = str8.indexOf(healthWeatherLine);
@@ -4577,6 +4583,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                 MainActivity.this.getPreferences().edit().putInt(
                                         KEY_AMBIENT_INPUT_MODE,
                                         MainActivity.this.ambientInputMode).apply();
+                                Log.i(TAG, "ambient input selected mode="
+                                        + MainActivity.this.ambientInputModeLabel());
                                 dialog.dismiss();
                                 MainActivity.this.setAmbientMode(true);
                             }
@@ -4639,6 +4647,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             clearAmbientAudioQueue();
             releaseAmbientMediaProjection();
             updateAmbientButtonLabel();
+            this.handler.removeCallbacks(this.infoUpdater);
+            this.handler.post(this.infoUpdater);
             if (this.answer != null && this.answer.getText() != null
                     && (this.answer.getText().toString().startsWith("【周辺ワード")
                     || this.answer.getText().toString().startsWith("AMBIENT ON"))) {
@@ -4658,13 +4668,40 @@ public final class MainActivity extends Activity implements SensorEventListener 
             setStatus("AMBIENTにはGemini APIキーが必要です", -256);
             return;
         }
-        if (ambientUsesPlayback() && this.mediaProjection == null) {
+        AudioDeviceInfo directA2dpInput = ambientUsesPlayback()
+                ? findAmbientA2dpInput() : null;
+        if (ambientUsesPlayback() && directA2dpInput == null
+                && this.mediaProjection == null) {
             if (this.pendingAmbientStart) {
                 setStatus("Bluetooth再生音の取得許可を待っています", -256);
                 return;
             }
             if (this.mediaProjectionManager == null) {
                 setStatus("この端末ではBluetooth再生音を取得できません", -256);
+                return;
+            }
+            Intent projectionIntent = this.mediaProjectionManager.createScreenCaptureIntent();
+            if (projectionIntent.resolveActivity(getPackageManager()) == null) {
+                Log.w(TAG, "Rokid MediaProjection permission activity is unavailable");
+                if (this.answer != null) {
+                    this.answer.setText("Bluetooth音声入力が見つかりません。\nスマホなどの再生機器をグラスへBluetooth接続してから、もう一度AMBを選んでください。");
+                }
+                setConversationActive(true);
+                this.handler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!MainActivity.this.ambientMode) {
+                            if (MainActivity.this.answer != null
+                                    && MainActivity.this.answer.getText() != null
+                                    && MainActivity.this.answer.getText().toString()
+                                    .startsWith("Bluetooth音声入力")) {
+                                MainActivity.this.answer.setText("");
+                            }
+                            MainActivity.this.setConversationActive(false);
+                        }
+                    }
+                }, 6000L);
+                setStatus("Bluetooth音声入力が未接続です", -256);
                 return;
             }
             this.pendingAmbientStart = true;
@@ -4676,8 +4713,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             setConversationActive(true);
             setStatus("Bluetooth再生音の取得を許可してください", -256);
             try {
-                startActivityForResult(this.mediaProjectionManager.createScreenCaptureIntent(),
-                        REQUEST_AMBIENT_PLAYBACK_CAPTURE);
+                startActivityForResult(projectionIntent, REQUEST_AMBIENT_PLAYBACK_CAPTURE);
             } catch (Exception error) {
                 this.pendingAmbientStart = false;
                 updateAmbientButtonLabel();
@@ -4696,7 +4732,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.lastAmbientTranscript = "";
         this.lastAmbientTranscriptAt = 0L;
         clearAmbientAudioQueue();
+        Log.i(TAG, "ambient started mode=" + ambientInputModeLabel()
+                + " directA2dp=" + (directA2dpInput != null));
         updateAmbientButtonLabel();
+        this.handler.removeCallbacks(this.infoUpdater);
+        this.handler.post(this.infoUpdater);
         if (this.answer != null) {
             this.answer.setText("AMBIENT ON：" + ambientInputModeLabel()
                     + "\n録音・全文ログは保存せず、重要語の説明だけを無音で表示します。");
@@ -5195,7 +5235,32 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
+    private AudioDeviceInfo findAmbientA2dpInput() {
+        try {
+            AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager == null) {
+                return null;
+            }
+            AudioDeviceInfo[] devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS);
+            for (int i = 0; i < devices.length; i++) {
+                AudioDeviceInfo device = devices[i];
+                if (device != null && device.isSource()
+                        && device.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) {
+                    Log.i(TAG, "ambient A2DP input available id=" + device.getId());
+                    return device;
+                }
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "cannot enumerate A2DP input", error);
+        }
+        return null;
+    }
+
     private byte[] recordAmbientPlaybackPcm(int generation) throws Exception {
+        AudioDeviceInfo a2dpInput = findAmbientA2dpInput();
+        if (a2dpInput != null) {
+            return recordAmbientA2dpPcm(generation, a2dpInput);
+        }
         MediaProjection projection = this.mediaProjection;
         if (projection == null) {
             throw new IllegalStateException("Bluetooth再生音の取得許可がありません");
@@ -5285,6 +5350,117 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             }
         }
+    }
+
+    private byte[] recordAmbientA2dpPcm(int generation, AudioDeviceInfo a2dpInput)
+            throws Exception {
+        AudioRecord recorder = null;
+        try {
+            int sampleRate = 48000;
+            int minBuffer = AudioRecord.getMinBufferSize(sampleRate,
+                    AudioFormat.CHANNEL_IN_STEREO,
+                    AudioFormat.ENCODING_PCM_16BIT);
+            int bufferSize = Math.max(16384, Math.max(minBuffer, sampleRate * 4));
+            AudioFormat format = new AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
+                    .build();
+            recorder = new AudioRecord.Builder()
+                    .setAudioSource(MediaRecorder.AudioSource.DEFAULT)
+                    .setAudioFormat(format)
+                    .setBufferSizeInBytes(bufferSize)
+                    .build();
+            if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
+                throw new IllegalStateException("A2DP音声入力を初期化できません");
+            }
+            if (!recorder.setPreferredDevice(a2dpInput)) {
+                throw new IllegalStateException("A2DP音声入力を選択できません");
+            }
+            this.ambientPlaybackRecorder = recorder;
+            ByteArrayOutputStream pcm = new ByteArrayOutputStream();
+            byte[] buffer = new byte[Math.max(4096, Math.min(16384, bufferSize))];
+            recorder.startRecording();
+            AudioDeviceInfo routed = recorder.getRoutedDevice();
+            Log.i(TAG, "ambient A2DP recording started preferredId=" + a2dpInput.getId()
+                    + " routedId=" + (routed == null ? -1 : routed.getId()));
+            long started = System.currentTimeMillis();
+            long lastVoiceAt = started;
+            int maxLevel = 0;
+            int voiceHits = 0;
+            boolean heardVoice = false;
+            while (this.ambientMode && generation == this.ambientGeneration
+                    && !this.voiceRecording && !this.geminiRequestActive
+                    && !this.ambientRequestActive
+                    && System.currentTimeMillis() >= this.ambientPauseUntil) {
+                int read = recorder.read(buffer, 0, buffer.length);
+                if (read <= 0) {
+                    break;
+                }
+                pcm.write(buffer, 0, read);
+                int level = averageAbs16(buffer, read);
+                maxLevel = Math.max(maxLevel, level);
+                long now = System.currentTimeMillis();
+                if (level > 8) {
+                    heardVoice = true;
+                    voiceHits++;
+                    lastVoiceAt = now;
+                }
+                if (!heardVoice && now - started >= AMBIENT_NO_SPEECH_MS) {
+                    break;
+                }
+                if (heardVoice && now - started >= 1600L
+                        && now - lastVoiceAt >= AMBIENT_SILENCE_STOP_MS) {
+                    break;
+                }
+                if (now - started >= AMBIENT_CAPTURE_MAX_MS) {
+                    break;
+                }
+            }
+            try {
+                recorder.stop();
+            } catch (Exception ignored) {
+            }
+            if (!heardVoice || voiceHits < 3 || maxLevel <= 8) {
+                return null;
+            }
+            byte[] raw = normalizePcm16(pcm.toByteArray(), maxLevel);
+            byte[] downsampled = downsampleStereo48kToMono16k(raw);
+            Log.i(TAG, "ambient A2DP captured bytes=" + downsampled.length
+                    + " level=" + maxLevel + " hits=" + voiceHits);
+            return downsampled;
+        } finally {
+            if (this.ambientPlaybackRecorder == recorder) {
+                this.ambientPlaybackRecorder = null;
+            }
+            if (recorder != null) {
+                try {
+                    recorder.release();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private byte[] downsampleStereo48kToMono16k(byte[] stereo) {
+        if (stereo == null || stereo.length < 12) {
+            return new byte[0];
+        }
+        int inputFrames = stereo.length / 4;
+        int outputFrames = inputFrames / 3;
+        byte[] mono = new byte[outputFrames * 2];
+        for (int i = 0; i < outputFrames; i++) {
+            int inOffset = i * 12;
+            int left = (short) ((stereo[inOffset] & 255)
+                    | (stereo[inOffset + 1] << 8));
+            int right = (short) ((stereo[inOffset + 2] & 255)
+                    | (stereo[inOffset + 3] << 8));
+            int sample = (left + right) / 2;
+            int outOffset = i * 2;
+            mono[outOffset] = (byte) (sample & 255);
+            mono[outOffset + 1] = (byte) ((sample >> 8) & 255);
+        }
+        return mono;
     }
 
     private boolean isUsefulAmbientTranscript(String transcript) {

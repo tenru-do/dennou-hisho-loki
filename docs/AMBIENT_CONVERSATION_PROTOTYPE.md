@@ -13,8 +13,11 @@ the existing app preferences, including the API key and bridge settings.
 - When both sources are selected, the glasses microphone and capturable Android
   playback audio are recorded in separate, concurrent, bounded 5.5–9 second PCM
   windows. Single-source modes start only the selected recorder.
-- Android playback capture is used for media being played to Bluetooth. Android
-  shows a system consent screen the first time `AMB` is enabled in a session.
+- On Rokid firmware exposing `AUDIO_DEVICE_IN_BLUETOOTH_A2DP`, the app selects
+  that hardware input directly. This avoids the standard MediaProjection consent
+  activity, which is absent from the tested Rokid OS build.
+- On other Android devices without the direct A2DP input, standard Android
+  playback capture remains available when its system consent activity exists.
 - Both audio sources are queued in memory, while transcription and Gemini
   requests are always processed one at a time. Captured playback is prioritized
   and matching microphone echo is suppressed for 15 seconds.
@@ -42,10 +45,10 @@ where recording, playback capture, and transcription are appropriate. Turning
 
 ## Current limitations
 
-- Only Android playback from apps that permit audio capture can be received.
-  DRM-protected media, calls, protected apps, and some vendor players may be silent.
-- "Bluetooth" identifies capturable app playback routed by the glasses; it does
-  not intercept the Bluetooth radio stream or bypass Android capture policy.
+- Direct Rokid A2DP input is only available while the Bluetooth playback route is
+  exposed by the firmware. If it is absent, connect the playback device first.
+- Standard Android playback-capture fallback can receive only apps that permit
+  capture; DRM-protected media, calls, protected apps, and some players may be silent.
 - Simultaneous microphone and playback capture depends on the Rokid firmware's
   audio policy and still needs real-device validation.
 - The paired phone app, bridge token, microphone permission, network access,
