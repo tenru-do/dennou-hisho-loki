@@ -1072,7 +1072,9 @@ public final class MainActivity extends Activity {
             // Relay audio is already a complete PCM clip. Online recognition handles
             // streamed audio reliably on the Galaxy, while its on-device recognizer
             // currently waits until timeout for this file-descriptor input.
-            transcript = transcribePcmWithSpeechRecognizer(pcm, sampleRate, false);
+            byte[] recognitionPcm = ambientRelay
+                    ? normalizeRelayPcmForRecognition(pcm) : pcm;
+            transcript = transcribePcmWithSpeechRecognizer(recognitionPcm, sampleRate, false);
         } catch (Exception e) {
             root.put("ok", false);
             root.put("error", e.getMessage() == null ? "speech_failed" : e.getMessage());
@@ -1436,6 +1438,49 @@ public final class MainActivity extends Activity {
                 Thread.sleep(sleepMs, sleepNs);
             }
         }
+    }
+
+    private byte[] normalizeRelayPcmForRecognition(byte[] pcm) {
+        if (pcm == null || pcm.length < 2) {
+            return pcm;
+        }
+        int sampleCount = pcm.length / 2;
+        int peak = 0;
+        long squareSum = 0L;
+        for (int i = 0; i + 1 < pcm.length; i += 2) {
+            int sample = (short) ((pcm[i] & 255) | (pcm[i + 1] << 8));
+            int absolute = Math.abs(sample);
+            if (absolute > peak) {
+                peak = absolute;
+            }
+            squareSum += (long) sample * (long) sample;
+        }
+        double rms = Math.sqrt((double) squareSum / Math.max(1, sampleCount));
+        if (peak < 100 || rms < 35.0) {
+            Log.i(TAG, "phone relay pcm too quiet for gain peak=" + peak
+                    + " rms=" + Math.round(rms));
+            return pcm;
+        }
+        double rmsGain = 3000.0 / rms;
+        double headroomGain = 28000.0 / Math.max(1, peak);
+        double gain = Math.min(4.0, Math.min(rmsGain, headroomGain));
+        if (gain <= 1.10) {
+            Log.i(TAG, "phone relay pcm level ok peak=" + peak
+                    + " rms=" + Math.round(rms));
+            return pcm;
+        }
+        byte[] normalized = new byte[pcm.length];
+        for (int i = 0; i + 1 < pcm.length; i += 2) {
+            int sample = (short) ((pcm[i] & 255) | (pcm[i + 1] << 8));
+            int amplified = (int) Math.round(sample * gain);
+            amplified = Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, amplified));
+            normalized[i] = (byte) (amplified & 255);
+            normalized[i + 1] = (byte) ((amplified >> 8) & 255);
+        }
+        Log.i(TAG, "phone relay pcm normalized gain="
+                + String.format(Locale.US, "%.2f", gain)
+                + " peak=" + peak + " rms=" + Math.round(rms));
+        return normalized;
     }
 
     private static final class SpeechRecognitionFailure extends IllegalStateException {

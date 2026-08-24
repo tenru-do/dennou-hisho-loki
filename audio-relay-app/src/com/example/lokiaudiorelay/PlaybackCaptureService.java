@@ -43,9 +43,9 @@ public final class PlaybackCaptureService extends Service {
     private static final int SAMPLE_RATE_IN = 48000;
     private static final int SAMPLE_RATE_OUT = 16000;
     private static final int LEVEL_THRESHOLD = 90;
-    private static final long NO_AUDIO_TIMEOUT_MS = 4500L;
-    private static final long SILENCE_STOP_MS = 1400L;
-    private static final long MAX_SEGMENT_MS = 9000L;
+    private static final long NO_AUDIO_TIMEOUT_MS = 3000L;
+    private static final long SILENCE_STOP_MS = 1000L;
+    private static final long MAX_SEGMENT_MS = 6000L;
 
     private volatile boolean captureActive;
     private volatile AudioRecord recorder;
@@ -209,6 +209,9 @@ public final class PlaybackCaptureService extends Service {
             if (voiceHits >= 3 && now - lastVoiceAt >= SILENCE_STOP_MS) break;
             if (now - started >= MAX_SEGMENT_MS) break;
         }
+        Log.i(TAG, "relay segment ms=" + (System.currentTimeMillis() - started)
+                + " bytes=" + output.size() + " peak=" + maxLevel
+                + " voiceHits=" + voiceHits);
         if (voiceHits < 3 || maxLevel < LEVEL_THRESHOLD) return null;
         return output.toByteArray();
     }
