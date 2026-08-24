@@ -101,7 +101,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long AMBIENT_NO_SPEECH_MS = 5500L;
     private static final long AMBIENT_SILENCE_STOP_MS = 1500L;
     private static final long AMBIENT_DUPLICATE_WINDOW_MS = 15000L;
-    private static final long AMBIENT_QUEUE_STALE_MS = 30000L;
+    private static final long AMBIENT_QUEUE_STALE_MS = 75000L;
     private static final int AMBIENT_MIC_LEVEL_THRESHOLD = 80;
     private static final int AMBIENT_MIC_MIN_VOICE_HITS = 4;
     private static final int AMBIENT_MAX_TRANSCRIPT_CHARS = 500;
@@ -549,7 +549,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     protected void onPause() {
         this.lastPauseAt = System.currentTimeMillis();
         this.activityForeground = false;
-        pauseAmbientForUserAction(1500L);
+        pauseAmbientForLifecycle(1500L);
         if (!this.conversationActive) {
             try {
                 getWindow().clearFlags(128);
@@ -4960,6 +4960,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
         disconnectActiveAmbient();
     }
 
+    private void pauseAmbientForLifecycle(long pauseMs) {
+        if (!this.ambientMode) {
+            return;
+        }
+        this.ambientPauseUntil = Math.max(this.ambientPauseUntil,
+                System.currentTimeMillis() + Math.max(1000L, pauseMs));
+        stopAmbientCapture();
+        // Keep the newest queued clip. A brief Rokid HUD/head-glance lifecycle
+        // transition must not discard speech captured during the API interval.
+        disconnectActiveAmbient();
+    }
+
     private void stopAmbientCapture() {
         AudioRecord recorder = this.ambientRecorder;
         this.ambientRecorder = null;
@@ -5059,12 +5071,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (this.ambientAudioQueue.isEmpty()) {
                 return null;
             }
-            for (int i = 0; i < this.ambientAudioQueue.size(); i++) {
+            AmbientAudioChunk selected = null;
+            for (int i = this.ambientAudioQueue.size() - 1; i >= 0; i--) {
                 if ("Bluetooth".equals(this.ambientAudioQueue.get(i).source)) {
-                    return this.ambientAudioQueue.remove(i);
+                    selected = this.ambientAudioQueue.get(i);
+                    break;
                 }
             }
-            return this.ambientAudioQueue.remove(0);
+            if (selected == null) {
+                selected = this.ambientAudioQueue.get(this.ambientAudioQueue.size() - 1);
+            }
+            // Do not replay a backlog after each 60-second Gemini interval.
+            // The most recent clip best represents the conversation now.
+            this.ambientAudioQueue.clear();
+            return selected;
         }
     }
 
