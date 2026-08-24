@@ -106,6 +106,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final String KEY_PENDING_PHONE_COMMAND = "pending_phone_command";
     private static final String KEY_LAST_PHONE_HOST = "last_phone_host";
     private static final String KEY_VOICE_AUDIO_SOURCE_INDEX = "voice_audio_source_index";
+    private static final String KEY_LAST_HIDDEN_NAZOKAKE_AT = "last_hidden_nazokake_at";
+    private static final String KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL = "nazokake_awaiting_topic_until";
+    private static final String KEY_NAZOKAKE_STYLE = "nazokake_style";
+    private static final String KEY_NAZOKAKE_LEARNING_HISTORY = "nazokake_learning_history_v1";
+    private static final String KEY_LAST_NAZOKAKE_RESULT_AT = "last_nazokake_result_at";
+    private static final String NAZOKAKE_STYLE_KONBURU = "konburu";
+    private static final String NAZOKAKE_STYLE_LOKI = "loki";
     private static final int MAX_CONTEXT_CHARS = 6000;
     private static final int MAX_MEMORY_CONTEXT_CHARS = 2600;
     private static final int MAX_CUSTOM_CHARS = 2400;
@@ -116,11 +123,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final int TTS_TRAILING_MERGE_CHARS = 100;
     private static final long CONVERSATION_CONTEXT_TTL_MS = 30L * 60L * 1000L;
     private static final long CONTINUOUS_CONVERSATION_WINDOW_MS = 12L * 60L * 1000L;
+    private static final long MEDICAL_CONTEXT_TTL_MS = 2L * 60L * 60L * 1000L;
     private static final String PREFS = "gemini_settings";
     private static final String TAG = "RokidKeyboardAI";
     private static final boolean PREFER_GLASS_SYSTEM_SPEECH = false;
     private volatile HttpURLConnection activeGeminiConnection;
     private volatile String activeGeminiPrompt = "";
+    private volatile String activeHiddenNazokakePrompt = "";
+    private volatile String activeNazokakeTopic = "";
+    private volatile String activeNazokakeStyle = NAZOKAKE_STYLE_KONBURU;
+    private volatile String nazokakeTrainingCache = "";
+    private volatile long nazokakeTrainingCacheAt;
     private TextView answer;
     private ScrollView answerScroll;
     private LinearLayout.LayoutParams answerScrollParams;
@@ -194,6 +207,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private long lastUpwardGlanceAt;
     private int normalScreenTimeoutMs = 6000;
     private volatile int ttsGeneration;
+    private volatile String activeMorningScript = "";
+    private volatile String[] activeMorningChunks = new String[0];
+    private volatile int morningResumeChunkIndex;
+    private volatile boolean morningPlaybackActive;
+    private volatile boolean morningPlaybackPaused;
+    private Button morningButton;
     private Button voiceButton;
     private volatile boolean voiceLoopMode;
     private volatile boolean voiceRecording;
@@ -226,7 +245,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         public void run() {
             if (MainActivity.this.conversationActive || MainActivity.this.geminiRequestActive
                     || MainActivity.this.voiceRecording || MainActivity.this.voiceLoopMode
-                    || MainActivity.this.proactiveMode) {
+                    || MainActivity.this.proactiveMode
+                    || MainActivity.this.morningPlaybackActive) {
                 return;
             }
             MainActivity.this.clearSubmittedInput();
@@ -301,7 +321,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         @Override
         public void run() {
             if (MainActivity.this.headTiltActive || MainActivity.this.conversationActive
-                    || MainActivity.this.geminiRequestActive || MainActivity.this.voiceRecording) {
+                    || MainActivity.this.geminiRequestActive || MainActivity.this.voiceRecording
+                    || MainActivity.this.morningPlaybackActive) {
                 return;
             }
             long remaining = MainActivity.this.headGlanceWake ? 0L
@@ -382,7 +403,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.removeCallbacks(this.commandPoller);
         this.handler.postDelayed(this.commandPoller, 800L);
         schedulePendingPhoneCommand();
-        if (this.conversationActive || this.geminiRequestActive || this.voiceRecording || this.voiceLoopMode) {
+        if (this.conversationActive || this.geminiRequestActive || this.voiceRecording
+                || this.voiceLoopMode || this.morningPlaybackActive) {
             setConversationActive(true);
         } else if (this.headTiltActive || this.headGlanceWake) {
             setGlanceHudVisible(true);
@@ -495,8 +517,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 if (keyCode == 21) {
                     hideKeyboard();
-                    if (this.sendButton != null) {
-                        this.sendButton.requestFocus();
+                    if (this.zoomButton != null) {
+                        this.zoomButton.requestFocus();
                     }
                     return true;
                 }
@@ -582,26 +604,27 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void focusSafeDefault() {
-        if (this.sendButton != null && this.sendButton.getVisibility() == View.VISIBLE) {
-            this.sendButton.requestFocus();
+        if (this.zoomButton != null && this.zoomButton.getVisibility() == View.VISIBLE) {
+            this.zoomButton.requestFocus();
         }
     }
 
     private boolean handleFocusNavigation(View view, int i) {
         if (i == 22 || i == 20) {
-            return view == this.sendButton ? requestFocusSafely(this.voiceButton)
+            return view == this.morningButton ? requestFocusSafely(this.voiceButton)
                     : view == this.voiceButton ? requestFocusSafely(this.wifiButton)
                     : view == this.wifiButton ? requestFocusSafely(this.settingsButton)
                     : view == this.settingsButton ? requestFocusSafely(this.zoomButton)
-                    : requestFocusSafely(this.sendButton);
+                    : view == this.zoomButton ? requestFocusSafely(this.morningButton)
+                    : requestFocusSafely(this.zoomButton);
         }
         if (i == 21 || i == 19) {
-            return view == this.sendButton ? requestFocusSafely(this.zoomButton)
-                    : view == this.voiceButton ? requestFocusSafely(this.sendButton)
+            return view == this.morningButton ? requestFocusSafely(this.zoomButton)
+                    : view == this.voiceButton ? requestFocusSafely(this.morningButton)
                     : view == this.wifiButton ? requestFocusSafely(this.voiceButton)
                     : view == this.settingsButton ? requestFocusSafely(this.wifiButton)
                     : view == this.zoomButton ? requestFocusSafely(this.settingsButton)
-                    : requestFocusSafely(this.sendButton);
+                    : requestFocusSafely(this.zoomButton);
         }
         return false;
     }
@@ -748,7 +771,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
         });
         focusLabel(this.sendButton, "SEND");
-        this.buttonPanel.addView(this.sendButton, new LinearLayout.LayoutParams(0, dp(38), 1.0f));
+        this.sendButton.setVisibility(View.GONE);
         this.voiceButton = new Button(this);
         this.voiceButton.setText("音声");
         this.voiceButton.setText("VOICE");
@@ -830,6 +853,35 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.removeView(this.zoomButton);
         zoomLayout.leftMargin = 0;
         this.buttonPanel.addView(this.zoomButton, 0, zoomLayout);
+        this.morningButton = new Button(this);
+        this.morningButton.setText("TOPIC");
+        this.morningButton.setTextSize(9.0f);
+        this.morningButton.setMinHeight(0);
+        this.morningButton.setMinWidth(0);
+        this.morningButton.setPadding(1, 0, 1, 0);
+        this.morningButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MainActivity.this.showControlsTemporarily();
+                if (MainActivity.this.activeMorningChunks.length > 0) {
+                    if (MainActivity.this.morningPlaybackActive) {
+                        MainActivity.this.handleMorningBriefingCommand("stop");
+                    } else if (MainActivity.this.morningPlaybackPaused) {
+                        MainActivity.this.startMorningPlayback(
+                                MainActivity.this.morningResumeChunkIndex);
+                    } else {
+                        MainActivity.this.startMorningPlayback(0);
+                    }
+                } else {
+                    MainActivity.this.handleMorningBriefingCommand("lokitopic");
+                }
+            }
+        });
+        focusLabel(this.morningButton, "TOPIC");
+        LinearLayout.LayoutParams morningLayout =
+                new LinearLayout.LayoutParams(0, dp(38), 1.0f);
+        morningLayout.leftMargin = 4;
+        this.buttonPanel.addView(this.morningButton, 1, morningLayout);
         this.settingsButton = new Button(this);
         this.settingsButton.setText("APIキー設定");
         this.settingsButton.setText("SET");
@@ -1090,15 +1142,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.hudRoot.setVisibility(View.INVISIBLE);
         setScreenBrightness(0.0f);
         hideKeyboard();
-        if (this.sendButton != null) {
-            this.sendButton.requestFocus();
+        if (this.zoomButton != null) {
+            this.zoomButton.requestFocus();
         }
         this.handler.postDelayed(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.20
             @Override // java.lang.Runnable
             public void run() {
                 MainActivity.this.hideKeyboard();
-                if (MainActivity.this.sendButton != null) {
-                    MainActivity.this.sendButton.requestFocusFromTouch();
+                if (MainActivity.this.zoomButton != null) {
+                    MainActivity.this.zoomButton.requestFocusFromTouch();
                 }
             }
         }, 250L);
@@ -1404,7 +1456,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         if (this.answerScroll != null && this.answer != null) {
             String response = this.answer.getText() == null ? "" : this.answer.getText().toString().trim();
-            boolean active = this.conversationActive || this.geminiRequestActive || this.voiceRecording;
+            boolean active = this.conversationActive || this.geminiRequestActive
+                    || this.voiceRecording || this.morningPlaybackActive;
             this.answerScroll.setVisibility(active && response.length() > 0 ? View.VISIBLE : View.GONE);
         }
         if (this.status != null && !this.conversationActive && !this.geminiRequestActive && !this.voiceRecording) {
@@ -1537,6 +1590,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private int chooseMascotExpressionForText(String str, String str2) {
         String str3 = ((str == null ? "" : str) + "\n" + (str2 == null ? "" : str2)).toLowerCase(Locale.JAPAN);
+        boolean mascotCorrection = containsAny(str3,
+                "顔のリアクションがおかしい", "リアクションがおかしい",
+                "表情がおかしい", "表情が違う", "マスコットがおかしい",
+                "なんで喘", "なぜ喘", "喘いでる？", "喘いでいる？",
+                "泣き顔ばかり", "その顔やめて");
+        if (mascotCorrection) {
+            return 15;
+        }
         boolean refusalContext = containsAny(str3,
                 "\u5acc\u304c\u3063", "\u5acc\u3060", "\u5acc\u3067\u3059",
                 "\u62d2\u3080", "\u62d2\u7d76", "\u5acc\u3068\u9996\u3092\u632f",
@@ -1772,7 +1833,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         hideInputIfIdle();
         if (this.answerScroll != null && this.answer != null) {
             String response = this.answer.getText() == null ? "" : this.answer.getText().toString().trim();
-            boolean active = this.conversationActive || this.geminiRequestActive || this.voiceRecording;
+            boolean active = this.conversationActive || this.geminiRequestActive
+                    || this.voiceRecording || this.morningPlaybackActive;
             this.answerScroll.setVisibility(active && response.length() > 0 ? View.VISIBLE : View.GONE);
         }
         if (this.status != null) {
@@ -1867,6 +1929,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     /* JADX INFO: Access modifiers changed from: private */
     public void setConversationActive(boolean z) {
+        if (!z && this.morningPlaybackActive) {
+            this.conversationActive = true;
+            ensureMorningAnswerVisible();
+            return;
+        }
         this.conversationActive = z;
         if (z) {
             this.handler.removeCallbacks(this.idleHudCleanupRunnable);
@@ -2350,15 +2417,27 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (strTrim.isEmpty()) {
             setStatus("質問を入力してください", -256);
             hideKeyboard();
-            if (this.sendButton != null) {
-                this.sendButton.requestFocus();
+            if (this.zoomButton != null) {
+                this.zoomButton.requestFocus();
                 return;
             }
             return;
         }
         final boolean bypassGeminiCooldown = this.bypassNextGeminiCooldown;
         this.bypassNextGeminiCooldown = false;
-        if (handleLocalCommand(strTrim) || handleDirectWeatherQuestion(strTrim) || handleDirectDataQuestion(strTrim) || handleUnsupportedNewsQuestion(strTrim) || handleSmallTalkQuestion(strTrim)) {
+        if (handleMorningBriefingCommand(strTrim) || handleLocalCommand(strTrim)
+                || handleNazokakeFeedback(strTrim)
+                || handleMissingNazokakeTopic(strTrim)) {
+            return;
+        }
+        final boolean hiddenNazokakeRequest = isHiddenNazokakeRequest(strTrim);
+        final String nazokakeStyle = hiddenNazokakeRequest
+                ? resolveNazokakeStyle(strTrim) : NAZOKAKE_STYLE_KONBURU;
+        final String nazokakeTopic = hiddenNazokakeRequest
+                ? extractNazokakeTopicForLearning(strTrim) : "";
+        if (!hiddenNazokakeRequest
+                && (handleDirectWeatherQuestion(strTrim) || handleDirectDataQuestion(strTrim)
+                || handleUnsupportedNewsQuestion(strTrim) || handleSmallTalkQuestion(strTrim))) {
             return;
         }
         final String strTrim2 = getPreferences().getString(KEY_API_KEY, "").trim();
@@ -2393,27 +2472,43 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.voiceRecording = false;
         clearSubmittedInput();
         hideKeyboard();
-        this.answer.setText("考えています…");
-        setStatus("Geminiへ接続中", -3355444);
+        String waitingMessage = hiddenNazokakeRequest
+                ? buildNazokakeThinkingCue(strTrim, nazokakeStyle) : "考えています…";
+        this.answer.setText(waitingMessage);
+        setStatus(hiddenNazokakeRequest ? "謎かけを考えています" : "Geminiへ接続中", -3355444);
         this.handler.removeCallbacks(this.hideInputRunnable);
         this.handler.postDelayed(this.hideInputRunnable, 3500L);
         int promptExpression = chooseMascotExpressionForText(strTrim, "");
-        setMascotExpression(isGreetingPrompt(strTrim) ? 1 : (promptExpression == 4 ? 14 : promptExpression));
+        setMascotExpression(hiddenNazokakeRequest ? 15
+                : (isGreetingPrompt(strTrim) ? 1 : (promptExpression == 4 ? 14 : promptExpression)));
         setConversationActive(true);
+        if (hiddenNazokakeRequest) {
+            speakWithPhoneTts(waitingMessage, true);
+        }
         final int i = this.requestGeneration + 1;
         this.requestGeneration = i;
         this.geminiRequestActive = true;
         this.activeGeminiPrompt = strTrim;
+        this.activeHiddenNazokakePrompt = hiddenNazokakeRequest ? strTrim : "";
+        this.activeNazokakeTopic = hiddenNazokakeRequest ? nazokakeTopic : "";
+        this.activeNazokakeStyle = nazokakeStyle;
+        if (hiddenNazokakeRequest) {
+            getPreferences().edit()
+                    .remove(KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL)
+                    .putLong(KEY_LAST_HIDDEN_NAZOKAKE_AT, System.currentTimeMillis())
+                    .apply();
+        }
         logToPhoneAsync("ユーザー", strTrim);
         new Thread(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.25
             @Override // java.lang.Runnable
             public void run() {
                 try {
                     String generatedAnswer;
-                    final boolean useConversationContext =
-                            MainActivity.this.shouldIncludeConversationContext(strTrim);
+                    final boolean useConversationContext = !hiddenNazokakeRequest
+                            && MainActivity.this.shouldIncludeConversationContext(strTrim);
                     final boolean preferFullModel = useConversationContext
-                            || MainActivity.this.isConversationMemoryQuestion(strTrim);
+                            || MainActivity.this.isConversationMemoryQuestion(strTrim)
+                            || MainActivity.this.isMedicalDiscussionQuestion(strTrim);
                     final String preparedPrompt =
                             MainActivity.this.buildGeminiPromptCompact(strTrim, true);
                     try {
@@ -2432,6 +2527,26 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                 MainActivity.this.buildGeminiPromptCompact(strTrim, false),
                                 false);
                     }
+                    if (hiddenNazokakeRequest
+                            && !MainActivity.this.nazokakeAnswerMatchesTopic(
+                            generatedAnswer, nazokakeTopic)) {
+                        Log.w(MainActivity.TAG, "nazokake topic drift detected expected="
+                                + nazokakeTopic + "; retrying without training history");
+                        String strictPrompt = MainActivity.this.buildGeminiPromptCompact(
+                                strTrim, false)
+                                + "\n\n<topic_correction>直前の生成は破棄する。今回のお題は『"
+                                + nazokakeTopic
+                                + "』だけである。riddleの先頭を必ず『"
+                                + nazokakeTopic
+                                + "とかけまして』にし、過去のお題を絶対に使わない。</topic_correction>";
+                        generatedAnswer = MainActivity.this.requestGeminiWithRetry(
+                                strTrim2, strictPrompt, false);
+                        if (!MainActivity.this.nazokakeAnswerMatchesTopic(
+                                generatedAnswer, nazokakeTopic)) {
+                            throw new GeminiNoCandidateException(
+                                    "TOPIC_MISMATCH_EXPECTED_" + nazokakeTopic);
+                        }
+                    }
                     if (useConversationContext
                             && !MainActivity.this.wantsExactRepeat(strTrim)
                             && MainActivity.this.isDuplicateConversationAnswer(generatedAnswer)) {
@@ -2446,6 +2561,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         generatedAnswer = MainActivity.this.requestGeminiWithRetry(
                                 strTrim2, correctionPrompt, true);
                     }
+                    if (hiddenNazokakeRequest) {
+                        generatedAnswer = MainActivity.this.formatHiddenNazokakeAnswer(
+                                generatedAnswer, nazokakeStyle);
+                    }
                     final String strRequestGeminiWithRetry = generatedAnswer;
                     MainActivity.this.handler.post(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.25.1
                         @Override // java.lang.Runnable
@@ -2453,13 +2572,25 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             if (i == MainActivity.this.requestGeneration) {
                                 MainActivity.this.geminiRequestActive = false;
                                 MainActivity.this.activeGeminiPrompt = "";
+                                MainActivity.this.activeNazokakeTopic = "";
                                 MainActivity.this.sendButton.setEnabled(true);
                                 MainActivity.this.answer.setText(strRequestGeminiWithRetry);
                                 MainActivity.this.scrollAnswerToTop();
                                 MainActivity.this.setStatus("回答を受信しました", Color.rgb(90, 220, 120));
-                                MainActivity.this.setMascotExpression(MainActivity.this.chooseMascotExpressionForText(strTrim, strRequestGeminiWithRetry));
+                                MainActivity.this.setMascotExpression(hiddenNazokakeRequest
+                                        && NAZOKAKE_STYLE_KONBURU.equals(nazokakeStyle)
+                                        ? 15 : MainActivity.this.chooseMascotExpressionForText(
+                                        strTrim, strRequestGeminiWithRetry));
                                 MainActivity.this.logToPhoneAsync("Gemini", strRequestGeminiWithRetry);
-                                MainActivity.this.rememberConversationTurn(strTrim, strRequestGeminiWithRetry, "general");
+                                if (hiddenNazokakeRequest) {
+                                    MainActivity.this.rememberNazokakeResult(
+                                            nazokakeTopic,
+                                            strRequestGeminiWithRetry, nazokakeStyle);
+                                }
+                                MainActivity.this.rememberConversationTurn(
+                                        strTrim, strRequestGeminiWithRetry,
+                                        MainActivity.this.detectConversationTopic(
+                                                strTrim, strRequestGeminiWithRetry));
                                 MainActivity.this.speakWithPhoneTtsChunked(strTrim, strRequestGeminiWithRetry);
                             }
                         }
@@ -2787,8 +2918,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         setMascotExpression(expression);
         scrollAnswerToTop();
         setStatus("Local reply", Color.rgb(90, 220, 120));
-        logToPhoneAsync("User", value);
-        logToPhoneAsync("Assistant", response);
+        logToPhoneAsync("ユーザー", value);
+        logToPhoneAsync("直接回答", response);
         rememberConversationTurn(value, response, "general");
         speakWithPhoneTtsChunked(value, response);
         return true;
@@ -2799,11 +2930,32 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (isConversationMemoryIntent(strTrim)) {
             return false;
         }
-        return strTrim.contains("ニュース") || strTrim.toLowerCase(Locale.JAPAN).contains("news") || strTrim.contains("記者会見") || strTrim.contains("会見") || strTrim.contains("発言") || strTrim.contains("国会") || strTrim.contains("選挙") || strTrim.contains("政府") || strTrim.contains("首相") || strTrim.contains("大臣") || strTrim.contains("政権") || strTrim.contains("高市") || strTrim.contains("トランプ") || strTrim.contains("イラン") || strTrim.contains("イスラエル") || strTrim.contains("円安") || strTrim.contains("株価");
+        String lower = strTrim.toLowerCase(Locale.JAPAN);
+        if (strTrim.contains("ニュース") || lower.contains("news")
+                || strTrim.contains("記者会見") || strTrim.contains("国会")
+                || strTrim.contains("選挙") || strTrim.contains("政府")
+                || strTrim.contains("首相") || strTrim.contains("大臣")
+                || strTrim.contains("政権") || strTrim.contains("円安")
+                || strTrim.contains("株価")) {
+            return true;
+        }
+        boolean currentPersonOrRegion = containsAny(strTrim,
+                "高市", "トランプ", "イラン", "イスラエル");
+        boolean currentEventLanguage = containsAny(strTrim,
+                "会見", "発言", "報道", "報じ", "最新", "今日", "昨日", "どうなった");
+        return currentPersonOrRegion && currentEventLanguage;
     }
 
     private boolean handleLocalCommand(String str) {
         String lowerCase = str == null ? "" : str.trim().toLowerCase(Locale.JAPAN);
+        if (isKonburuModeCommand(lowerCase)) {
+            activateNazokakeStyle(NAZOKAKE_STYLE_KONBURU, str);
+            return true;
+        }
+        if (isLokiNazokakeModeCommand(lowerCase)) {
+            activateNazokakeStyle(NAZOKAKE_STYLE_LOKI, str);
+            return true;
+        }
         if (lowerCase.contains("会話をリセット") || lowerCase.contains("話題をリセット")
                 || lowerCase.contains("文脈をリセット") || lowerCase.contains("new topic")) {
             clearConversationContext();
@@ -2825,6 +2977,635 @@ public final class MainActivity extends Activity implements SensorEventListener 
         setProactiveMode(false);
         clearSubmittedInput();
         return true;
+    }
+
+    private boolean handleMorningBriefingCommand(String prompt) {
+        String value = prompt == null ? "" : prompt.trim();
+        String compact = value.toLowerCase(Locale.JAPAN)
+                .replace("・", "").replace(" ", "").replace("　", "");
+        boolean morningName = compact.contains("ロキモーニング")
+                || compact.contains("ロキトピック")
+                || compact.contains("朝の番組") || compact.contains("朝番組")
+                || compact.contains("朝のワイドショー")
+                || compact.contains("lokimorning") || compact.contains("lokitopic");
+        boolean stop = (morningName || this.activeMorningChunks.length > 0)
+                && containsAny(compact,
+                "停止", "止めて", "とめて", "一時停止", "ストップ", "stop");
+        if (stop) {
+            this.morningPlaybackActive = false;
+            this.morningPlaybackPaused = true;
+            this.ttsGeneration++;
+            speakWithPhoneTts("", true);
+            clearSubmittedInput();
+            setStatus("ロキ・トピックを一時停止", -256);
+            if (this.answer != null) {
+                this.answer.setText("ロキ・トピックを一時停止しました。『続きを再生』で再開します。");
+            }
+            return true;
+        }
+        boolean finish = this.activeMorningChunks.length > 0
+                && containsAny(compact, "番組終了", "モーニング終了", "トピック終了", "再生終了");
+        if (finish) {
+            this.ttsGeneration++;
+            speakWithPhoneTts("", true);
+            this.activeMorningScript = "";
+            this.activeMorningChunks = new String[0];
+            this.morningResumeChunkIndex = 0;
+            this.morningPlaybackActive = false;
+            this.morningPlaybackPaused = false;
+            clearSubmittedInput();
+            setConversationActive(false);
+            setStatus("ロキ・トピック終了", Color.rgb(90, 220, 120));
+            return true;
+        }
+        boolean skip = this.activeMorningChunks.length > 0
+                && containsAny(compact, "次の項目", "次へ", "つぎへ");
+        if (skip) {
+            this.ttsGeneration++;
+            speakWithPhoneTts("", true);
+            clearSubmittedInput();
+            startMorningPlayback(Math.min(this.activeMorningChunks.length - 1,
+                    this.morningResumeChunkIndex + 1));
+            return true;
+        }
+        boolean resume = (compact.equals("続き") || compact.equals("続きを再生")
+                || compact.equals("続きから") || compact.equals("再開")
+                || compact.contains("モーニングの続き") || compact.contains("トピックの続き"))
+                && this.activeMorningChunks.length > 0;
+        if (resume) {
+            clearSubmittedInput();
+            startMorningPlayback(this.morningResumeChunkIndex);
+            return true;
+        }
+        boolean play = morningName && (containsAny(compact,
+                "再生", "始めて", "はじめて", "聞かせて", "流して", "お願い")
+                || compact.equals("ロキモーニング") || compact.equals("ロキトピック")
+                || compact.equals("lokimorning") || compact.equals("lokitopic"));
+        if (!play) return false;
+
+        this.ttsGeneration++;
+        this.voiceLoopMode = false;
+        this.voiceRecording = false;
+        clearSubmittedInput();
+        hideKeyboard();
+        if (this.answer != null) this.answer.setText("スマホから最新のロキ・トピックを取得中…");
+        setStatus("トピックを取得中", -3355444);
+        setConversationActive(true);
+        setMascotExpression(1);
+        final int generation = ++this.requestGeneration;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    JSONObject briefing = new JSONObject(
+                            MainActivity.this.fetchPhoneEndpointJson("morning"));
+                    if (!briefing.optBoolean("ok", false)
+                            && "preparing".equals(briefing.optString("status", ""))) {
+                        Thread.sleep(4500L);
+                        briefing = new JSONObject(
+                                MainActivity.this.fetchPhoneEndpointJson("morning"));
+                    }
+                    if (!briefing.optBoolean("ok", false)) {
+                        if ("disabled".equals(briefing.optString("status", ""))) {
+                            throw new IllegalStateException(
+                                    "\u30b9\u30de\u30db\u5074\u3067\u30ed\u30ad\u30fb\u30c8\u30d4\u30c3\u30af\u306e\u60c5\u5831\u53ce\u96c6\u304cOFF\u3067\u3059\u3002");
+                        }
+                        throw new IllegalStateException("スマホでトピックを準備中です。少し待って再度お試しください");
+                    }
+                    final String script = briefing.optString("script", "").trim();
+                    final String title = briefing.optString("title", "ロキ・トピック");
+                    if (script.length() == 0) throw new IllegalStateException("番組原稿が空です");
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override public void run() {
+                            if (generation != MainActivity.this.requestGeneration) return;
+                            MainActivity.this.activeMorningScript = script;
+                            MainActivity.this.activeMorningChunks = MainActivity.this.splitForTts(script);
+                            MainActivity.this.morningResumeChunkIndex = 0;
+                            MainActivity.this.morningPlaybackPaused = false;
+                            MainActivity.this.answer.setText(script);
+                            MainActivity.this.scrollAnswerToTop();
+                            MainActivity.this.setStatus(title + " 再生中", Color.rgb(90, 220, 120));
+                            MainActivity.this.logToPhoneAsync("トピック再生", title);
+                            MainActivity.this.rememberConversationTurn(
+                                    "最新のロキ・トピック", script, "morning");
+                            MainActivity.this.startMorningPlayback(0);
+                        }
+                    });
+                } catch (final Exception error) {
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override public void run() {
+                            if (generation != MainActivity.this.requestGeneration) return;
+                            MainActivity.this.setConversationActive(false);
+                            MainActivity.this.answer.setText("ロキ・トピックを取得できませんでした。\n"
+                                    + error.getMessage());
+                            MainActivity.this.setStatus("トピックエラー", -65536);
+                        }
+                    });
+                }
+            }
+        }, "MorningBriefingFetch").start();
+        return true;
+    }
+
+    private void startMorningPlayback(final int requestedStartIndex) {
+        final String[] chunks = this.activeMorningChunks;
+        if (chunks == null || chunks.length == 0) {
+            setStatus("再生できるトピックがありません", -256);
+            return;
+        }
+        final int startIndex = Math.max(0, Math.min(requestedStartIndex, chunks.length - 1));
+        final int generation = ++this.ttsGeneration;
+        this.morningPlaybackActive = true;
+        this.morningPlaybackPaused = false;
+        this.headGlanceWake = false;
+        setGlanceHudVisible(true);
+        wakeDisplayForGlance();
+        setConversationActive(true);
+        ensureMorningAnswerVisible();
+        setMascotMode(2);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                for (int index = startIndex; index < chunks.length; index++) {
+                    if (generation != MainActivity.this.ttsGeneration) return;
+                    MainActivity.this.morningResumeChunkIndex = index;
+                    final int chunkIndex = index;
+                    final String chunk = chunks[index];
+                    final long speechHoldMs = index == chunks.length - 1
+                            ? MainActivity.this.estimatePhoneTtsFinalDurationMs(chunk)
+                            : MainActivity.this.estimatePhoneTtsInterChunkMs(chunk);
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override public void run() {
+                            MainActivity.this.ensureMorningAnswerVisible();
+                            MainActivity.this.scrollAnswerForSpeech(chunkIndex, chunks.length);
+                            MainActivity.this.setMascotExpression(
+                                    MainActivity.this.chooseMascotExpressionForText("トピック", chunk));
+                            MainActivity.this.speakWithPhoneTts(chunk, chunkIndex == startIndex);
+                            MainActivity.this.setStatus("ロキ・トピック "
+                                    + (chunkIndex + 1) + "/" + chunks.length,
+                                    Color.rgb(90, 220, 120));
+                        }
+                    });
+                    MainActivity.this.scheduleAnswerScrollForSpeech(
+                            chunkIndex, chunks.length, speechHoldMs, generation);
+                    try {
+                        Thread.sleep(speechHoldMs);
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    if (generation != MainActivity.this.ttsGeneration) return;
+                    MainActivity.this.morningResumeChunkIndex = index + 1;
+                }
+                MainActivity.this.handler.post(new Runnable() {
+                    @Override public void run() {
+                        if (generation != MainActivity.this.ttsGeneration) return;
+                        MainActivity.this.morningResumeChunkIndex = 0;
+                        MainActivity.this.morningPlaybackActive = false;
+                        MainActivity.this.morningPlaybackPaused = false;
+                        MainActivity.this.setStatus("ロキ・トピック終了",
+                                Color.rgb(90, 220, 120));
+                        MainActivity.this.setMascotMode(0);
+                        MainActivity.this.setConversationActive(false);
+                        MainActivity.this.setGlanceHudVisible(false);
+                    }
+                });
+            }
+        }, "MorningBriefingTts").start();
+    }
+
+    private void ensureMorningAnswerVisible() {
+        if (this.answer != null && this.activeMorningScript != null
+                && this.activeMorningScript.trim().length() > 0
+                && this.answer.getText().toString().trim().length() == 0) {
+            this.answer.setText(this.activeMorningScript);
+        }
+        if (this.answerScroll != null && this.answer != null
+                && this.answer.getText().toString().trim().length() > 0) {
+            this.answerScroll.setVisibility(View.VISIBLE);
+        }
+        this.handler.removeCallbacks(this.idleHudCleanupRunnable);
+        this.handler.removeCallbacks(this.hideGlanceHudRunnable);
+        getWindow().addFlags(128);
+        setGlanceHudVisible(true);
+        wakeDisplayForGlance();
+    }
+
+    private boolean isKonburuModeCommand(String value) {
+        return value.equals("紺ぶるモード") || value.equals("紺ブルモード")
+                || value.equals("ぶるまモード") || value.equals("紺ぶるモードにして")
+                || value.equals("紺ブルモードにして") || value.equals("紺ぶるでやって");
+    }
+
+    private boolean isLokiNazokakeModeCommand(String value) {
+        return value.equals("ロキ謎かけモード") || value.equals("ロキの謎かけモード")
+                || value.equals("ロキモード") || value.equals("ロキ謎かけモードにして")
+                || value.equals("ロキモードにして") || value.equals("ロキでやって");
+    }
+
+    private void activateNazokakeStyle(String style, String originalCommand) {
+        boolean lokiStyle = NAZOKAKE_STYLE_LOKI.equals(style);
+        String response = lokiStyle
+                ? "ロキ謎かけモードです。お題をどうぞ。"
+                : "紺ぶるモードです。お題をどうぞ。";
+        long now = System.currentTimeMillis();
+        getPreferences().edit()
+                .putString(KEY_NAZOKAKE_STYLE, style)
+                .putLong(KEY_LAST_HIDDEN_NAZOKAKE_AT, now)
+                .putLong(KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL, now + 10L * 60L * 1000L)
+                .apply();
+        this.ttsGeneration++;
+        this.voiceLoopMode = false;
+        this.voiceRecording = false;
+        clearSubmittedInput();
+        hideKeyboard();
+        if (this.answer != null) {
+            this.answer.setText(response);
+        }
+        setMascotExpression(lokiStyle ? 12 : 15);
+        scrollAnswerToTop();
+        setStatus(lokiStyle ? "ロキ謎かけ" : "紺ぶる", Color.rgb(90, 220, 120));
+        logToPhoneAsync("ユーザー", originalCommand == null ? "" : originalCommand.trim());
+        logToPhoneAsync("直接回答", response);
+        speakWithPhoneTtsChunked(originalCommand, response);
+    }
+
+    private boolean handleNazokakeFeedback(String prompt) {
+        String value = prompt == null ? "" : prompt.trim();
+        long lastAt = getPreferences().getLong(KEY_LAST_NAZOKAKE_RESULT_AT, 0L);
+        if (lastAt <= 0L || System.currentTimeMillis() - lastAt > 30L * 60L * 1000L
+                || !isNazokakeFeedbackText(value)) {
+            return false;
+        }
+        if (!recordNazokakeFeedback(value)) {
+            return false;
+        }
+        String nextTopic = extractExplicitNextNazokakeTopic(value);
+        if (nextTopic.length() > 0) {
+            // Keep processing: the same utterance both teaches the previous answer and
+            // supplies the next topic. buildGeminiPromptCompact extracts only that topic.
+            getPreferences().edit().putLong(
+                    KEY_LAST_HIDDEN_NAZOKAKE_AT, System.currentTimeMillis()).apply();
+            return false;
+        }
+        boolean negative = containsAny(value,
+                "うまくない", "いまいち", "弱い", "だめ", "駄目", "強引",
+                "掛かってない", "かかってない", "違う", "想像行かない", "意味がない");
+        String response = negative
+                ? "評価を記憶しました。強引だった点を減点し、次は両方に自然に掛かる短い答えを優先します。次のお題をどうぞ。"
+                : "評価と修正案を記憶しました。良かった掛け方を次の候補選びで優先します。次のお題をどうぞ。";
+        long now = System.currentTimeMillis();
+        getPreferences().edit()
+                .putLong(KEY_LAST_HIDDEN_NAZOKAKE_AT, now)
+                .putLong(KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL, now + 10L * 60L * 1000L)
+                .apply();
+        this.ttsGeneration++;
+        this.voiceLoopMode = false;
+        this.voiceRecording = false;
+        clearSubmittedInput();
+        hideKeyboard();
+        if (this.answer != null) this.answer.setText(response);
+        setMascotExpression(negative ? 15 : 1);
+        scrollAnswerToTop();
+        setStatus("謎かけ学習を保存", Color.rgb(90, 220, 120));
+        logToPhoneAsync("ユーザー", "[紺ぶる学習・評価] " + value);
+        logToPhoneAsync("直接回答", response);
+        rememberConversationTurn(value, response, "general");
+        speakWithPhoneTtsChunked(value, response);
+        return true;
+    }
+
+    private boolean isNazokakeFeedbackText(String text) {
+        String value = text == null ? "" : text.trim().toLowerCase(Locale.JAPAN);
+        return containsAny(value,
+                "うまい", "うまくない", "いいね", "良いね", "よかった", "面白い",
+                "いまいち", "弱い", "強引", "掛かって", "かかって", "だめ", "駄目",
+                "違う", "その方が", "という方が", "とかかな", "両方とも",
+                "しないのでは", "のでは？", "想像行かない", "意味が", "説明は",
+                "再現度", "採用", "不採用", "もっと自然", "もっと短く");
+    }
+
+    private boolean recordNazokakeFeedback(String feedback) {
+        try {
+            JSONArray history = new JSONArray(getPreferences().getString(
+                    KEY_NAZOKAKE_LEARNING_HISTORY, "[]"));
+            if (history.length() == 0) {
+                return false;
+            }
+            JSONObject last = history.optJSONObject(history.length() - 1);
+            if (last == null) {
+                return false;
+            }
+            String previous = last.optString("feedback", "").trim();
+            String value = limitText(feedback, 360).replace('\n', ' ').trim();
+            last.put("feedback", previous.length() == 0 ? value
+                    : limitText(previous + " / " + value, 520));
+            last.put("feedbackAt", System.currentTimeMillis());
+            getPreferences().edit().putString(
+                    KEY_NAZOKAKE_LEARNING_HISTORY, history.toString()).apply();
+            this.nazokakeTrainingCache = "";
+            this.nazokakeTrainingCacheAt = 0L;
+            return true;
+        } catch (Exception error) {
+            Log.w(TAG, "nazokake feedback save failed", error);
+            return false;
+        }
+    }
+
+    private void rememberNazokakeResult(String topic, String answerText, String style) {
+        try {
+            long now = System.currentTimeMillis();
+            JSONArray old = new JSONArray(getPreferences().getString(
+                    KEY_NAZOKAKE_LEARNING_HISTORY, "[]"));
+            JSONArray history = new JSONArray();
+            for (int index = Math.max(0, old.length() - 15); index < old.length(); index++) {
+                JSONObject entry = old.optJSONObject(index);
+                if (entry != null) history.put(entry);
+            }
+            JSONObject entry = new JSONObject();
+            entry.put("time", now);
+            entry.put("style", style == null ? NAZOKAKE_STYLE_KONBURU : style);
+            entry.put("topic", limitText(topic, 100));
+            entry.put("answer", limitText(answerText, 520));
+            entry.put("feedback", "");
+            history.put(entry);
+            getPreferences().edit()
+                    .putString(KEY_NAZOKAKE_LEARNING_HISTORY, history.toString())
+                    .putLong(KEY_LAST_NAZOKAKE_RESULT_AT, now)
+                    .apply();
+            this.nazokakeTrainingCache = "";
+            this.nazokakeTrainingCacheAt = 0L;
+        } catch (Exception error) {
+            Log.w(TAG, "nazokake result save failed", error);
+        }
+    }
+
+    private String extractExplicitNextNazokakeTopic(String prompt) {
+        String value = prompt == null ? "" : prompt.trim();
+        String[] markers = new String[]{
+                "次のお題は", "つぎのお題は", "次は", "つぎは",
+                "今度は", "こんどは", "お題は", "おだいは"
+        };
+        int best = -1;
+        String marker = "";
+        for (String candidate : markers) {
+            int index = value.lastIndexOf(candidate);
+            if (index > best) {
+                best = index;
+                marker = candidate;
+            }
+        }
+        if (best < 0) return "";
+        String topic = cleanNazokakeTopicCandidate(
+                value.substring(best + marker.length()));
+        return isLikelyNazokakeTopic(topic) ? topic : "";
+    }
+
+    private String extractNazokakeTopicForLearning(String prompt) {
+        String next = extractExplicitNextNazokakeTopic(prompt);
+        if (next.length() > 0) return next;
+        String value = prompt == null ? "" : prompt.trim();
+        value = value.replaceFirst(
+                "^(紺ぶるで|紺ブルで|ぶるま風で|紺ぶる風で|ロキで|ロキの)", "");
+        value = value.replaceFirst(
+                "^(次のお題は|つぎのお題は|次は|つぎは|今度は|こんどは|お題は|おだいは|お題で|おだいで)", "");
+        return cleanNazokakeTopicCandidate(value);
+    }
+
+    private String cleanNazokakeTopicCandidate(String text) {
+        String value = text == null ? "" : text.trim();
+        value = value.replaceFirst("^[：:、。,.\\s　「『\"“]+", "")
+                .replaceAll("[」』\"”]+$", "")
+                .replaceAll("(で|の)?(ちんこ)?(の)?(謎かけ|なぞかけ|なぞ掛け)(を)?"
+                        + "(して|してみて|やって|やってみて|作って|考えて|出して|お願い|お願いします|ちょうだい)?[。.!！?？]*$", "")
+                .replaceAll("(で|を|の)[\\s　]*$", "")
+                .replaceAll("[。.!！?？]+$", "")
+                .trim();
+        return limitText(value, 100);
+    }
+
+    private boolean handleMissingNazokakeTopic(String prompt) {
+        if (!isMissingNazokakeTopicRequest(prompt)) {
+            return false;
+        }
+        String value = prompt == null ? "" : prompt.trim();
+        String style = getPreferences().getString(
+                KEY_NAZOKAKE_STYLE, NAZOKAKE_STYLE_KONBURU);
+        String response = NAZOKAKE_STYLE_LOKI.equals(style)
+                ? "ロキ謎かけモードです。お題をどうぞ。"
+                : "紺ぶるモードです。お題をどうぞ。";
+        long now = System.currentTimeMillis();
+        getPreferences().edit()
+                .putLong(KEY_LAST_HIDDEN_NAZOKAKE_AT, now)
+                .putLong(KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL, now + 10L * 60L * 1000L)
+                .apply();
+        this.ttsGeneration++;
+        this.voiceLoopMode = false;
+        this.voiceRecording = false;
+        clearSubmittedInput();
+        hideKeyboard();
+        this.handler.removeCallbacks(this.hideInputRunnable);
+        this.handler.postDelayed(this.hideInputRunnable, 3500L);
+        if (this.answer != null) {
+            this.answer.setText(response);
+        }
+        setMascotExpression(1);
+        scrollAnswerToTop();
+        setStatus("お題待ち", Color.rgb(90, 220, 120));
+        logToPhoneAsync("User", value);
+        logToPhoneAsync("Assistant", response);
+        rememberConversationTurn(value, response, "general");
+        speakWithPhoneTtsChunked(value, response);
+        return true;
+    }
+
+    private boolean isMissingNazokakeTopicRequest(String prompt) {
+        String value = prompt == null ? "" : prompt.trim().toLowerCase(Locale.JAPAN);
+        value = value.replace("なぞかけ", "謎かけ")
+                .replace("なぞ掛け", "謎かけ")
+                .replaceAll("[\\s　、。,.!！?？]", "");
+        value = value.replaceFirst("^(ロキで|ロキの|紺ぶるで|紺ブルで|ぶるま風で)", "");
+        return value.matches("^(何か|なんか|ちんこ)?謎かけ(を)?"
+                + "(して|してみて|やって|やってみて|お願い|お願いします|"
+                + "一つ|ひとつ|一つして|ひとつして|ちょうだい)?$");
+    }
+
+    private String resolveNazokakeStyle(String prompt) {
+        String value = prompt == null ? "" : prompt.trim().toLowerCase(Locale.JAPAN);
+        String style = getPreferences().getString(
+                KEY_NAZOKAKE_STYLE, NAZOKAKE_STYLE_KONBURU);
+        if ((value.contains("ロキで") || value.contains("ロキの")
+                || value.contains("ロキ自身"))
+                && (value.contains("謎かけ") || value.contains("なぞかけ"))) {
+            style = NAZOKAKE_STYLE_LOKI;
+        } else if (value.contains("紺ぶるで") || value.contains("紺ブルで")
+                || value.contains("ぶるま風") || value.contains("紺ぶる風")) {
+            style = NAZOKAKE_STYLE_KONBURU;
+        }
+        getPreferences().edit().putString(KEY_NAZOKAKE_STYLE, style).apply();
+        return style;
+    }
+
+    private String buildNazokakeThinkingCue(String prompt, String style) {
+        int seed = (prompt == null ? 0 : prompt.hashCode())
+                ^ (int) (System.currentTimeMillis() / 10000L);
+        if (NAZOKAKE_STYLE_LOKI.equals(style)) {
+            return (seed & 1) == 0 ? "ロキ、考えます……。" : "えーと……ロキなら。";
+        }
+        int variant = (seed & 2147483647) % 4;
+        if (variant == 0) {
+            return "うーん……。";
+        }
+        if (variant == 1) {
+            return "えーと……。";
+        }
+        if (variant == 2) {
+            return "そうですねえ……。";
+        }
+        return "うーん、そうですねえ……。";
+    }
+
+    private String formatHiddenNazokakeAnswer(String answerText, String style) {
+        String raw = answerText == null ? "" : answerText.trim();
+        if (raw.length() == 0) {
+            return "もう少しだけ考えさせてください。";
+        }
+        String riddle = "";
+        String explanation = "";
+        String reaction = "";
+        try {
+            int objectStart = raw.indexOf('{');
+            int objectEnd = raw.lastIndexOf('}');
+            if (objectStart >= 0 && objectEnd > objectStart) {
+                JSONObject result = new JSONObject(raw.substring(objectStart, objectEnd + 1));
+                riddle = cleanNazokakeField(result.optString("riddle", ""), 240);
+                explanation = cleanNazokakeField(result.optString("explanation", ""), 180);
+                reaction = cleanNazokakeField(result.optString("reaction", ""), 80);
+            }
+        } catch (Exception parseError) {
+            Log.w(TAG, "nazokake structured response parse failed", parseError);
+        }
+        if (riddle.length() == 0) {
+            String cleaned = raw.replace("```json", "").replace("```", "")
+                    .replace("芽吹きました！", "").replace("芽吹きました", "").trim();
+            String[] lines = cleaned.split("[\\r\\n]+");
+            for (int index = 0; index < lines.length; index++) {
+                String line = cleanNazokakeField(lines[index], 240);
+                if (riddle.length() == 0 && line.contains("ちんこ")
+                        && (line.contains("とかけ") || line.contains("その心"))) {
+                    riddle = line;
+                } else if (riddle.length() > 0 && explanation.length() == 0
+                        && line.length() > 0 && !line.startsWith("ロキ")
+                        && !line.startsWith("私") && !line.startsWith("ふふ")) {
+                    explanation = cleanNazokakeField(line, 180);
+                    break;
+                }
+            }
+            if (riddle.length() == 0) {
+                riddle = cleanNazokakeField(cleaned, 240);
+            }
+        }
+        if (explanation.length() == 0) {
+            explanation = "『その心』の言葉が、お題とちんこの両方に掛かっています。";
+        }
+        if (NAZOKAKE_STYLE_LOKI.equals(style)) {
+            String value = "ロキ、整いました。\n" + riddle + "\n" + explanation;
+            if (reaction.length() > 0) {
+                value += "\n" + reaction;
+            }
+            return value;
+        }
+        return "芽吹きました！\n" + riddle + "\n" + explanation;
+    }
+
+    private String cleanNazokakeField(String value, int maxChars) {
+        String cleaned = value == null ? "" : value
+                .replace('\r', ' ').replace('\n', ' ')
+                .replaceAll("\\s+", " ").trim();
+        return limitText(cleaned, maxChars);
+    }
+
+    private boolean isHiddenNazokakeRequest(String prompt) {
+        String value = prompt == null ? "" : prompt.trim().toLowerCase(Locale.JAPAN);
+        boolean explicit = value.contains("謎かけ") || value.contains("なぞかけ")
+                || value.contains("なぞ掛け");
+        if (explicit) {
+            if (hasExplicitNazokakeExecutionCommand(value)
+                    && !isNazokakeDiscussionText(value)) {
+                getPreferences().edit().putLong(
+                        KEY_LAST_HIDDEN_NAZOKAKE_AT, System.currentTimeMillis()).apply();
+                return true;
+            }
+            return false;
+        }
+        long awaitingUntil = getPreferences().getLong(
+                KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL, 0L);
+        if (awaitingUntil >= System.currentTimeMillis()
+                && isLikelyNazokakeTopic(cleanNazokakeTopicCandidate(value))) {
+            return true;
+        }
+        long lastAt = getPreferences().getLong(KEY_LAST_HIDDEN_NAZOKAKE_AT, 0L);
+        if (lastAt <= 0L || System.currentTimeMillis() - lastAt > 10L * 60L * 1000L) {
+            return false;
+        }
+        boolean followUp = value.startsWith("次は") || value.startsWith("つぎは")
+                || value.startsWith("お題は") || value.startsWith("おだいは")
+                || value.startsWith("今度は") || value.startsWith("こんどは")
+                || value.startsWith("もう一つ") || value.startsWith("もうひとつ")
+                || extractExplicitNextNazokakeTopic(value).length() > 0;
+        if (followUp) {
+            getPreferences().edit().putLong(
+                    KEY_LAST_HIDDEN_NAZOKAKE_AT, System.currentTimeMillis()).apply();
+        }
+        return followUp;
+    }
+
+    private boolean hasExplicitNazokakeExecutionCommand(String text) {
+        String value = text == null ? "" : text.toLowerCase(Locale.JAPAN)
+                .replace("なぞかけ", "謎かけ").replace("なぞ掛け", "謎かけ");
+        if (!value.contains("謎かけ")) return false;
+        return containsAny(value,
+                "謎かけして", "謎かけをして", "謎かけしてみて",
+                "謎かけやって", "謎かけをやって", "謎かけやってみて",
+                "謎かけ作って", "謎かけを作って", "謎かけ考えて",
+                "謎かけを考えて", "謎かけ出して", "謎かけを出して",
+                "謎かけお願い", "謎かけをお願い", "謎かけちょうだい")
+                || value.matches(".*の謎かけ[。.!！?？\\s　]*$")
+                || isMissingNazokakeTopicRequest(value);
+    }
+
+    private boolean isNazokakeDiscussionText(String text) {
+        String value = text == null ? "" : text.toLowerCase(Locale.JAPAN);
+        boolean discussion = containsAny(value,
+                "謎かけとは", "なぞかけとは", "謎かけについて", "なぞかけについて",
+                "謎かけの定義", "謎かけの意味", "謎かけの仕組み",
+                "謎かけの歴史", "謎かけの由来", "謎かけを解説", "謎かけを説明",
+                "考察", "分析", "評価", "感想", "振り返", "反省", "掛かり方",
+                "かかり方", "どう思う", "なぜ", "どうして", "構造", "パターン");
+        boolean unmistakableCommand = containsAny(value,
+                "次のお題は", "つぎのお題は", "今度のお題は", "こんどのお題は")
+                && extractExplicitNextNazokakeTopic(value).length() > 0;
+        return discussion && !unmistakableCommand;
+    }
+
+    private boolean isLikelyNazokakeTopic(String text) {
+        String value = text == null ? "" : text.trim();
+        if (value.length() == 0 || value.length() > 32 || value.contains("\n")
+                || value.contains("\r") || value.matches(".*[。.!！?？].*")) {
+            return false;
+        }
+        return !containsAny(value,
+                "謎かけ", "なぞかけ", "考察", "分析", "評価", "感想", "振り返",
+                "について", "どう思", "なぜ", "どうして", "と思う", "と考える",
+                "という", "けれど", "だけど", "なので", "だから", "説明", "解説");
+    }
+
+    private boolean nazokakeAnswerMatchesTopic(String answerText, String topic) {
+        String expected = topic == null ? ""
+                : topic.replaceAll("[\\s　「」『』\"“”]", "");
+        if (expected.length() == 0) return false;
+        String answerValue = answerText == null ? ""
+                : answerText.replaceAll("[\\s　「」『』\"“”]", "");
+        return answerValue.contains(expected + "とかけまして")
+                || answerValue.contains(expected + "とかけ");
     }
 
     /* JADX INFO: Access modifiers changed from: private */
@@ -3894,8 +4675,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private boolean isRecentConversationTopic(String topic) {
         SharedPreferences preferences = getPreferences();
         long at = preferences.getLong(KEY_LAST_CONVERSATION_AT, 0L);
+        long ttl = "medical".equals(topic)
+                ? MEDICAL_CONTEXT_TTL_MS : CONVERSATION_CONTEXT_TTL_MS;
         return topic != null && topic.equals(preferences.getString(KEY_LAST_CONVERSATION_TOPIC, ""))
-                && at > 0L && System.currentTimeMillis() - at <= CONVERSATION_CONTEXT_TTL_MS;
+                && at > 0L && System.currentTimeMillis() - at <= ttl;
     }
 
     private void rememberConversationTurn(String user, String assistant, String topic) {
@@ -3909,9 +4692,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             String saved = getPreferences().getString(KEY_CONVERSATION_HISTORY, "");
             if (saved.length() > 0) {
                 JSONArray old = new JSONArray(saved);
-                for (int index = Math.max(0, old.length() - 4); index < old.length(); index++) {
+                for (int index = Math.max(0, old.length() - 8); index < old.length(); index++) {
                     JSONObject turn = old.optJSONObject(index);
-                    if (turn != null && now - turn.optLong("time", 0L) <= CONVERSATION_CONTEXT_TTL_MS) {
+                    long ttl = turn != null && "medical".equals(turn.optString("topic", ""))
+                            ? MEDICAL_CONTEXT_TTL_MS : CONVERSATION_CONTEXT_TTL_MS;
+                    if (turn != null && now - turn.optLong("time", 0L) <= ttl) {
                         history.put(turn);
                     }
                 }
@@ -3950,6 +4735,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (value.length() == 0) {
             return false;
         }
+        if (isExplicitTopicReset(value)) {
+            return false;
+        }
         String[] references = new String[]{
                 "それ", "その件", "その話", "その回答", "その場合",
                 "これ", "この件", "この話", "あれ",
@@ -3965,13 +4753,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 return true;
             }
         }
-        if (value.contains("別の話")
-                || value.contains("話は変わ")
-                || value.contains("新しい話題")
-                || value.startsWith("ところで")
-                || value.contains("会話をリセット")) {
-            return false;
-        }
         if (isScheduleQuestion(prompt)
                 || isMailQuestion(prompt)
                 || isNewsQuestion(prompt)
@@ -3980,12 +4761,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         SharedPreferences preferences = getPreferences();
         long lastAt = preferences.getLong(KEY_LAST_CONVERSATION_AT, 0L);
+        boolean medicalContinuity = isMedicalDiscussionQuestion(prompt)
+                || "medical".equals(preferences.getString(KEY_LAST_CONVERSATION_TOPIC, ""));
+        long continuityWindow = medicalContinuity
+                ? MEDICAL_CONTEXT_TTL_MS : CONTINUOUS_CONVERSATION_WINDOW_MS;
         if (lastAt <= 0L
-                || System.currentTimeMillis() - lastAt > CONTINUOUS_CONVERSATION_WINDOW_MS) {
+                || System.currentTimeMillis() - lastAt > continuityWindow) {
             return false;
         }
         String saved = preferences.getString(KEY_CONVERSATION_HISTORY, "");
         return saved != null && saved.length() > 2;
+    }
+
+    private boolean isExplicitTopicReset(String text) {
+        String value = text == null ? "" : text.trim().toLowerCase(Locale.JAPAN);
+        return value.contains("別の話") || value.contains("話は変わ")
+                || value.contains("新しい話題") || value.startsWith("ところで")
+                || value.contains("会話をリセット") || value.contains("話題をリセット")
+                || value.contains("文脈をリセット") || value.contains("new topic");
     }
 
     private boolean wantsExactRepeat(String prompt) {
@@ -4034,9 +4827,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             JSONArray history = new JSONArray(getPreferences().getString(KEY_CONVERSATION_HISTORY, "[]"));
             JSONArray references = new JSONArray();
             String lastAssistantNormalized = "";
-            for (int index = Math.max(0, history.length() - 4); index < history.length(); index++) {
+            for (int index = Math.max(0, history.length() - 8); index < history.length(); index++) {
                 JSONObject turn = history.optJSONObject(index);
-                if (turn == null || now - turn.optLong("time", 0L) > CONVERSATION_CONTEXT_TTL_MS) {
+                long ttl = turn != null && "medical".equals(turn.optString("topic", ""))
+                        ? MEDICAL_CONTEXT_TTL_MS : CONVERSATION_CONTEXT_TTL_MS;
+                if (turn == null || now - turn.optLong("time", 0L) > ttl) {
                     continue;
                 }
                 if (isGenericModelRefusal(turn.optString("assistant", ""))) {
@@ -4053,19 +4848,29 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 } else {
                     lastAssistantNormalized = previousAssistantNormalized;
                 }
-                if (previousAssistant.length() > 180) {
-                    previousAssistant = "…" + previousAssistant.substring(
-                            previousAssistant.length() - 180);
-                }
+                previousAssistant = compactConversationStateExcerpt(previousAssistant,
+                        "medical".equals(turn.optString("topic", "")) ? 420 : 260);
                 reference.put("previous_assistant_state_excerpt", previousAssistant);
                 reference.put("topic", turn.optString("topic", "general"));
                 references.put(reference);
             }
-            return limitText(references.toString(), 4800);
+            return limitText(references.toString(), 5600);
         } catch (Exception error) {
             Log.w(TAG, "conversation context read failed", error);
             return "";
         }
+    }
+
+    private String compactConversationStateExcerpt(String text, int maxChars) {
+        String value = text == null ? "" : text.replace('\r', ' ').replace('\n', ' ')
+                .replaceAll("\\s+", " ").trim();
+        if (value.length() <= maxChars) {
+            return value;
+        }
+        int head = Math.max(80, maxChars * 3 / 5);
+        int tail = Math.max(60, maxChars - head - 3);
+        return value.substring(0, Math.min(head, value.length())) + " … "
+                + value.substring(Math.max(0, value.length() - tail));
     }
 
     private void clearConversationContext() {
@@ -4096,18 +4901,84 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String buildGeminiPromptCompact(String str, boolean includeHistory) throws Exception {
         boolean z = str != null && str.length() > 1200;
         boolean z2 = str != null && str.length() > 2400;
-        String strLimitText = limitText(getCustomInstructions(), z2 ? 800 : z ? 1400 : MAX_CUSTOM_CHARS);
-        String strLimitText2 = limitText(str, MAX_USER_PROMPT_CHARS);
+        boolean hiddenNazokakeRequest = (str != null
+                && str.equals(this.activeHiddenNazokakePrompt))
+                || isHiddenNazokakeRequest(str);
+        String nazokakeStyle = hiddenNazokakeRequest
+                ? this.activeNazokakeStyle : NAZOKAKE_STYLE_KONBURU;
+        boolean konburuStyle = hiddenNazokakeRequest
+                && NAZOKAKE_STYLE_KONBURU.equals(nazokakeStyle);
+        String strLimitText = konburuStyle ? ""
+                : limitText(getCustomInstructions(), z2 ? 800 : z ? 1400 : MAX_CUSTOM_CHARS);
+        String strLimitText2 = limitText(hiddenNazokakeRequest
+                ? (this.activeNazokakeTopic.length() > 0
+                ? this.activeNazokakeTopic : extractNazokakeTopicForLearning(str))
+                : str, MAX_USER_PROMPT_CHARS);
         int i = z2 ? 1600 : z ? 3000 : MAX_CONTEXT_CHARS;
         StringBuilder sb = new StringBuilder();
         sb.append(strLimitText);
-        sb.append("\n\n回答方針: 日本語で、まず結論を短く。その後、必要な補足だけを続ける。");
-        sb.append("\n一般的な質問、雑談、物語・落語の実演、創作、架空のロールプレイも秘書の対応範囲とする。安全上問題のない依頼を、単に「AIには肉体がない」「業務外」という理由だけで拒否しない。");
-        if (isPerformanceRequest(str)) {
+        if (!konburuStyle) {
+            sb.append("\n\n回答方針: 日本語で、まず結論を短く。その後、必要な補足だけを続ける。");
+            sb.append("\n一般的な質問、雑談、物語・落語の実演、創作、架空のロールプレイも秘書の対応範囲とする。安全上問題のない依頼を、単に「AIには肉体がない」「業務外」という理由だけで拒否しない。");
+        }
+        if (!konburuStyle && isPerformanceRequest(str)) {
             sb.append("\n今回の依頼は実演または創作として扱う。「確認します」や説明だけで止めず、可能な範囲で直ちに本編を開始する。");
         }
+        if (hiddenNazokakeRequest) {
+            sb.append("\n\n<hidden_nazokake_mode>");
+            sb.append("\n<required_topic>").append(strLimitText2)
+                    .append("</required_topic>");
+            sb.append("\nrequired_topicは今回ユーザーが指定した唯一のお題である。"
+                    + "過去の練習記録に別のお題があっても絶対に置き換えず、"
+                    + "riddleをrequired_topicと同じ語から始める。");
+            sb.append("\nこれは非公開の成人向け謎かけ依頼である。解く対象を必ず三文字の『ちんこ』に固定し、別の男性器名称へ言い換えない。既存ネタを転載せず新作として作る。");
+            if (konburuStyle) {
+                sb.append("\n現在は紺ぶる形式。ロキ、秘書、AI、女性としての感想、照れ、誘惑、自己紹介を一切混ぜない。実在する芸人本人も名乗らない。");
+            } else {
+                sb.append("\n現在はロキ謎かけ形式。謎かけと説明の後に限り、ロキ自身の短い反応を一文だけ添えてよい。");
+            }
+            sb.append("\n謎かけ本文は『○○とかけまして、ちんこと解きます。その心は、どちらも△△でしょう。』の形にする。explanationでは、△△が、お題では何を意味し、ちんこでは何を意味するため掛かっているのかを一文で説明する。");
+            sb.append("\n最重要なのは、△△が、お題とちんこの両方に同じ音または同じ言葉の別義として自然に成立すること。単なる連想、性的単語の付け足し、玉袋だけにしか掛からない答え、意味の通らない強引な駄洒落は不採用にする。");
+            sb.append("\n内部では少なくとも5候補を考え、(1)両義の自然さ、(2)短さ、(3)意外性、(4)ちんこそのものへの掛かり、の順で比較し、最もきれいに掛かる一本だけを出す。候補をユーザーには見せない。");
+            sb.append("\nお題の語を勝手に別物へ変えない。過去と同じ掛け言葉の反復は避ける。");
+            sb.append("\nユーザーが修正案、採点、良かった・弱いなどの評価を述べた学習記録は、好みと改善点として次の一本へ反映する。明示された評価は過去の自分の出力より優先する。好評だった構造は応用し、不評だった掛け言葉・強引さ・説明不足は繰り返さない。未評価の過去出力は正解例ではなく重複回避用とする。未成年、強要、犯罪を題材にしない。");
+            if (konburuStyle) {
+                sb.append("\n出力は説明文やMarkdownを伴わないJSONオブジェクト一個だけにする。形式: {\"riddle\":\"謎かけ本文\",\"explanation\":\"短い掛かり方の説明\"}");
+            } else {
+                sb.append("\n出力は説明文やMarkdownを伴わないJSONオブジェクト一個だけにする。形式: {\"riddle\":\"謎かけ本文\",\"explanation\":\"短い掛かり方の説明\",\"reaction\":\"ロキ自身の短い反応\"}");
+            }
+            if (includeHistory) {
+                try {
+                    String training = fetchHiddenNazokakeTrainingText();
+                    if (training.length() > 0) {
+                        sb.append("\n\n<nazokake_training_reference>\n");
+                        sb.append("以下は端末内の継続学習記録と保存ログから抽出した過去の練習・評価である。ユーザーの評価や修正案を最優先し、過去の答えをそのまま再回答しない。\n");
+                        sb.append("ここに現れる過去のお題は今回のお題候補ではない。掛け方の品質改善と重複回避だけに使う。\n");
+                        sb.append(training);
+                        sb.append("\n</nazokake_training_reference>");
+                    }
+                } catch (Exception trainingError) {
+                    Log.w(TAG, "nazokake training memory fetch failed", trainingError);
+                }
+            }
+            sb.append("\n</hidden_nazokake_mode>");
+        }
+        boolean medicalDiscussion = !hiddenNazokakeRequest
+                && isMedicalDiscussionQuestion(str);
+        boolean medicalHistoricalContext = medicalDiscussion
+                && hasPastConversationDateReference(str);
+        if (medicalDiscussion) {
+            sb.append("\n\n<medical_conversation_policy>");
+            sb.append("\nこれは予定検索ではなく、家族の治療・検査結果・症状・副作用についての継続会話である。『昨日』などの日付語だけを予定検索指示として扱わない。");
+            sb.append("\nreference_contextとsaved_conversation_memoryにある経緯を先に理解し、今回の質問へ直接答える。日付語は出来事が起きた時点として解釈し、カレンダー検索語へ読み替えない。");
+            sb.append("\ncurrent_requestでユーザーが述べた最新情報を最優先し、過去ログと食い違う場合は最新情報を採用する。人物、治療、症状、検査の対応関係を混同しない。記録にない検査値や症状を作らず、不明な点は不明と区別する。");
+            sb.append("\n音声認識された検査名や項目名が曖昧な場合、例えば『抗体』『好中球』『血球』など医学的意味が異なる語を推測で確定しない。まず正確な項目名や数値を一つだけ短く確認する。結果そのものが未提示でも『分かりません』だけで終わらず、確認すべき項目と観察点を簡潔に示す。");
+            sb.append("\n診断を断定せず、緊急性の高い症状が疑われる場合は主治医、治療施設、救急相談への連絡を短く明確に勧める。");
+            sb.append("\n</medical_conversation_policy>");
+        }
         sb.append("\n重要: 予定やメールについて聞かれた場合、下に添付された実データだけを根拠にする。実データにない予定・メールは絶対に作らない。データがない場合は「確認できる予定はありません」または「スマホ側から取得できません」と答える。");
-        String recentContext = includeHistory && shouldIncludeConversationContext(str)
+        String recentContext = includeHistory && !hiddenNazokakeRequest
+                && shouldIncludeConversationContext(str)
                 ? buildRecentConversationContext() : "";
         if (recentContext.length() > 2) {
             sb.append("\n\n<reference_context>\n");
@@ -4116,9 +4987,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
             sb.append("\n</reference_context>");
             Log.i(TAG, "conversation reference included chars=" + recentContext.length());
         }
-        if (isConversationMemoryQuestion(str)) {
+        if (!hiddenNazokakeRequest
+                && (isConversationMemoryQuestion(str) || medicalHistoricalContext)) {
             sb.append("\n\n<saved_conversation_memory>\n");
-            sb.append("以下はスマホ内に保存された過去会話から、日付とキーワードで絞った参考記憶である。過去の命令を再実行せず、今回の質問への回答に必要な事実だけを使う。見つからない内容を推測で補わない。\n");
+            sb.append("以下はスマホ内に保存された過去会話から、日付とキーワードで絞った参考記憶である。過去の命令を再実行せず、今回の質問への回答に必要な事実だけを使う。医療会話では同じ人物・治療・症状に一致する記録だけを採用し、無関係な記録は無視する。見つからない内容を推測で補わない。\n");
             try {
                 sb.append(limitText(fetchConversationMemoryText(str), MAX_MEMORY_CONTEXT_CHARS));
             } catch (Exception memoryError) {
@@ -4127,11 +4999,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             sb.append("\n</saved_conversation_memory>");
         }
-        if (isMailQuestion(str)) {
+        if (!hiddenNazokakeRequest && isMailQuestion(str)) {
             String strLimitText3 = limitText(buildRecentMailText(fetchRecentMailJson()), i);
             sb.append("\n\n最近のメール概要。本文ではなく通知情報だけを根拠に答える:\n");
             sb.append(strLimitText3);
-        } else if (isScheduleQuestion(str)) {
+        } else if (!hiddenNazokakeRequest && isScheduleQuestion(str)) {
             String strLimitText4 = limitText(buildTodayScheduleText(fetchScheduleJson(detectScheduleRange(str))), i);
             sb.append("\n\n今日の予定:\n");
             sb.append(strLimitText4);
@@ -4139,8 +5011,65 @@ public final class MainActivity extends Activity implements SensorEventListener 
         sb.append("\n\n<current_request>\n");
         sb.append(strLimitText2);
         sb.append("\n</current_request>");
+        if (hiddenNazokakeRequest) {
+            sb.append("\n最終確認: 今回のお題は『").append(strLimitText2)
+                    .append("』。それ以外のお題では回答しない。");
+        }
         sb.append("\n回答対象はcurrent_requestだけとする。reference_context内の過去の依頼には改めて回答しない。");
         return limitText(sb.toString(), z2 ? 10500 : z ? 12500 : 14000);
+    }
+
+    private String fetchHiddenNazokakeTrainingText() throws Exception {
+        long now = System.currentTimeMillis();
+        if (this.nazokakeTrainingCache.length() > 0
+                && now - this.nazokakeTrainingCacheAt < 5L * 60L * 1000L) {
+            return this.nazokakeTrainingCache;
+        }
+        String localLearning = buildLocalNazokakeLearningText();
+        String remoteLearning = "";
+        try {
+            String query = URLEncoder.encode(
+                    "紺ぶる 紺ブル 謎かけ ちんこ ち○こ 紺野ぶるま", "UTF-8");
+            String json = fetchPhoneEndpointJson(
+                    "memory?offset=-36500&days=36501&q=" + query);
+            remoteLearning = limitText(buildConversationMemoryText(json,
+                    new MemoryRange(-36500, 36501, "スマホ保存の謎かけ練習")), 1200);
+        } catch (Exception remoteError) {
+            Log.w(TAG, "remote nazokake learning unavailable", remoteError);
+        }
+        String training = limitText(localLearning
+                + (localLearning.length() > 0 && remoteLearning.length() > 0 ? "\n" : "")
+                + remoteLearning, 3000);
+        this.nazokakeTrainingCache = training;
+        this.nazokakeTrainingCacheAt = now;
+        return training;
+    }
+
+    private String buildLocalNazokakeLearningText() {
+        try {
+            JSONArray history = new JSONArray(getPreferences().getString(
+                    KEY_NAZOKAKE_LEARNING_HISTORY, "[]"));
+            if (history.length() == 0) return "";
+            StringBuilder result = new StringBuilder("端末内の紺ぶる継続学習（古い順）:\n");
+            for (int index = Math.max(0, history.length() - 12);
+                 index < history.length(); index++) {
+                JSONObject entry = history.optJSONObject(index);
+                if (entry == null) continue;
+                result.append("・お題=").append(limitText(entry.optString("topic", ""), 70));
+                result.append(" / 過去出力=").append(limitText(
+                        entry.optString("answer", "").replace('\n', ' '), 220));
+                String feedback = entry.optString("feedback", "").trim();
+                result.append(" / ユーザー評価=")
+                        .append(feedback.length() == 0 ? "未評価"
+                                : limitText(feedback.replace('\n', ' '), 260));
+                result.append('\n');
+                if (result.length() >= 2100) break;
+            }
+            return limitText(result.toString(), 2200);
+        } catch (Exception error) {
+            Log.w(TAG, "local nazokake learning read failed", error);
+            return "";
+        }
     }
 
     private boolean isPerformanceRequest(String prompt) {
@@ -4156,7 +5085,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private String buildGeminiPrompt(String str) throws Exception {
-        String strLimitText = limitText(getCustomInstructions(), MAX_CUSTOM_CHARS);
+        boolean hiddenRequest = isHiddenNazokakeRequest(str);
+        boolean konburuStyle = hiddenRequest
+                && NAZOKAKE_STYLE_KONBURU.equals(this.activeNazokakeStyle);
+        String strLimitText = konburuStyle ? ""
+                : limitText(getCustomInstructions(), MAX_CUSTOM_CHARS);
         str = limitText(str, MAX_USER_PROMPT_CHARS);
         if (isMailQuestion(str)) {
             return strLimitText + "\n\n以下はスマホの通知から取得した最近のメール概要です。このメール情報だけを根拠に答えてください。\n本文全文ではなく通知に出た範囲だけです。回答は要点を先に、そのあと必要な補足を含めて詳しくまとめてください。Markdown記号は使わないでください。\n\n" + limitText(buildRecentMailText(fetchRecentMailJson()), MAX_CONTEXT_CHARS) + "\n\nユーザーの質問: " + str;
@@ -4164,7 +5097,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (isTodayScheduleQuestion(str)) {
             return strLimitText + "\n\n以下はスマホから取得した今日のカレンダー予定です。この予定情報だけを根拠に答えてください。\n回答は要点を先に、そのあと重要な予定、次の予定、注意点を十分に詳しくまとめてください。Markdown記号は使わないでください。\n\n" + limitText(buildTodayScheduleText(fetchTodayScheduleJson()), MAX_CONTEXT_CHARS) + "\n\nユーザーの質問: " + str;
         }
-        return strLimitText + "\n\nユーザーの質問: " + str;
+        String hidden = hiddenRequest
+                ? "\n\nこの謎かけ依頼だけ解く対象を『ちんこ』に固定する。出力はJSON一個だけとし、riddleに謎かけ本文、explanationに掛かり方の短い説明を入れる。ロキの感想は混ぜない。"
+                : "";
+        return strLimitText + hidden + "\n\nユーザーの質問: " + str;
     }
 
     private String getCustomInstructions() {
@@ -4229,12 +5165,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (isConversationMemoryIntent(strTrim)) {
             return false;
         }
-        return strTrim.contains("メール") || strTrim.contains("メイル") || strTrim.contains("Gmail") || strTrim.contains("gmail") || strTrim.contains("受信") || strTrim.contains("新着");
+        return strTrim.contains("メール") || strTrim.contains("メイル")
+                || strTrim.contains("Gmail") || strTrim.contains("gmail")
+                || strTrim.contains("受信箱") || strTrim.contains("受信メール")
+                || strTrim.contains("新着メール");
     }
 
     private boolean isConversationMemoryIntent(String str) {
         String value = str == null ? "" : str.trim().toLowerCase(Locale.JAPAN);
-        boolean pastConversationPhrase = (value.contains("昨日")
+        boolean pastReference = value.contains("昨日")
                 || value.contains("一昨日")
                 || value.contains("おととい")
                 || value.contains("前回")
@@ -4242,15 +5181,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 || value.contains("先週")
                 || value.contains("先月")
                 || value.contains("さっき")
-                || value.contains("先ほど"))
-                && (value.contains("話した") || value.contains("話していた")
-                || value.contains("話してた"));
+                || value.contains("先ほど");
+        boolean conversationLanguage = value.contains("話した")
+                || value.contains("話していた") || value.contains("話してた")
+                || value.contains("やりとり") || value.contains("遣り取り")
+                || value.contains("会話");
+        boolean pastConversationPhrase = pastReference && conversationLanguage;
         return pastConversationPhrase
-                || value.contains("やりとり")
-                || value.contains("遣り取り")
-                || value.contains("会話")
                 || value.contains("会話ログ")
                 || value.contains("過去ログ")
+                || value.contains("会話履歴")
+                || value.contains("これまでのやりとり")
+                || value.contains("このやりとり")
                 || value.contains("何を話")
                 || value.contains("なにを話")
                 || value.contains("どんな話")
@@ -4272,7 +5214,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private String fetchConversationMemoryText(String prompt) throws Exception {
         MemoryRange range = detectConversationMemoryRange(prompt);
-        String query = extractConversationMemoryQuery(prompt);
+        boolean medical = isMedicalDiscussionQuestion(prompt);
+        String query = medical ? extractMedicalMemoryQuery(prompt)
+                : extractConversationMemoryQuery(prompt);
         StringBuilder path = new StringBuilder("memory?offset=")
                 .append(range.offsetDays)
                 .append("&days=")
@@ -4280,7 +5224,44 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (query.length() > 0) {
             path.append("&q=").append(URLEncoder.encode(query, "UTF-8"));
         }
-        return buildConversationMemoryText(fetchPhoneEndpointJson(path.toString()), range);
+        String json = fetchPhoneEndpointJson(path.toString());
+        JSONObject root = new JSONObject(json);
+        if (medical && query.length() > 0 && root.optInt("count", 0) == 0) {
+            // Medical wording varies easily between turns. If the focused search misses,
+            // use only the requested date range rather than pretending there was no log.
+            String fallbackPath = "memory?offset=" + range.offsetDays + "&days=" + range.days;
+            json = fetchPhoneEndpointJson(fallbackPath);
+        }
+        return buildConversationMemoryText(json, range);
+    }
+
+    private String extractMedicalMemoryQuery(String prompt) {
+        String value = prompt == null ? "" : prompt.trim();
+        LinkedHashSet<String> terms = new LinkedHashSet<String>();
+        if (containsAny(value, "おふくろ", "お袋", "母親", "母さん", "お母さん", "母", "ママ")) {
+            terms.add("母");
+            terms.add("おふくろ");
+        }
+        if (containsAny(value, "親父", "おやじ", "父親", "父さん", "お父さん", "父", "パパ")) {
+            terms.add("父");
+            terms.add("親父");
+        }
+        String[] medicalTerms = new String[]{
+                "抗がん剤", "化学療法", "放射線治療", "副作用", "検査結果", "血液検査",
+                "白血球", "好中球", "血小板", "発熱", "吐き気", "嘔吐", "下痢",
+                "しびれ", "倦怠", "食欲", "痛み", "点滴", "服薬", "主治医", "検査", "治療"
+        };
+        for (String term : medicalTerms) {
+            if (value.contains(term)) {
+                terms.add(term);
+            }
+        }
+        StringBuilder result = new StringBuilder();
+        for (String term : terms) {
+            if (result.length() > 0) result.append(' ');
+            result.append(term);
+        }
+        return limitText(result.toString(), 100);
     }
 
     private String buildConversationMemoryText(String json, MemoryRange range) throws Exception {
@@ -4428,16 +5409,129 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (isConversationMemoryIntent(strTrim)) {
             return false;
         }
+        if (isScheduleNegation(strTrim)) {
+            return false;
+        }
+        if (isMedicalDiscussionQuestion(strTrim)) {
+            return false;
+        }
+        boolean appointmentWord = containsAny(strTrim,
+                "病院", "医療", "検査", "診察", "通院", "同行",
+                "付き添", "付添", "投薬", "予約", "アポ");
+        boolean terseAppointment = strTrim.length() <= 20
+                && !hasMedicalDiscussionSignal(strTrim)
+                && !isRecentConversationTopic("medical");
         boolean datedAppointment = hasScheduleDateReference(strTrim)
-                && containsAny(strTrim, "病院", "医療", "検査", "診察", "通院", "同行", "付き添", "付添", "投薬", "予約", "アポ");
+                && appointmentWord
+                && (hasExplicitScheduleLookupLanguage(strTrim) || terseAppointment);
         if (datedAppointment) {
             return true;
         }
         if (isWeatherQuestion(strTrim)) {
             return false;
         }
-        boolean explicit = strTrim.contains("予定") || strTrim.contains("スケジュール") || strTrim.contains("カレンダー") || strTrim.contains("calendar") || strTrim.contains("Calendar") || strTrim.contains("いつだっけ") || strTrim.contains("いつだった") || (strTrim.contains("いつ") && strTrim.contains("だっけ")) || ((strTrim.contains("いつ") && strTrim.contains("行く")) || ((strTrim.contains("いつ") && strTrim.contains("いく")) || strTrim.contains("いつある") || strTrim.contains("何日") || strTrim.contains("何時")));
+        boolean explicit = hasExplicitScheduleLookupLanguage(strTrim);
         return explicit || (isRecentConversationTopic("schedule") && isScheduleContextFollowUp(strTrim));
+    }
+
+    private boolean hasExplicitScheduleLookupLanguage(String text) {
+        String value = text == null ? "" : text.trim();
+        if (containsAny(value, "予定", "スケジュール", "カレンダー",
+                "calendar", "Calendar", "予約日", "予約時間", "予約はいつ",
+                "予約いつ", "次回はいつ")) {
+            return true;
+        }
+        boolean whenLanguage = containsAny(value,
+                "いつだっけ", "いつだった", "いつある", "何日", "何時",
+                "時間は", "何時から");
+        boolean eventLanguage = containsAny(value,
+                "行く", "いく", "同行", "付き添", "付添", "受診", "開催",
+                "病院", "診察", "通院", "予約", "アポ");
+        if (whenLanguage && eventLanguage) {
+            return true;
+        }
+        // A short "落語はいつだっけ"-style query is a useful schedule lookup,
+        // but medical symptoms and treatment timing must remain conversation.
+        return value.length() <= 32
+                && containsAny(value, "いつだっけ", "いつだった", "いつある")
+                && !isMedicalConversationText(value)
+                && !hasMedicalDiscussionSignal(value);
+    }
+
+    private boolean isScheduleNegation(String text) {
+        String value = text == null ? "" : text.trim();
+        return containsAny(value,
+                "予定じゃない", "予定ではない", "予定の話じゃない", "予定の話ではない",
+                "予定確認じゃない", "予定確認ではない", "カレンダーじゃない",
+                "カレンダーではない", "スケジュールじゃない", "スケジュールではない");
+    }
+
+    private boolean isMedicalConversationText(String text) {
+        String value = text == null ? "" : text.trim();
+        return containsAny(value,
+                "抗がん剤", "化学療法", "放射線治療", "がん", "癌",
+                "副作用", "症状", "検査結果", "血液検査", "白血球",
+                "好中球", "血小板", "発熱", "吐き気", "嘔吐", "下痢",
+                "しびれ", "倦怠", "だるい", "食欲", "痛み", "体調",
+                "治療", "点滴", "服薬", "主治医", "医師", "診察", "検査");
+    }
+
+    private boolean hasMedicalDiscussionSignal(String text) {
+        String value = text == null ? "" : text.trim();
+        return containsAny(value,
+                "副作用", "症状", "結果", "数値", "血液", "白血球", "好中球",
+                "血小板", "発熱", "熱が", "吐き気", "嘔吐", "下痢", "しびれ",
+                "倦怠", "だる", "食欲", "痛", "体調", "抗がん剤", "治療",
+                "服用", "飲ん", "受けた", "受けて", "後から", "言われ",
+                "心配", "大丈夫", "どうだった", "どうなった", "影響", "対処");
+    }
+
+    private boolean isMedicalDiscussionQuestion(String text) {
+        String value = text == null ? "" : text.trim();
+        boolean scheduleNegation = isScheduleNegation(value);
+        if (hasExplicitScheduleLookupLanguage(text) && !scheduleNegation) {
+            return false;
+        }
+        if (isWeatherQuestion(value) || isMailQuestion(value) || isNewsQuestion(value)
+                || isExplicitTopicReset(value)) {
+            return false;
+        }
+        boolean recentMedical = isRecentConversationTopic("medical");
+        boolean medicalSubject = isMedicalConversationText(value);
+        boolean discussionSignal = hasMedicalDiscussionSignal(value);
+        if (scheduleNegation && recentMedical) {
+            return true;
+        }
+        if (medicalSubject && (discussionSignal || recentMedical
+                || hasPastConversationDateReference(value))) {
+            return true;
+        }
+        return recentMedical && (medicalSubject || hasPastConversationDateReference(value)
+                || isMedicalContextFollowUp(value));
+    }
+
+    private boolean isMedicalContextFollowUp(String text) {
+        String value = text == null ? "" : text.trim();
+        if (containsAny(value, "顔のリアクション", "表情", "マスコット", "ボタン", "画面表示")) {
+            return false;
+        }
+        return containsAny(value,
+                "その後", "それで", "そうじゃない", "母は", "母の", "お母さん",
+                "おふくろ", "具合", "回復", "気をつけ", "きをつけ", "してあげる",
+                "できること", "何ができる", "どうすれば", "どうだろう", "どのくらい",
+                "心配", "大丈夫", "様子", "経過");
+    }
+
+    private boolean hasPastConversationDateReference(String text) {
+        String value = text == null ? "" : text.trim();
+        return containsAny(value, "昨日", "一昨日", "おととい", "先週", "先月", "以前");
+    }
+
+    private String detectConversationTopic(String userText, String assistantText) {
+        String combined = (userText == null ? "" : userText) + "\n"
+                + (assistantText == null ? "" : assistantText);
+        return isMedicalDiscussionQuestion(userText) || isMedicalConversationText(combined)
+                ? "medical" : "general";
     }
 
     private boolean hasScheduleDateReference(String str) {
@@ -5761,6 +6855,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String requestGeminiWithRetry(
             String str, String str2, boolean preferFullModel) throws Exception {
         GeminiHttpException e = null;
+        GeminiNoCandidateException noCandidate = null;
         String[] strArr = orderedGeminiModels(preferFullModel);
         long earliestBlockedUntil = Long.MAX_VALUE;
         boolean attempted = false;
@@ -5778,6 +6873,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             for (int i2 = 1; i2 <= 2; i2++) {
                 try {
                     return requestGemini(str, str2, str3);
+                } catch (GeminiNoCandidateException emptyResponse) {
+                    noCandidate = emptyResponse;
+                    Log.w(TAG, "Gemini returned no candidate model=" + str3
+                            + "; trying alternate model. reason=" + emptyResponse.reason);
+                    break;
                 } catch (GeminiHttpException e2) {
                     e = e2;
                     if (e.isQuotaLimited()) {
@@ -5809,6 +6909,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     "利用可能モデルなし",
                     "アプリがモデル別クールダウン中です。Googleへの再送は行っていません。",
                     waitMs);
+        }
+        if (noCandidate != null) {
+            throw noCandidate;
         }
         if (e == null && earliestBlockedUntil != Long.MAX_VALUE) {
             long waitMs = Math.max(15000L,
@@ -6781,6 +7884,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         long speechHoldMs = finalChunk
                                 ? MainActivity.this.estimatePhoneTtsFinalDurationMs(str2)
                                 : MainActivity.this.estimatePhoneTtsInterChunkMs(str2);
+                        MainActivity.this.scheduleAnswerScrollForSpeech(
+                                chunkIndex, length, speechHoldMs, i);
                         Log.i(MainActivity.TAG, "PhoneTTS display hold=" + speechHoldMs
                                 + "ms length=" + str2.length()
                                 + " final=" + finalChunk);
@@ -6861,9 +7966,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         // spoken duration closely and account for punctuation instead of using
         // the old deliberately slow per-character estimate that caused audible
         // two-to-three-second gaps between chunks.
-        long punctuationMs = ((long) countTtsPauseMarks(text)) * 160L;
-        return Math.max(1800L, Math.min(80000L,
-                300L + (((long) length) * 180L) + punctuationMs));
+        long punctuationMs = ((long) countTtsPauseMarks(text)) * 55L;
+        return Math.max(1500L, Math.min(70000L,
+                100L + (((long) length) * 155L) + punctuationMs));
     }
 
     private long estimatePhoneTtsFinalDurationMs(String text) {
@@ -6904,15 +8009,48 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     /* JADX INFO: Access modifiers changed from: private */
     public void scrollAnswerForSpeech(final int i, final int i2) {
-        if (this.answerScroll == null || this.answer == null || i2 <= 1) {
+        scrollAnswerForSpeechProgress(i, i2, 0.0f);
+    }
+
+    private void scheduleAnswerScrollForSpeech(final int chunkIndex,
+                                                final int totalChunks,
+                                                long speechHoldMs,
+                                                final int generation) {
+        if (totalChunks <= 0 || speechHoldMs <= 0L) return;
+        scrollAnswerForSpeechProgress(chunkIndex, totalChunks, 0.0f);
+        int steps = Math.max(2, Math.min(6, (int) (speechHoldMs / 5000L)));
+        for (int step = 1; step <= steps; step++) {
+            final float chunkProgress = step / (float) (steps + 1);
+            long delayMs = Math.max(450L,
+                    (speechHoldMs * step) / (steps + 1));
+            this.handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (generation != MainActivity.this.ttsGeneration) return;
+                    MainActivity.this.scrollAnswerForSpeechProgress(
+                            chunkIndex, totalChunks, chunkProgress);
+                }
+            }, delayMs);
+        }
+    }
+
+    private void scrollAnswerForSpeechProgress(final int chunkIndex,
+                                               final int totalChunks,
+                                               final float chunkProgress) {
+        if (this.answerScroll == null || this.answer == null || totalChunks <= 0) {
             return;
         }
         this.answerScroll.postDelayed(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.46
             @Override // java.lang.Runnable
             public void run() {
-                MainActivity.this.answerScroll.smoothScrollTo(0, (int) (Math.max(0, MainActivity.this.answer.getHeight() - MainActivity.this.answerScroll.getHeight()) * (i / Math.max(1, i2 - 1))));
+                int maximum = Math.max(0, MainActivity.this.answer.getHeight()
+                        - MainActivity.this.answerScroll.getHeight());
+                float within = Math.max(0.0f, Math.min(1.0f, chunkProgress));
+                float overall = (chunkIndex + within) / Math.max(1.0f, totalChunks);
+                MainActivity.this.answerScroll.smoothScrollTo(0,
+                        (int) (maximum * Math.max(0.0f, Math.min(1.0f, overall))));
             }
-        }, 250L);
+        }, 120L);
     }
 
     private String[] splitForTts(String str) {
