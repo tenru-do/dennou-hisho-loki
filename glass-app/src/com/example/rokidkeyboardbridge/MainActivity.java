@@ -208,6 +208,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile long ambientPauseUntil;
     private volatile String lastAmbientTranscript = "";
     private volatile long lastAmbientTranscriptAt;
+    private volatile long lastAmbientRelayId;
     private final LinkedHashSet<String> ambientSeenTerms = new LinkedHashSet<String>();
     private final Object ambientQueueLock = new Object();
     private final ArrayList<AmbientAudioChunk> ambientAudioQueue = new ArrayList<AmbientAudioChunk>();
@@ -4661,7 +4662,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             setConversationActive(false);
             return;
         }
-        if (checkSelfPermission("android.permission.RECORD_AUDIO") != 0) {
+        if (ambientUsesMicrophone()
+                && checkSelfPermission("android.permission.RECORD_AUDIO") != 0) {
             requestPermissions(new String[]{"android.permission.RECORD_AUDIO"}, 20);
             setStatus("AMBIENTにはマイク権限が必要です", -256);
             return;
@@ -4671,79 +4673,30 @@ public final class MainActivity extends Activity implements SensorEventListener 
             setStatus("AMBIENTにはGemini APIキーが必要です", -256);
             return;
         }
-        AudioDeviceInfo directA2dpInput = ambientUsesPlayback()
-                ? findAmbientA2dpInput() : null;
-        if (ambientUsesPlayback() && directA2dpInput == null
-                && this.mediaProjection == null) {
-            if (this.pendingAmbientStart) {
-                setStatus("Bluetooth再生音の取得許可を待っています", -256);
-                return;
-            }
-            if (this.mediaProjectionManager == null) {
-                setStatus("この端末ではBluetooth再生音を取得できません", -256);
-                return;
-            }
-            Intent projectionIntent = this.mediaProjectionManager.createScreenCaptureIntent();
-            if (projectionIntent.resolveActivity(getPackageManager()) == null) {
-                Log.w(TAG, "Rokid MediaProjection permission activity is unavailable");
-                if (this.answer != null) {
-                    this.answer.setText("Bluetooth音声入力が見つかりません。\nスマホなどの再生機器をグラスへBluetooth接続してから、もう一度AMBを選んでください。");
-                }
-                setConversationActive(true);
-                this.handler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!MainActivity.this.ambientMode) {
-                            if (MainActivity.this.answer != null
-                                    && MainActivity.this.answer.getText() != null
-                                    && MainActivity.this.answer.getText().toString()
-                                    .startsWith("Bluetooth音声入力")) {
-                                MainActivity.this.answer.setText("");
-                            }
-                            MainActivity.this.setConversationActive(false);
-                        }
-                    }
-                }, 6000L);
-                setStatus("Bluetooth音声入力が未接続です", -256);
-                return;
-            }
-            this.pendingAmbientStart = true;
-            updateAmbientButtonLabel();
-            if (this.answer != null) {
-                this.answer.setText("AMBIENTを開始するには、次の画面で再生音の取得を許可してください。\n選択中："
-                        + ambientInputModeLabel());
-            }
-            setConversationActive(true);
-            setStatus("Bluetooth再生音の取得を許可してください", -256);
-            try {
-                startActivityForResult(projectionIntent, REQUEST_AMBIENT_PLAYBACK_CAPTURE);
-            } catch (Exception error) {
-                this.pendingAmbientStart = false;
-                updateAmbientButtonLabel();
-                setConversationActive(false);
-                Log.w(TAG, "cannot request ambient playback capture", error);
-                setStatus("Bluetooth再生音の取得画面を開けません", -256);
-            }
-            return;
-        }
-        if (!ambientUsesPlayback() && this.mediaProjection != null) {
-            releaseAmbientMediaProjection();
-        }
+        // Rokid OS exposes the Bluetooth A2DP route to applications as a
+        // silenced AudioRecord. Playback audio is therefore captured before
+        // Bluetooth transmission by the separate Loki Audio Relay running on
+        // the actual source device (Galaxy or tablet), then polled via the
+        // existing authenticated phone bridge.
+        releaseAmbientMediaProjection();
         this.ambientGeneration++;
         this.ambientMode = true;
         this.ambientBackoffUntil = 0L;
         this.ambientStartupGraceUntil = System.currentTimeMillis() + 5500L;
         this.lastAmbientTranscript = "";
         this.lastAmbientTranscriptAt = 0L;
+        this.lastAmbientRelayId = 0L;
         clearAmbientAudioQueue();
         Log.i(TAG, "ambient started mode=" + ambientInputModeLabel()
-                + " directA2dp=" + (directA2dpInput != null));
+                + " playbackRelay=" + ambientUsesPlayback());
         updateAmbientButtonLabel();
         this.handler.removeCallbacks(this.infoUpdater);
         this.handler.post(this.infoUpdater);
         if (this.answer != null) {
             this.answer.setText("AMBIENT ON：" + ambientInputModeLabel()
-                    + "\n録音・全文ログは保存せず、重要語の説明だけを無音で表示します。");
+                    + (ambientUsesPlayback()
+                    ? "\n音源端末のロキ Audio RelayをONにしてください。"
+                    : "\n録音・全文ログは保存せず、重要語の説明だけを無音で表示します。"));
         }
         setStatus("AMBIENT " + ambientInputModeLabel() + " ON",
                 Color.rgb(90, 220, 120));
@@ -4761,9 +4714,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.ambientPlaybackThread = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    MainActivity.this.runAmbientCaptureLoop(generation, true);
+                    MainActivity.this.runAmbientPlaybackRelayLoop(generation);
                 }
-            }, "AmbientBluetoothCapture");
+            }, "AmbientBluetoothRelay");
             this.ambientPlaybackThread.start();
         } else {
             this.ambientPlaybackThread = null;
@@ -4822,6 +4775,47 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
+    private void runAmbientPlaybackRelayLoop(int generation) {
+        long lastInactiveStatusAt = 0L;
+        while (this.ambientMode && generation == this.ambientGeneration) {
+            try {
+                if (!isNetworkReady()) {
+                    Thread.sleep(2500L);
+                    continue;
+                }
+                JSONObject json = new JSONObject(fetchPhoneEndpointJson("ambient_playback"));
+                boolean active = json.optBoolean("active", false);
+                long id = json.optLong("id", 0L);
+                String transcript = json.optString("transcript", "").trim();
+                String source = json.optString("source", "Bluetooth").trim();
+                if (id > 0L && id != this.lastAmbientRelayId && transcript.length() > 0) {
+                    this.lastAmbientRelayId = id;
+                    enqueueAmbientAudio(new AmbientAudioChunk(transcript,
+                            source.length() == 0 ? "Bluetooth" : source,
+                            json.optLong("at", System.currentTimeMillis())));
+                    try {
+                        fetchPhoneEndpointJson("ack_ambient_playback?id=" + id);
+                    } catch (Exception ackError) {
+                        Log.w(TAG, "ambient relay ack failed id=" + id, ackError);
+                    }
+                } else if (!active && System.currentTimeMillis() - lastInactiveStatusAt > 10000L) {
+                    postAmbientStatus("AMBIENT: 音源端末のRelay待ち", -256);
+                    lastInactiveStatusAt = System.currentTimeMillis();
+                }
+                Thread.sleep(active ? 900L : 2200L);
+            } catch (InterruptedException interrupted) {
+                if (!this.ambientMode || generation != this.ambientGeneration) break;
+            } catch (Exception error) {
+                Log.w(TAG, "ambient playback relay poll failed", error);
+                try {
+                    Thread.sleep(3500L);
+                } catch (InterruptedException interrupted) {
+                    if (!this.ambientMode || generation != this.ambientGeneration) break;
+                }
+            }
+        }
+    }
+
     private void runAmbientLoop(int generation) {
         while (this.ambientMode && generation == this.ambientGeneration) {
             try {
@@ -4846,13 +4840,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     continue;
                 }
                 AmbientAudioChunk chunk = takeAmbientAudio(generation);
-                if (chunk == null || chunk.pcm == null
+                if (chunk == null || (chunk.pcm == null && chunk.transcript.length() == 0)
                         || System.currentTimeMillis() - chunk.capturedAt > AMBIENT_QUEUE_STALE_MS
                         || shouldPauseAmbient()) {
                     continue;
                 }
-                postAmbientStatus("AMBIENT: " + chunk.source + "を文字化中", -3355444);
-                final String transcript = requestPhoneSpeechText(chunk.pcm, 16000).trim();
+                final String transcript;
+                if (chunk.transcript.length() > 0) {
+                    transcript = chunk.transcript.trim();
+                } else {
+                    postAmbientStatus("AMBIENT: " + chunk.source + "を文字化中", -3355444);
+                    transcript = requestPhoneSpeechText(chunk.pcm, 16000).trim();
+                }
                 String normalized = normalizeForDuplicateCheck(transcript);
                 if (!isUsefulAmbientTranscript(transcript)) {
                     Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
@@ -5033,7 +5032,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void enqueueAmbientAudio(AmbientAudioChunk chunk) {
-        if (chunk == null || chunk.pcm == null) {
+        if (chunk == null || (chunk.pcm == null && chunk.transcript.length() == 0)) {
             return;
         }
         synchronized (this.ambientQueueLock) {
@@ -9624,12 +9623,21 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private static final class AmbientAudioChunk {
         final byte[] pcm;
+        final String transcript;
         final String source;
         final long capturedAt;
 
         AmbientAudioChunk(byte[] pcm, String source, long capturedAt) {
             this.pcm = pcm;
+            this.transcript = "";
             this.source = source == null ? "周囲" : source;
+            this.capturedAt = capturedAt;
+        }
+
+        AmbientAudioChunk(String transcript, String source, long capturedAt) {
+            this.pcm = null;
+            this.transcript = transcript == null ? "" : transcript;
+            this.source = source == null ? "Bluetooth" : source;
             this.capturedAt = capturedAt;
         }
     }

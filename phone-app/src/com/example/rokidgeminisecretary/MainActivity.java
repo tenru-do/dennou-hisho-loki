@@ -132,6 +132,12 @@ public final class MainActivity extends Activity {
     private static final String KEY_MEMORY_ARCHIVE_VERSION = "memory_archive_version";
     private static final String KEY_GMAIL_LABEL_PERMISSION_REQUESTED =
             "gmail_label_permission_requested";
+    private static final String KEY_AMBIENT_RELAY_TRANSCRIPT = "ambient_relay_transcript";
+    private static final String KEY_AMBIENT_RELAY_SOURCE = "ambient_relay_source";
+    private static final String KEY_AMBIENT_RELAY_ID = "ambient_relay_id";
+    private static final String KEY_AMBIENT_RELAY_AT = "ambient_relay_at";
+    private static final String KEY_AMBIENT_SOURCE_ACTIVE = "ambient_source_active";
+    private static final String KEY_AMBIENT_SOURCE_SEEN_AT = "ambient_source_seen_at";
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
@@ -496,6 +502,20 @@ public final class MainActivity extends Activity {
         proRow.addView(notificationAccess, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
+        Button audioSourcePair = new Button(this);
+        audioSourcePair.setText("音声PAIR");
+        audioSourcePair.setTextSize(12);
+        audioSourcePair.setMinHeight(0);
+        audioSourcePair.setPadding(4, 0, 4, 0);
+        audioSourcePair.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                beginAudioSourcePairing();
+            }
+        });
+        proRow.addView(audioSourcePair, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
         morningCollectionButton = new Button(this);
         morningCollectionButton.setTextSize(12);
         morningCollectionButton.setMinHeight(0);
@@ -782,6 +802,17 @@ public final class MainActivity extends Activity {
         updateStatus("ペアリング待機中", "60秒以内にグラスのSETを押してください。");
     }
 
+    private void beginAudioSourcePairing() {
+        String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
+        if (token.length() < 16) {
+            token = createBridgeToken();
+            getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
+        }
+        pairingUntilMs = System.currentTimeMillis() + 60000L;
+        updateStatus("音声端末を待機中",
+                "60秒以内にタブレットまたはGalaxyのロキ Audio Relayで「Galaxyを検索」を押してください。");
+    }
+
     private void saveCustomInstructionsFromPhone(String value) {
         String text = value == null ? "" : value.trim();
         String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
@@ -940,6 +971,9 @@ public final class MainActivity extends Activity {
             boolean weather = request != null && request.startsWith("GET /weather");
             boolean transit = request != null && request.startsWith("GET /transit");
             boolean stt = request != null && request.startsWith("POST /stt");
+            boolean ambientPlayback = request != null && request.startsWith("GET /ambient_playback");
+            boolean ackAmbientPlayback = request != null && request.startsWith("GET /ack_ambient_playback");
+            boolean ambientSourceState = request != null && request.startsWith("POST /ambient_source_state");
             boolean pair = request != null && request.startsWith("GET /pair");
             RequestPayload payload = readRequestPayload(reader);
             String bodyText = payload.body;
@@ -978,6 +1012,10 @@ public final class MainActivity extends Activity {
                     : health ? buildHealthJson().toString()
                     : weather ? buildWeatherJson(parseIntQuery(request, "offset", 0)).toString()
                     : transit ? buildTransitJson().toString()
+                    : ambientPlayback ? buildAmbientPlaybackJson().toString()
+                    : ackAmbientPlayback ? buildAckAmbientPlaybackJson(
+                            parseLongQuery(request, "id", 0L)).toString()
+                    : ambientSourceState ? buildAmbientSourceStateJson(bodyText).toString()
                     : memory ? buildConversationMemoryJson(request).toString()
                     : postLog ? buildPostLogResult(bodyText).toString()
                     : log ? buildLogResult(request).toString()
@@ -1011,6 +1049,11 @@ public final class MainActivity extends Activity {
             return root;
         }
         JSONObject request = new JSONObject(bodyText == null || bodyText.trim().length() == 0 ? "{}" : bodyText);
+        boolean ambientRelay = request.optBoolean("ambientRelay", false);
+        String relaySource = shortText(request.optString("source", "Bluetooth"), 30);
+        if (ambientRelay) {
+            updateAmbientSourceState(true);
+        }
         String encoded = request.optString("pcm", "");
         int sampleRate = request.optInt("sampleRate", 16000);
         if (encoded.length() == 0) {
@@ -1037,8 +1080,90 @@ public final class MainActivity extends Activity {
         if (transcript.length() == 0) {
             root.put("error", "no_match");
         }
-        addAiLog("音声入力: " + (transcript.length() == 0 ? "(聞き取りなし)" : transcript));
+        if (ambientRelay) {
+            if (transcript.length() > 0) {
+                publishAmbientPlaybackTranscript(transcript, relaySource);
+            }
+        } else {
+            addAiLog("音声入力: " + (transcript.length() == 0 ? "(聞き取りなし)" : transcript));
+        }
         return root;
+    }
+
+    private JSONObject buildAmbientPlaybackJson() throws Exception {
+        SharedPreferences preferences = getPreferences();
+        long now = System.currentTimeMillis();
+        long seenAt = preferences.getLong(KEY_AMBIENT_SOURCE_SEEN_AT, 0L);
+        boolean active = preferences.getBoolean(KEY_AMBIENT_SOURCE_ACTIVE, false)
+                && now - seenAt < 35000L;
+        long id = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
+        long at = preferences.getLong(KEY_AMBIENT_RELAY_AT, 0L);
+        String transcript = preferences.getString(KEY_AMBIENT_RELAY_TRANSCRIPT, "");
+        if (now - at > 120000L) {
+            transcript = "";
+            id = 0L;
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("active", active);
+        root.put("id", id);
+        root.put("at", at);
+        root.put("source", preferences.getString(KEY_AMBIENT_RELAY_SOURCE, "Bluetooth"));
+        root.put("transcript", transcript == null ? "" : transcript);
+        return root;
+    }
+
+    private JSONObject buildAckAmbientPlaybackJson(long id) throws Exception {
+        SharedPreferences preferences = getPreferences();
+        long currentId = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
+        if (id > 0L && id == currentId) {
+            preferences.edit()
+                    .remove(KEY_AMBIENT_RELAY_TRANSCRIPT)
+                    .remove(KEY_AMBIENT_RELAY_SOURCE)
+                    .remove(KEY_AMBIENT_RELAY_ID)
+                    .remove(KEY_AMBIENT_RELAY_AT)
+                    .apply();
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("acked", id > 0L && id == currentId);
+        return root;
+    }
+
+    private JSONObject buildAmbientSourceStateJson(String bodyText) throws Exception {
+        JSONObject request = new JSONObject(bodyText == null || bodyText.trim().length() == 0
+                ? "{}" : bodyText);
+        boolean active = request.optBoolean("active", false);
+        updateAmbientSourceState(active);
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("active", active);
+        return root;
+    }
+
+    private void updateAmbientSourceState(boolean active) {
+        getPreferences().edit()
+                .putBoolean(KEY_AMBIENT_SOURCE_ACTIVE, active)
+                .putLong(KEY_AMBIENT_SOURCE_SEEN_AT, System.currentTimeMillis())
+                .apply();
+    }
+
+    private void publishAmbientPlaybackTranscript(String value, String source) {
+        String transcript = shortText(value, 500);
+        if (transcript.length() == 0) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        getPreferences().edit()
+                .putString(KEY_AMBIENT_RELAY_TRANSCRIPT, transcript)
+                .putString(KEY_AMBIENT_RELAY_SOURCE,
+                        source == null || source.trim().length() == 0 ? "Bluetooth" : source.trim())
+                .putLong(KEY_AMBIENT_RELAY_ID, now)
+                .putLong(KEY_AMBIENT_RELAY_AT, now)
+                .putBoolean(KEY_AMBIENT_SOURCE_ACTIVE, true)
+                .putLong(KEY_AMBIENT_SOURCE_SEEN_AT, now)
+                .apply();
+        Log.i(TAG, "ambient relay transcript published chars=" + transcript.length());
     }
 
     private String transcribePcmWithSpeechRecognizer(final byte[] pcm, final int sampleRate) throws Exception {
@@ -2829,6 +2954,15 @@ public final class MainActivity extends Activity {
         } catch (Exception ignored) {
         }
         return fallback;
+    }
+
+    private long parseLongQuery(String request, String key, long fallback) {
+        try {
+            String value = parseStringQuery(request, key, "");
+            return value.length() == 0 ? fallback : Long.parseLong(value);
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     private String parseStringQuery(String request, String key, String fallback) {
