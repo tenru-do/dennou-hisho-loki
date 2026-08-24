@@ -100,6 +100,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long AMBIENT_RESULT_VISIBLE_MS = 12000L;
     private static final float AMBIENT_IDLE_BRIGHTNESS = 0.08f;
     private static final float AMBIENT_RESULT_BRIGHTNESS = 0.16f;
+    private static final float HUD_BUTTON_TEXT_SIZE_SP = 9.0f;
     private static final long AMBIENT_CAPTURE_MAX_MS = 9000L;
     private static final long AMBIENT_NO_SPEECH_MS = 5500L;
     private static final long AMBIENT_SILENCE_STOP_MS = 1500L;
@@ -886,7 +887,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.sendButton = new Button(this);
         this.sendButton.setText("Geminiへ送信");
         this.sendButton.setText("SEND");
-        this.sendButton.setTextSize(11.0f);
+        this.sendButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.sendButton.setMinHeight(0);
         this.sendButton.setMinWidth(0);
         this.sendButton.setPadding(2, 0, 2, 0);
@@ -910,7 +911,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.voiceButton = new Button(this);
         this.voiceButton.setText("音声");
         this.voiceButton.setText("VOICE");
-        this.voiceButton.setTextSize(11.0f);
+        this.voiceButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.voiceButton.setMinHeight(0);
         this.voiceButton.setMinWidth(0);
         this.voiceButton.setPadding(2, 0, 2, 0);
@@ -927,7 +928,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         layoutParams.leftMargin = 4;
         this.buttonPanel.addView(this.voiceButton, layoutParams);
         this.ambientButton = new Button(this);
-        this.ambientButton.setTextSize(9.0f);
+        this.ambientButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.ambientButton.setMinHeight(0);
         this.ambientButton.setMinWidth(0);
         this.ambientButton.setPadding(1, 0, 1, 0);
@@ -944,7 +945,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.addView(this.ambientButton, ambientLayout);
         this.wifiButton = new Button(this);
         this.wifiButton.setText("WiFi");
-        this.wifiButton.setTextSize(11.0f);
+        this.wifiButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.wifiButton.setMinHeight(0);
         this.wifiButton.setMinWidth(0);
         this.wifiButton.setPadding(2, 0, 2, 0);
@@ -969,7 +970,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.addView(this.wifiButton, layoutParams2);
         this.zoomButton = new Button(this);
         this.zoomButton.setText("CAM");
-        this.zoomButton.setTextSize(10.0f);
+        this.zoomButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.zoomButton.setMinHeight(0);
         this.zoomButton.setMinWidth(0);
         this.zoomButton.setPadding(1, 0, 1, 0);
@@ -1006,7 +1007,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.addView(this.zoomButton, 0, zoomLayout);
         this.morningButton = new Button(this);
         this.morningButton.setText("TOPIC");
-        this.morningButton.setTextSize(9.0f);
+        this.morningButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.morningButton.setMinHeight(0);
         this.morningButton.setMinWidth(0);
         this.morningButton.setPadding(1, 0, 1, 0);
@@ -1037,7 +1038,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.settingsButton = new Button(this);
         this.settingsButton.setText("APIキー設定");
         this.settingsButton.setText("SET");
-        this.settingsButton.setTextSize(10.0f);
+        this.settingsButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.settingsButton.setMinHeight(0);
         this.settingsButton.setMinWidth(0);
         this.settingsButton.setPadding(2, 0, 2, 0);
