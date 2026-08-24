@@ -1,8 +1,9 @@
 # AMBIENT conversation assistant prototype
 
-This experimental branch is isolated from the current public Loki release.
-Its APK uses the separate package `com.example.rokidkeyboardbridge.ambient`,
-so it can coexist with the normal glasses app without overwriting its app data.
+This experimental branch is isolated from the current public Loki release in
+Git, but its APK intentionally uses the existing package
+`com.example.rokidkeyboardbridge`. Installing it with an update operation keeps
+the existing app preferences, including the API key and bridge settings.
 
 ## Behavior
 
@@ -43,3 +44,9 @@ The public source and signed APKs for `v0.9.7-alpha` remain available on GitHub.
 They restore the application executable, but deliberately do not contain API
 keys, custom instructions, conversation history, Google data, or other private
 runtime state. Back up those private settings separately when needed.
+
+The prototype and `v0.9.7-alpha` APKs use the same signing certificate. To keep
+app data, never uninstall or clear storage when rolling back. Use an Android
+debug bridge downgrade update such as `adb install -r -d <old-apk>` because the
+prototype has a higher version code. Android's normal package installer may
+reject a lower version even though its signature matches.
