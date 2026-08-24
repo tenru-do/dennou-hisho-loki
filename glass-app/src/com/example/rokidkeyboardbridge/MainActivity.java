@@ -112,6 +112,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final int AMBIENT_MAX_SEEN_TERMS = 64;
     private static final long AMBIENT_TERM_REPEAT_MS = 10L * 60L * 1000L;
     private static final int AMBIENT_MAX_AUDIO_QUEUE = 8;
+    private static final long AMBIENT_RELAY_BATCH_WINDOW_MS = 24000L;
+    private static final int AMBIENT_RELAY_TARGET_CHUNKS = 3;
     private static final int REQUEST_AMBIENT_PLAYBACK_CAPTURE = 31;
     private static final int AMBIENT_INPUT_MIC = 0;
     private static final int AMBIENT_INPUT_PLAYBACK = 1;
@@ -5130,6 +5132,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (this.ambientAudioQueue.isEmpty()) {
                 return null;
             }
+            // The relay publishes one short recognition result at a time. Give it a
+            // small collection window so the first phrase does not consume the whole
+            // Gemini interval by itself; this provides enough context for several terms.
+            if (countAmbientRelayChunksLocked() > 0) {
+                long batchUntil = System.currentTimeMillis() + AMBIENT_RELAY_BATCH_WINDOW_MS;
+                while (this.ambientMode && generation == this.ambientGeneration
+                        && countAmbientRelayChunksLocked() < AMBIENT_RELAY_TARGET_CHUNKS) {
+                    long remaining = batchUntil - System.currentTimeMillis();
+                    if (remaining <= 0L) {
+                        break;
+                    }
+                    this.ambientQueueLock.wait(Math.min(remaining, 1500L));
+                }
+            }
             AmbientAudioChunk selected = null;
             StringBuilder relayTranscript = new StringBuilder();
             int relayChunks = 0;
@@ -5170,6 +5186,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.ambientAudioQueue.clear();
             return selected;
         }
+    }
+
+    private int countAmbientRelayChunksLocked() {
+        int count = 0;
+        for (int i = 0; i < this.ambientAudioQueue.size(); i++) {
+            AmbientAudioChunk candidate = this.ambientAudioQueue.get(i);
+            if ("Bluetooth".equals(candidate.source)
+                    && candidate.transcript.trim().length() > 0) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void clearAmbientAudioQueue() {

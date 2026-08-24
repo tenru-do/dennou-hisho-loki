@@ -1069,7 +1069,10 @@ public final class MainActivity extends Activity {
         }
         String transcript;
         try {
-            transcript = transcribePcmWithSpeechRecognizer(pcm, sampleRate, ambientRelay);
+            // Relay audio is already a complete PCM clip. Online recognition handles
+            // streamed audio reliably on the Galaxy, while its on-device recognizer
+            // currently waits until timeout for this file-descriptor input.
+            transcript = transcribePcmWithSpeechRecognizer(pcm, sampleRate, false);
         } catch (Exception e) {
             root.put("ok", false);
             root.put("error", e.getMessage() == null ? "speech_failed" : e.getMessage());
@@ -1215,6 +1218,7 @@ public final class MainActivity extends Activity {
         Log.i(TAG, "phone stt start pcmBytes=" + (pcm == null ? 0 : pcm.length)
                 + " sampleRate=" + sampleRate + " offline=" + preferOffline);
         final CountDownLatch latch = new CountDownLatch(1);
+        final CountDownLatch readyLatch = new CountDownLatch(1);
         final String[] result = new String[] { "" };
         final String[] partial = new String[] { "" };
         final String[] error = new String[] { "" };
@@ -1248,6 +1252,7 @@ public final class MainActivity extends Activity {
                         @Override
                         public void onReadyForSpeech(Bundle params) {
                             updateStatus("音声認識中", "グラスから届いた音声を文字起こししています。");
+                            readyLatch.countDown();
                         }
 
                         @Override
@@ -1351,16 +1356,24 @@ public final class MainActivity extends Activity {
                                 OutputStream out = new ParcelFileDescriptor.AutoCloseOutputStream(writeSide);
                                 byte[] leadingSilence = new byte[Math.max(8000, sampleRate / 4 * 2)];
                                 byte[] trailingSilence = new byte[Math.max(12000, sampleRate / 2 * 2)];
-                                out.write(leadingSilence);
-                                out.write(pcm);
-                                out.write(trailingSilence);
+                                readyLatch.await(2000L, TimeUnit.MILLISECONDS);
+                                writePcmAtRealtimeSpeed(out, leadingSilence, sampleRate);
+                                writePcmAtRealtimeSpeed(out, pcm, sampleRate);
+                                writePcmAtRealtimeSpeed(out, trailingSilence, sampleRate);
                                 out.flush();
                                 out.close();
                                 Log.i(TAG, "phone stt audio pipe closed");
                             } catch (Exception e) {
-                                Log.w(TAG, "phone stt audio pipe error", e);
-                                error[0] = "audio_pipe_error: " + e.getMessage();
-                                latch.countDown();
+                                String message = e.getMessage() == null ? "" : e.getMessage();
+                                if (message.contains("EPIPE") || message.contains("Broken pipe")) {
+                                    // SpeechRecognizer may close the read side as soon as it
+                                    // has detected end-of-speech. Keep waiting for its result.
+                                    Log.i(TAG, "phone stt audio pipe closed by recognizer");
+                                } else {
+                                    Log.w(TAG, "phone stt audio pipe error", e);
+                                    error[0] = "audio_pipe_error: " + message;
+                                    latch.countDown();
+                                }
                             }
                         }
                     }, "PhoneSttAudioWriter").start();
@@ -1370,7 +1383,7 @@ public final class MainActivity extends Activity {
                 }
             }
         });
-        boolean completed = latch.await(preferOffline ? 14L : 20L, TimeUnit.SECONDS);
+        boolean completed = latch.await(preferOffline ? 16L : 24L, TimeUnit.SECONDS);
         if (!completed) {
             Log.w(TAG, "phone stt timeout pcmBytes=" + (pcm == null ? 0 : pcm.length));
             String salvaged = result[0].length() > 0 ? result[0] : partial[0];
@@ -1400,6 +1413,29 @@ public final class MainActivity extends Activity {
             throw new SpeechRecognitionFailure(errorCode[0], error[0]);
         }
         return result[0];
+    }
+
+    private void writePcmAtRealtimeSpeed(OutputStream out, byte[] audio,
+            int sampleRate) throws Exception {
+        if (out == null || audio == null || audio.length == 0) {
+            return;
+        }
+        int bytesPerSecond = Math.max(8000, sampleRate * 2);
+        int chunkBytes = Math.max(640, bytesPerSecond / 20);
+        long startedAt = System.nanoTime();
+        int written = 0;
+        while (written < audio.length) {
+            int count = Math.min(chunkBytes, audio.length - written);
+            out.write(audio, written, count);
+            written += count;
+            long targetElapsedNs = (long) written * 1000000000L / bytesPerSecond;
+            long remainingNs = targetElapsedNs - (System.nanoTime() - startedAt);
+            if (remainingNs > 0L && written < audio.length) {
+                long sleepMs = remainingNs / 1000000L;
+                int sleepNs = (int) (remainingNs % 1000000L);
+                Thread.sleep(sleepMs, sleepNs);
+            }
+        }
     }
 
     private static final class SpeechRecognitionFailure extends IllegalStateException {
