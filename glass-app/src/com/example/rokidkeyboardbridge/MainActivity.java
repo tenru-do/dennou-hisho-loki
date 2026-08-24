@@ -129,7 +129,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final String KEY_PENDING_PHONE_COMMAND = "pending_phone_command";
     private static final String KEY_LAST_PHONE_HOST = "last_phone_host";
     private static final String KEY_VOICE_AUDIO_SOURCE_INDEX = "voice_audio_source_index";
-    private static final String KEY_AMBIENT_MIC_SOURCE_INDEX = "ambient_mic_source_index";
     private static final String KEY_AMBIENT_INPUT_MODE = "ambient_input_mode";
     private static final String KEY_LAST_HIDDEN_NAZOKAKE_AT = "last_hidden_nazokake_at";
     private static final String KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL = "nazokake_awaiting_topic_until";
@@ -197,6 +196,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile int lastNavigationKeyCode;
     private volatile long lastGeminiVoiceFallbackAt;
     private volatile long lastAmbientRequestAt;
+    private volatile long ambientStartupGraceUntil;
     private volatile long lastWifiRepairAt;
     private volatile int mascotMode;
     private MascotView mascotView;
@@ -4732,6 +4732,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ambientGeneration++;
         this.ambientMode = true;
         this.ambientBackoffUntil = 0L;
+        this.ambientStartupGraceUntil = System.currentTimeMillis() + 5500L;
         this.lastAmbientTranscript = "";
         this.lastAmbientTranscriptAt = 0L;
         clearAmbientAudioQueue();
@@ -4853,11 +4854,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 postAmbientStatus("AMBIENT: " + chunk.source + "を文字化中", -3355444);
                 final String transcript = requestPhoneSpeechText(chunk.pcm, 16000).trim();
                 String normalized = normalizeForDuplicateCheck(transcript);
-                if (!isUsefulAmbientTranscript(transcript)
-                        || isDuplicateAmbientTranscript(normalized,
-                        System.currentTimeMillis())) {
+                if (!isUsefulAmbientTranscript(transcript)) {
+                    Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
+                            + " reason=not_useful");
                     continue;
                 }
+                if (isDuplicateAmbientTranscript(normalized, System.currentTimeMillis())) {
+                    Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
+                            + " reason=duplicate");
+                    continue;
+                }
+                Log.i(TAG, "ambient transcript accepted chars=" + transcript.length()
+                        + " source=" + chunk.source);
                 this.lastAmbientTranscript = normalized;
                 this.lastAmbientTranscriptAt = System.currentTimeMillis();
                 long now = System.currentTimeMillis();
@@ -4886,6 +4894,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 final String result = formatAmbientExplanation(raw, chunk.source);
                 if (result.length() > 0) {
+                    Log.i(TAG, "ambient explanation displayed chars=" + result.length());
                     this.handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -4893,6 +4902,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         }
                     });
                 } else {
+                    Log.i(TAG, "ambient explanation suppressed reason=no_term");
                     postAmbientStatus("AMBIENT ON", -3355444);
                 }
                 Thread.sleep(900L);
@@ -4933,7 +4943,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 || this.voiceRecording || this.voiceLoopMode
                 || this.geminiRequestActive || this.ambientRequestActive
                 || this.morningPlaybackActive
-                || this.conversationActive || this.mascotMode == 2
+                || (this.conversationActive
+                        && System.currentTimeMillis() >= this.ambientStartupGraceUntil)
+                || this.mascotMode == 2
                 || (this.pendingPhoneCommand != null && this.pendingPhoneCommand.trim().length() > 0);
     }
 
@@ -5145,7 +5157,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     AudioFormat.ENCODING_PCM_16BIT);
             int bufferSize = Math.max(minBuffer, sampleRate);
             int[] sources = ambientMicrophoneSources();
-            int preferredIndex = getAmbientMicrophoneSourceIndex();
+            int preferredIndex = 0;
             int selectedSource = MediaRecorder.AudioSource.DEFAULT;
             for (int sourceTry = 0; sourceTry < sources.length; sourceTry++) {
                 int candidateIndex = (preferredIndex + sourceTry) % sources.length;
@@ -5156,10 +5168,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             AudioFormat.ENCODING_PCM_16BIT, bufferSize);
                     if (recorder.getState() == AudioRecord.STATE_INITIALIZED) {
                         selectedSource = candidateSource;
-                        if (candidateIndex != preferredIndex) {
-                            getPreferences().edit().putInt(
-                                    KEY_AMBIENT_MIC_SOURCE_INDEX, candidateIndex).apply();
-                        }
                         break;
                     }
                     recorder.release();
@@ -5225,7 +5233,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 Log.d(TAG, "ambient microphone low signal source="
                         + audioSourceLabel(selectedSource) + " level=" + maxLevel
                         + " hits=" + voiceHits);
-                advanceAmbientMicrophoneSource("low signal " + maxLevel);
                 return null;
             }
             byte[] raw = pcm.toByteArray();
@@ -5250,31 +5257,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
         // Keep AMBIENT independent from the one-shot VOICE fallback setting.
         // VOICE_PERFORMANCE initializes on Rokid but is returned as silenced.
         return new int[]{
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                MediaRecorder.AudioSource.DEFAULT,
                 MediaRecorder.AudioSource.MIC,
                 MediaRecorder.AudioSource.CAMCORDER,
-                MediaRecorder.AudioSource.DEFAULT,
                 MediaRecorder.AudioSource.UNPROCESSED,
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION
         };
-    }
-
-    private int getAmbientMicrophoneSourceIndex() {
-        int[] sources = ambientMicrophoneSources();
-        int index = getPreferences().getInt(KEY_AMBIENT_MIC_SOURCE_INDEX, 0);
-        if (index < 0) {
-            index = 0;
-        }
-        return index % sources.length;
-    }
-
-    private void advanceAmbientMicrophoneSource(String reason) {
-        int[] sources = ambientMicrophoneSources();
-        int current = getAmbientMicrophoneSourceIndex();
-        int next = (current + 1) % sources.length;
-        getPreferences().edit().putInt(KEY_AMBIENT_MIC_SOURCE_INDEX, next).apply();
-        Log.i(TAG, "advance ambient microphone source " + current + " -> " + next
-                + " reason=" + reason + " next=" + audioSourceLabel(sources[next]));
     }
 
     private AudioDeviceInfo findAmbientA2dpInput() {
