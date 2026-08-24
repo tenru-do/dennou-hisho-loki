@@ -1069,7 +1069,7 @@ public final class MainActivity extends Activity {
         }
         String transcript;
         try {
-            transcript = transcribePcmWithSpeechRecognizer(pcm, sampleRate);
+            transcript = transcribePcmWithSpeechRecognizer(pcm, sampleRate, ambientRelay);
         } catch (Exception e) {
             root.put("ok", false);
             root.put("error", e.getMessage() == null ? "speech_failed" : e.getMessage());
@@ -1166,18 +1166,48 @@ public final class MainActivity extends Activity {
         Log.i(TAG, "ambient relay transcript published chars=" + transcript.length());
     }
 
-    private String transcribePcmWithSpeechRecognizer(final byte[] pcm, final int sampleRate) throws Exception {
+    private String transcribePcmWithSpeechRecognizer(final byte[] pcm, final int sampleRate,
+            boolean preferOnDeviceFirst) throws Exception {
+        if (preferOnDeviceFirst) {
+            try {
+                return transcribePcmWithSpeechRecognizerAttempt(pcm, sampleRate, true);
+            } catch (Exception firstFailure) {
+                if (!shouldRetrySpeechRecognition(firstFailure)) {
+                    throw firstFailure;
+                }
+                Log.w(TAG, "phone ambient stt on-device attempt failed; retrying online: "
+                        + firstFailure.getMessage());
+                Thread.sleep(150L);
+                return transcribePcmWithSpeechRecognizerAttempt(pcm, sampleRate, false);
+            }
+        }
         try {
             return transcribePcmWithSpeechRecognizerAttempt(pcm, sampleRate, false);
-        } catch (SpeechRecognitionFailure failure) {
-            if (failure.code != SpeechRecognizer.ERROR_NETWORK
-                    && failure.code != SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
-                throw failure;
+        } catch (Exception firstFailure) {
+            if (!shouldRetrySpeechRecognition(firstFailure)) {
+                throw firstFailure;
             }
             Log.w(TAG, "phone stt network failed; retrying with on-device recognition");
             Thread.sleep(250L);
             return transcribePcmWithSpeechRecognizerAttempt(pcm, sampleRate, true);
         }
+    }
+
+    private boolean shouldRetrySpeechRecognition(Exception failure) {
+        if (failure == null) {
+            return false;
+        }
+        if ("speech_timeout".equals(failure.getMessage())) {
+            return true;
+        }
+        if (!(failure instanceof SpeechRecognitionFailure)) {
+            return false;
+        }
+        int code = ((SpeechRecognitionFailure) failure).code;
+        return code == SpeechRecognizer.ERROR_NETWORK
+                || code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
+                || code == SpeechRecognizer.ERROR_SERVER
+                || code == SpeechRecognizer.ERROR_RECOGNIZER_BUSY;
     }
 
     private String transcribePcmWithSpeechRecognizerAttempt(final byte[] pcm,
@@ -1340,7 +1370,7 @@ public final class MainActivity extends Activity {
                 }
             }
         });
-        boolean completed = latch.await(24, TimeUnit.SECONDS);
+        boolean completed = latch.await(preferOffline ? 14L : 20L, TimeUnit.SECONDS);
         if (!completed) {
             Log.w(TAG, "phone stt timeout pcmBytes=" + (pcm == null ? 0 : pcm.length));
             String salvaged = result[0].length() > 0 ? result[0] : partial[0];

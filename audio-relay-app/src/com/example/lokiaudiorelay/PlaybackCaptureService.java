@@ -263,7 +263,9 @@ public final class PlaybackCaptureService extends Service {
                 "http://" + relayHost + ":" + MainActivity.PORT + "/" + path).openConnection();
         connection.setRequestMethod("POST");
         connection.setConnectTimeout(1500);
-        connection.setReadTimeout(35000);
+        // Galaxy may retry once with its second recognizer when the first
+        // on-device/online attempt times out.
+        connection.setReadTimeout(50000);
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         connection.setRequestProperty("X-Roki-Token", relayToken);
