@@ -13,9 +13,18 @@ import java.util.List;
 
 public final class MailNotificationService extends NotificationListenerService {
     private static final int MAX_ITEMS = 20;
+    private static final long MAIL_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L;
+    private static final String CACHE_PREFS = "mail_notification_cache";
+    private static final String CACHE_KEY = "recent_mail_notifications";
     private static final List<MailItem> MAILS = new ArrayList<MailItem>();
     private static HealthItem latestHealth;
     private static TransitItem latestTransit;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        loadMailCache();
+    }
 
     @Override
     public void onListenerConnected() {
@@ -68,7 +77,7 @@ public final class MailNotificationService extends NotificationListenerService {
         return "com.google.android.apps.maps".equals(packageName);
     }
 
-    private static void collect(StatusBarNotification status) {
+    private void collect(StatusBarNotification status) {
         if (status == null) {
             return;
         }
@@ -111,6 +120,55 @@ public final class MailNotificationService extends NotificationListenerService {
                 MAILS.remove(MAILS.size() - 1);
             }
         }
+        saveMailCache();
+    }
+
+    private void loadMailCache() {
+        long cutoff = System.currentTimeMillis() - MAIL_CACHE_MAX_AGE_MS;
+        try {
+            JSONArray cached = new JSONArray(getSharedPreferences(CACHE_PREFS, MODE_PRIVATE)
+                    .getString(CACHE_KEY, "[]"));
+            synchronized (MAILS) {
+                MAILS.clear();
+                for (int index = 0; index < cached.length() && MAILS.size() < MAX_ITEMS; index++) {
+                    JSONObject value = cached.optJSONObject(index);
+                    if (value == null) continue;
+                    long time = value.optLong("time", 0L);
+                    if (time < cutoff) continue;
+                    String packageName = value.optString("app", "");
+                    String title = value.optString("title", "");
+                    String body = value.optString("body", "");
+                    String subText = value.optString("subText", "");
+                    if (!isMailPackage(packageName) || (title.length() == 0 && body.length() == 0)) {
+                        continue;
+                    }
+                    MAILS.add(new MailItem(time, packageName, title, body, subText));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveMailCache() {
+        try {
+            JSONArray cached = new JSONArray();
+            long cutoff = System.currentTimeMillis() - MAIL_CACHE_MAX_AGE_MS;
+            synchronized (MAILS) {
+                for (MailItem item : MAILS) {
+                    if (item.time < cutoff) continue;
+                    JSONObject value = new JSONObject();
+                    value.put("time", item.time);
+                    value.put("app", item.packageName);
+                    value.put("title", item.title);
+                    value.put("body", item.body);
+                    value.put("subText", item.subText);
+                    cached.put(value);
+                }
+            }
+            getSharedPreferences(CACHE_PREFS, MODE_PRIVATE).edit()
+                    .putString(CACHE_KEY, cached.toString()).apply();
+        } catch (Exception ignored) {
+        }
     }
 
     public static JSONArray recentMailJson() throws Exception {
@@ -123,6 +181,9 @@ public final class MailNotificationService extends NotificationListenerService {
                 mail.put("from_or_title", item.title);
                 mail.put("summary", item.body);
                 mail.put("account", item.subText);
+                // MorningBriefingManager uses this composite only as a stable
+                // deduplication key; the spoken fields above remain unchanged.
+                mail.put("title", shortText(item.title + " " + item.body, 240));
                 mails.put(mail);
             }
         }

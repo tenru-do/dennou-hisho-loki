@@ -127,6 +127,8 @@ public final class MainActivity extends Activity {
     private static final String KEY_GLASS_STATE_SENT_AT = "glass_state_sent_at";
     private static final String KEY_MEMORY_COMPACTED_AT = "memory_compacted_at";
     private static final String KEY_MEMORY_ARCHIVE_VERSION = "memory_archive_version";
+    private static final String KEY_GMAIL_LABEL_PERMISSION_REQUESTED =
+            "gmail_label_permission_requested";
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
@@ -150,6 +152,7 @@ public final class MainActivity extends Activity {
     private LinearLayout toolsPanel;
     private Button toggleCustomButton;
     private Button toolsButton;
+    private Button morningCollectionButton;
     private AlertDialog customEditorDialog;
     private boolean customEditorDirty;
     private boolean customEditorApplyingRemote;
@@ -190,6 +193,12 @@ public final class MainActivity extends Activity {
         restoreRecentConversationLogs();
         buildUi();
         startBridgeForegroundService();
+        MorningBriefingManager.ensureFreshAsync(this, false);
+        if (!getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false)) {
+            synchronized (MainActivity.class) {
+                pendingCustomStateRequest = true;
+            }
+        }
         // The bridge must be available even while permission dialogs are still
         // pending. Individual endpoints perform their own permission checks.
         startServer();
@@ -216,8 +225,9 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshCustomInfo();
-        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
+        updateMorningCollectionButton();
+        if (hasLocationPermission()) {
+            startBridgeForegroundService();
             weatherHandler.post(new Runnable() {
                 @Override public void run() {
                     refreshWeatherAsync();
@@ -483,6 +493,28 @@ public final class MainActivity extends Activity {
         proRow.addView(notificationAccess, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
+        morningCollectionButton = new Button(this);
+        morningCollectionButton.setTextSize(12);
+        morningCollectionButton.setMinHeight(0);
+        morningCollectionButton.setPadding(4, 0, 4, 0);
+        morningCollectionButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                boolean enabled = !MorningBriefingManager.isCollectionEnabled(
+                        MainActivity.this);
+                MorningBriefingManager.setCollectionEnabled(MainActivity.this, enabled);
+                updateMorningCollectionButton();
+                updateStatus(enabled ? "\u30c8\u30d4\u30c3\u30af\u66f4\u65b0 ON"
+                                : "\u30c8\u30d4\u30c3\u30af\u66f4\u65b0 OFF",
+                        enabled
+                                ? "7\u6642\u30fb12\u6642\u30fb17\u6642\u30fb21\u6642\u306e4\u56de\u3001\u65b0\u7740\u60c5\u5831\u3092\u66f4\u65b0\u3057\u307e\u3059\u3002"
+                                : "\u6b21\u56de\u4ee5\u964d\u306e\u81ea\u52d5\u53ce\u96c6\u3092\u505c\u6b62\u3057\u307e\u3057\u305f\u3002");
+            }
+        });
+        updateMorningCollectionButton();
+        proRow.addView(morningCollectionButton, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
         Button proactiveOn = new Button(this);
         proactiveOn.setVisibility(View.GONE);
         proactiveOn.setText("PRO ON");
@@ -616,6 +648,13 @@ public final class MainActivity extends Activity {
         updateStatus("準備中", "カレンダー権限を確認しています。\nメールは通知アクセス許可後に読めます。");
         refreshCustomInfo();
         refreshLogs();
+    }
+
+    private void updateMorningCollectionButton() {
+        if (morningCollectionButton == null) return;
+        boolean enabled = MorningBriefingManager.isCollectionEnabled(this);
+        morningCollectionButton.setText(enabled
+                ? "TOPIC: ON" : "TOPIC: OFF");
     }
 
     private void showCustomEditorDialog() {
@@ -798,6 +837,15 @@ public final class MainActivity extends Activity {
             updateStatus("権限待ち", "表示された画面でカレンダーの読み取りを許可してください。");
             return;
         }
+        if (checkSelfPermission(GmailUnreadReader.PERMISSION)
+                != PackageManager.PERMISSION_GRANTED
+                && !getPreferences().getBoolean(KEY_GMAIL_LABEL_PERMISSION_REQUESTED, false)) {
+            getPreferences().edit().putBoolean(
+                    KEY_GMAIL_LABEL_PERMISSION_REQUESTED, true).apply();
+            requestPermissions(new String[]{GmailUnreadReader.PERMISSION}, 206);
+            updateStatus("権限待ち", "Gmailの未読件数の読み取りを許可してください。本文は読みません。");
+            return;
+        }
         startServer();
     }
 
@@ -813,7 +861,13 @@ public final class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode == 205) {
+            startBridgeForegroundService();
             refreshWeatherAsync();
+            return;
+        }
+        if (requestCode == 206) {
+            startServer();
+            MorningBriefingManager.ensureFreshAsync(this, true);
             return;
         }
         ensureCalendarPermission();
@@ -868,6 +922,7 @@ public final class MainActivity extends Activity {
             boolean schedule = request != null && request.startsWith("GET /schedule");
             boolean mail = request != null && request.startsWith("GET /mail");
             boolean news = request != null && request.startsWith("GET /news");
+            boolean morning = request != null && request.startsWith("GET /morning");
             boolean command = request != null && request.startsWith("GET /command");
             boolean ackCommand = request != null && request.startsWith("GET /ack_command");
             boolean control = request != null && request.startsWith("GET /control");
@@ -912,13 +967,14 @@ public final class MainActivity extends Activity {
                             parseStringQuery(request, "q", "")).toString()
                     : mail ? buildMailJson().toString()
                     : news ? buildNewsJson(parseStringQuery(request, "q", "")).toString()
+                    : morning ? MorningBriefingManager.readStoredForPlayback(this).toString()
                     : command ? buildCommandJson().toString()
                     : ackCommand ? buildAckCommandJson().toString()
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
                     : weather ? buildWeatherJson(parseIntQuery(request, "offset", 0)).toString()
-                    : transit ? MailNotificationService.recentTransitJson().toString()
+                    : transit ? buildTransitJson().toString()
                     : memory ? buildConversationMemoryJson(request).toString()
                     : postLog ? buildPostLogResult(bodyText).toString()
                     : log ? buildLogResult(request).toString()
@@ -1610,6 +1666,44 @@ public final class MainActivity extends Activity {
         }
     }
 
+    static void rememberMorningBriefing(android.content.Context context, String summary) {
+        String value = summary == null ? "" : summary.trim();
+        if (value.length() == 0) return;
+        MainActivity active = activeActivity;
+        if (active != null) {
+            active.appendConversationMemorySafely("トピック要約", value);
+            return;
+        }
+        synchronized (MEMORY_LOCK) {
+            try {
+                long now = System.currentTimeMillis();
+                JSONObject entry = new JSONObject();
+                entry.put("time", now);
+                entry.put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.JAPAN)
+                        .format(new Date(now)));
+                entry.put("kind", "トピック要約");
+                entry.put("message", shortStaticText(value, MAX_MEMORY_ENTRY_CHARS));
+                File file = new File(context.getFilesDir(), MEMORY_FILE_NAME);
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
+                        new FileOutputStream(file, true), StandardCharsets.UTF_8));
+                try {
+                    writer.write(entry.toString());
+                    writer.newLine();
+                } finally {
+                    writer.close();
+                }
+            } catch (Exception error) {
+                Log.w(TAG, "morning memory append failed", error);
+            }
+        }
+    }
+
+    private static String shortStaticText(String value, int max) {
+        String text = value == null ? "" : value.replace('\n', ' ')
+                .replace('\r', ' ').replaceAll("\\s+", " ").trim();
+        return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
     private ArrayList<JSONObject> readConversationMemory() {
         synchronized (MEMORY_LOCK) {
             return readConversationMemoryLocked();
@@ -1909,8 +2003,13 @@ public final class MainActivity extends Activity {
                 if (memoryMatches(entry.optString("message", ""), query)) {
                     selected[i] = true;
                     if (!"長期記憶".equals(entry.optString("kind", ""))) {
-                        if (i > 0) selected[i - 1] = true;
-                        if (i + 1 < inRange.size()) selected[i + 1] = true;
+                        if (i > 0 && isNearbyMemoryTurn(entry, inRange.get(i - 1))) {
+                            selected[i - 1] = true;
+                        }
+                        if (i + 1 < inRange.size()
+                                && isNearbyMemoryTurn(entry, inRange.get(i + 1))) {
+                            selected[i + 1] = true;
+                        }
                     }
                 }
             }
@@ -1956,7 +2055,7 @@ public final class MainActivity extends Activity {
         if (needle.length() == 0 || haystack.contains(needle)) {
             return true;
         }
-        String[] tokens = query.toLowerCase(Locale.JAPAN).split("[\\s、。・,./]+?");
+        String[] tokens = query.toLowerCase(Locale.JAPAN).split("[\\s、。・,./]+");
         for (String token : tokens) {
             String normalized = normalizeMemoryText(token);
             if (normalized.length() >= 2 && haystack.contains(normalized)) {
@@ -1964,6 +2063,13 @@ public final class MainActivity extends Activity {
             }
         }
         return false;
+    }
+
+    private boolean isNearbyMemoryTurn(JSONObject left, JSONObject right) {
+        long leftTime = left == null ? 0L : left.optLong("time", 0L);
+        long rightTime = right == null ? 0L : right.optLong("time", 0L);
+        return leftTime > 0L && rightTime > 0L
+                && Math.abs(leftTime - rightTime) <= 3L * 60L * 1000L;
     }
 
     private String normalizeMemoryText(String value) {
@@ -2025,6 +2131,8 @@ public final class MainActivity extends Activity {
         }
         final String syncedCustom = custom == null ? "" : custom;
         boolean localEditPending = getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false);
+        String previousCustom = getPreferences().getString(KEY_CUSTOM, "");
+        boolean customChanged = !previousCustom.equals(syncedCustom);
         if (!localEditPending) {
             getPreferences().edit().putString(KEY_CUSTOM, syncedCustom).apply();
             synchronized (MainActivity.class) {
@@ -2037,6 +2145,11 @@ public final class MainActivity extends Activity {
                     refreshCustomInfo();
                 }
             });
+            Log.i(TAG, "custom state synchronized chars=" + syncedCustom.length()
+                    + " changed=" + customChanged);
+            if (customChanged) {
+                MorningBriefingManager.ensureFreshAsync(this, true);
+            }
         }
         JSONObject root = new JSONObject();
         root.put("ok", true);
@@ -2046,10 +2159,31 @@ public final class MainActivity extends Activity {
     }
 
     private void ensureLocationPermission() {
-        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 205);
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION}, 205);
         }
+    }
+
+    private boolean hasLocationPermission() {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private JSONObject buildTransitJson() throws Exception {
+        JSONObject maps = MailNotificationService.recentTransitJson();
+        if (maps.optBoolean("ok", false)) {
+            maps.put("estimated", false);
+            return maps;
+        }
+        JSONObject estimated = TransitLocationTracker.recentTransitJson(this);
+        if (!estimated.optBoolean("ok", false) && !hasLocationPermission()) {
+            estimated.put("error", "location_permission_missing");
+        }
+        return estimated;
     }
 
     private JSONObject buildWeatherJson(int dayOffset) throws Exception {
@@ -2508,9 +2642,10 @@ public final class MainActivity extends Activity {
         root.put("timezone", TimeZone.getDefault().getID());
         root.put("date", DateFormat.format("yyyy-MM-dd", System.currentTimeMillis()).toString());
         root.put("source", "android_notifications");
-        root.put("note", "Gmailなどの通知から取得した新着メール概要です。通知アクセス許可後の通知が対象です。");
+        root.put("note", "GmailなどのAndroid通知から取得したメール候補です。Gmail APIの未読状態とは一致しません。");
         JSONArray mails = MailNotificationService.recentMailJson();
         root.put("mails", mails);
+        root.put("gmailUnread", GmailUnreadReader.read(this));
         return root;
     }
 

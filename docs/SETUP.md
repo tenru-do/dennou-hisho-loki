@@ -17,6 +17,7 @@ APKの導入手順は [INSTALL.md](INSTALL.md) を先に確認してください
 2. Grant required phone permissions:
    - calendar access
    - notification access for mail summaries
+   - Gmail label access for the optional inbox unread count
    - microphone permission if using phone-side speech recognition
 3. Build and install the glasses app.
 4. In the phone app, open `指示` and press `グラスをペアリング（60秒）`.

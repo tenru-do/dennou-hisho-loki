@@ -5,19 +5,19 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 ![電脳秘書ロキ アイコン](artwork/dennou-hisho-loki-icon.png)
 
 > [!WARNING]
-> 個人開発のアルファ版です。Rokid、Google、Gemini、HEALBE、OpenAIの公式製品ではありません。端末・Rokid OS・ネットワーク構成によっては動作しません。医療・緊急・法務・金融など、誤回答が重大な損害につながる用途には使用しないでください。
+> 個人開発のアルファ版です。Rokid、Google、Gemini、OpenAIの公式製品ではありません。端末・Rokid OS・ネットワーク構成によっては動作しません。医療・緊急・法務・金融など、誤回答が重大な損害につながる用途には使用しないでください。
 
 ## APKのダウンロード
 
 1. 次のAPKをダウンロードします。
-   - [DennouHishoLoki-phone-v0.9.6-alpha.apk](apk/DennouHishoLoki-phone-v0.9.6-alpha.apk?raw=1)：Androidスマホ側
-   - [DennouHishoLoki-glass-v0.9.6-alpha.apk](apk/DennouHishoLoki-glass-v0.9.6-alpha.apk?raw=1)：Rokidグラス側
+   - [DennouHishoLoki-phone-v0.9.7-alpha.apk](apk/DennouHishoLoki-phone-v0.9.7-alpha.apk?raw=1)：Androidスマホ側
+   - [DennouHishoLoki-glass-v0.9.7-alpha.apk](apk/DennouHishoLoki-glass-v0.9.7-alpha.apk?raw=1)：Rokidグラス側
 2. スマホ版はスマホでAPKを開いてインストールします。
 3. グラス版は開発者ケーブルとADBを使用してインストールします。
 
 ```powershell
 adb devices
-adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.6-alpha.apk
+adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.7-alpha.apk
 ```
 
 Androidが警告を表示した場合は、内容を確認したうえで、このAPKを開いたアプリに限って「不明なアプリのインストール」を許可してください。APKはアルファ版用のテスト署名です。導入手順の詳細は [docs/INSTALL.md](docs/INSTALL.md) を参照してください。
@@ -28,6 +28,9 @@ Androidが警告を表示した場合は、内容を確認したうえで、こ�
 - Gemini回答のHUD表示と読み上げ
 - スマホ経由のGoogleカレンダー、メール通知、Health Connect歩数
 - スマホの概算現在地とOpen-Meteoによる現在・明日・明後日の天気
+- 予定、天気、未読メール件数、ニュース、地域イベント、占い、雑学をまとめる `TOPIC` 番組
+- 7時・12時・17時・21時台の自動更新と、案内済みニュース・イベントの重複抑制
+- GPS、移動速度、進行方向、近隣駅からの乗車路線・次駅推定
 - 単色緑マスコット
 - 頭を上げたときのHUD表示、正面復帰後の自動消灯、回答中の画面保持
 - 別途インストールした自作Zoomカメラを起動する `CAM` ショートカット、Wi-Fi操作
@@ -57,7 +60,7 @@ Gemini APIは無料枠・課金・モデル別クォータ・混雑の影響を�
 ## 最初の設定
 
 1. 上記のリンクからスマホ側とグラス側のAPKをダウンロードし、インストールします。
-2. スマホ側でカレンダー、マイク、通知、Health Connect、概算位置情報のうち使う権限だけを許可します。
+2. スマホ側でカレンダー、マイク、通知、Gmail未読件数、Health Connect、概算位置情報のうち使う権限だけを許可します。
 3. スマホ側の「指示」パネルで「グラスをペアリング（60秒）」を押します。
 4. 60秒以内にグラス側の「SET」を押します。共有トークンは一度だけ自動転送され、手入力や画面表示は不要です。
 5. グラス側のSET画面でGemini APIキーと任意のカスタム指示を保存し、同じネットワーク上で接続を確認します。
@@ -70,7 +73,8 @@ Gemini APIは無料枠・課金・モデル別クォータ・混雑の影響を�
 - Gemini APIキーとカスタム指示はグラスのアプリ専用領域に保存されます。
 - スマホ側のカスタム指示と連携トークンはスマホのアプリ専用領域に保存されます。
 - AI会話は直近90日を通常保存し、それ以前は質問と回答を短く圧縮してスマホのアプリ専用領域へ残します。ログ削除で両方を削除できます。
-- メール機能はメールボックス全体ではなく、許可したAndroid通知を利用します。
+- メールの送信者・件名・概要は、許可したAndroid通知だけを利用します。取得した通知候補はスマホのアプリ専用領域へ最大20件・7日間保存します。
+- Gmailラベル権限を許可した場合は受信トレイの未読件数だけを補助取得します。Gmail本文や完全なメール検索は行いません。
 - 天気機能ではスマホの概算座標をOpen-Meteoへ送り、市区町村名・天気・気温だけを認証済みローカル接続でグラスへ渡します。
 - 予定・メール・音声・質問内容は、機能に応じてローカルLAN、Google/Gemini、Android音声認識へ送られる場合があります。
 - LANブリッジは共有トークンで認証しますが、HTTP通信自体は暗号化されません。信頼できるLANまたは自分のテザリングだけで利用してください。
@@ -85,6 +89,7 @@ Gemini APIは無料枠・課金・モデル別クォータ・混雑の影響を�
 - Rokid OS固有APIや端末差に依存します。
 - 音声認識、TTS、Wi-Fi復帰は端末実装によって不安定です。
 - Google Workspaceの完全なOAuth/Gmail API統合ではありません。
+- Gmailで未読でもAndroid通知が残っていないメールは、件数のみ分かり、送信者・件名・本文は取得できません。
 - Geminiの回答は正確とは限らず、予定やニュースも必ず原典を確認してください。
 
 詳細は [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) を参照してください。
