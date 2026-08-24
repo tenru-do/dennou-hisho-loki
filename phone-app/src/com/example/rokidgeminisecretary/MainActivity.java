@@ -1042,17 +1042,49 @@ public final class MainActivity extends Activity {
     }
 
     private String transcribePcmWithSpeechRecognizer(final byte[] pcm, final int sampleRate) throws Exception {
-        Log.i(TAG, "phone stt start pcmBytes=" + (pcm == null ? 0 : pcm.length) + " sampleRate=" + sampleRate);
+        try {
+            return transcribePcmWithSpeechRecognizerAttempt(pcm, sampleRate, false);
+        } catch (SpeechRecognitionFailure failure) {
+            if (failure.code != SpeechRecognizer.ERROR_NETWORK
+                    && failure.code != SpeechRecognizer.ERROR_NETWORK_TIMEOUT) {
+                throw failure;
+            }
+            Log.w(TAG, "phone stt network failed; retrying with on-device recognition");
+            Thread.sleep(250L);
+            return transcribePcmWithSpeechRecognizerAttempt(pcm, sampleRate, true);
+        }
+    }
+
+    private String transcribePcmWithSpeechRecognizerAttempt(final byte[] pcm,
+            final int sampleRate, final boolean preferOffline) throws Exception {
+        Log.i(TAG, "phone stt start pcmBytes=" + (pcm == null ? 0 : pcm.length)
+                + " sampleRate=" + sampleRate + " offline=" + preferOffline);
         final CountDownLatch latch = new CountDownLatch(1);
         final String[] result = new String[] { "" };
         final String[] partial = new String[] { "" };
         final String[] error = new String[] { "" };
+        final int[] errorCode = new int[] { 0 };
         final SpeechRecognizer[] recognizerHolder = new SpeechRecognizer[1];
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    final SpeechRecognizer recognizer = SpeechRecognizer.createSpeechRecognizer(MainActivity.this);
+                    SpeechRecognizer selectedRecognizer = null;
+                    if (preferOffline && Build.VERSION.SDK_INT >= 31
+                            && SpeechRecognizer.isOnDeviceRecognitionAvailable(MainActivity.this)) {
+                        try {
+                            selectedRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(
+                                    MainActivity.this);
+                        } catch (Exception onDeviceError) {
+                            Log.w(TAG, "phone stt direct on-device recognizer unavailable",
+                                    onDeviceError);
+                        }
+                    }
+                    if (selectedRecognizer == null) {
+                        selectedRecognizer = SpeechRecognizer.createSpeechRecognizer(
+                                MainActivity.this);
+                    }
+                    final SpeechRecognizer recognizer = selectedRecognizer;
                     recognizerHolder[0] = recognizer;
                     final ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
                     final ParcelFileDescriptor readSide = pipe[0];
@@ -1083,7 +1115,9 @@ public final class MainActivity extends Activity {
 
                         @Override
                         public void onError(int code) {
-                            Log.w(TAG, "phone stt onError code=" + code + " text=" + speechErrorText(code));
+                            Log.w(TAG, "phone stt onError code=" + code + " offline="
+                                    + preferOffline + " text=" + speechErrorText(code));
+                            errorCode[0] = code;
                             error[0] = speechErrorText(code);
                             try {
                                 recognizer.destroy();
@@ -1146,6 +1180,7 @@ public final class MainActivity extends Activity {
                     intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ja-JP");
                     intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
                     intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                    intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline);
                     intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, readSide);
                     intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT);
                     intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1);
@@ -1207,9 +1242,18 @@ public final class MainActivity extends Activity {
             return partial[0];
         }
         if (result[0].length() == 0 && error[0].length() > 0) {
-            throw new IllegalStateException(error[0]);
+            throw new SpeechRecognitionFailure(errorCode[0], error[0]);
         }
         return result[0];
+    }
+
+    private static final class SpeechRecognitionFailure extends IllegalStateException {
+        final int code;
+
+        SpeechRecognitionFailure(int code, String message) {
+            super(message);
+            this.code = code;
+        }
     }
 
     private String bestRecognitionText(Bundle bundle) {
