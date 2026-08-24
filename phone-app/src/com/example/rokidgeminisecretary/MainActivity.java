@@ -104,7 +104,10 @@ public final class MainActivity extends Activity {
     private static final String MEMORY_FILE_NAME = "conversation_memory.jsonl";
     private static final String MEMORY_ARCHIVE_FILE_NAME = "conversation_memory_archive.jsonl";
     private static final Object MEMORY_LOCK = new Object();
-    private static final int MAX_REQUEST_BODY_CHARS = 131072;
+    // A 9-second 16 kHz mono PCM window is about 288 KB before Base64.
+    // Keep a bounded 512 KB ceiling so ambient STT fits without making the
+    // local bridge accept arbitrarily large request bodies.
+    private static final int MAX_REQUEST_BODY_CHARS = 524288;
     private static final int MAX_COMMAND_CHARS = 3000;
     private static final int MAX_CUSTOM_CHARS = 2400;
     private static final String PREFS = "phone_secretary";
