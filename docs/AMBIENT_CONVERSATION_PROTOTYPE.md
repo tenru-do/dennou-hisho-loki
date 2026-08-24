@@ -7,13 +7,23 @@ the existing app preferences, including the API key and bridge settings.
 
 ## Behavior
 
-- `AMB` explicitly turns ambient listening on or off.
-- The glasses microphone records only a bounded 5.5–9 second PCM window.
+- Pressing `AMB` while off opens an input selector: glasses microphone,
+  Bluetooth playback, or both. The last choice is remembered. Pressing `AMB`
+  while active turns the selected capture mode off.
+- When both sources are selected, the glasses microphone and capturable Android
+  playback audio are recorded in separate, concurrent, bounded 5.5–9 second PCM
+  windows. Single-source modes start only the selected recorder.
+- Android playback capture is used for media being played to Bluetooth. Android
+  shows a system consent screen the first time `AMB` is enabled in a session.
+- Both audio sources are queued in memory, while transcription and Gemini
+  requests are always processed one at a time. Captured playback is prioritized
+  and matching microphone echo is suppressed for 15 seconds.
 - PCM is sent to the paired phone's local `/stt` endpoint for transcription.
 - At most 500 transcript characters are sent to Gemini Flash Lite.
 - Gemini returns up to two specialized terms with short Japanese explanations.
 - Results are displayed silently for 12 seconds; ambient mode does not use TTS.
 - Audio, raw transcripts, and ambient results are not written to app logs or history.
+  The in-memory audio queue is capped at four items and items expire after 30 seconds.
 - Gemini calls are limited to one per 60 seconds. HTTP failures back off for at
   least 90 seconds.
 - Listening pauses while the normal assistant, VOICE, TTS, Loki Topic, or a
@@ -24,14 +34,20 @@ the existing app preferences, including the API key and bridge settings.
 ## Privacy note
 
 Audio is not uploaded directly to Gemini. The paired phone's Android speech
-recognition service receives the temporary PCM, and the resulting transcript
-excerpt is sent to Gemini. Therefore this mode still performs cloud processing
-and must only be enabled where recording and transcription are appropriate.
+recognition service receives temporary PCM from either the glasses microphone
+or capturable playback, and the resulting transcript excerpt is sent to Gemini.
+Therefore this mode still performs cloud processing and must only be enabled
+where recording, playback capture, and transcription are appropriate. Turning
+`AMB` off stops both recorders and releases Android's playback-capture session.
 
 ## Current limitations
 
-- This captures the glasses microphone. It does not capture Android system
-  playback or Bluetooth media audio directly.
+- Only Android playback from apps that permit audio capture can be received.
+  DRM-protected media, calls, protected apps, and some vendor players may be silent.
+- "Bluetooth" identifies capturable app playback routed by the glasses; it does
+  not intercept the Bluetooth radio stream or bypass Android capture policy.
+- Simultaneous microphone and playback capture depends on the Rokid firmware's
+  audio policy and still needs real-device validation.
 - The paired phone app, bridge token, microphone permission, network access,
   and a Gemini API key are required.
 - Explanations are model-generated summaries, not a dedicated web fact-check.
