@@ -9171,7 +9171,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     /* JADX INFO: Access modifiers changed from: private */
     public void scrollAnswerForSpeech(final int i, final int i2) {
-        scrollAnswerForSpeechProgress(i, i2, 0.0f);
+        // Keep the text slightly ahead of speech so the currently spoken line is
+        // already visible instead of arriving after the audio.
+        scrollAnswerForSpeechProgress(i, i2, 0.12f);
     }
 
     private void scheduleAnswerScrollForSpeech(final int chunkIndex,
@@ -9179,12 +9181,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                                 long speechHoldMs,
                                                 final int generation) {
         if (totalChunks <= 0 || speechHoldMs <= 0L) return;
-        scrollAnswerForSpeechProgress(chunkIndex, totalChunks, 0.0f);
+        scrollAnswerForSpeechProgress(chunkIndex, totalChunks, 0.12f);
         int steps = Math.max(2, Math.min(6, (int) (speechHoldMs / 5000L)));
         for (int step = 1; step <= steps; step++) {
-            final float chunkProgress = step / (float) (steps + 1);
-            long delayMs = Math.max(450L,
-                    (speechHoldMs * step) / (steps + 1));
+            final float chunkProgress = Math.min(1.0f,
+                    0.12f + step / (float) (steps + 1));
+            long delayMs = Math.max(180L,
+                    (speechHoldMs * step) / (steps + 1) - 650L);
             this.handler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -9212,7 +9215,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 MainActivity.this.answerScroll.smoothScrollTo(0,
                         (int) (maximum * Math.max(0.0f, Math.min(1.0f, overall))));
             }
-        }, 120L);
+        }, 35L);
     }
 
     private String[] splitForTts(String str) {
