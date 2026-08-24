@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.rokidkeyboardbridge"
-    android:versionCode="200"
-    android:versionName="0.9.7-alpha">
+    package="com.example.rokidkeyboardbridge.ambient"
+    android:versionCode="201"
+    android:versionName="0.9.8-ambient-prototype">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -19,11 +19,11 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
-        android:label="電脳秘書ロキ"
+        android:label="電脳秘書ロキ AMB"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".MainActivity"
+            android:name="com.example.rokidkeyboardbridge.MainActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:exported="true"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize">
