@@ -46,6 +46,7 @@ public final class PlaybackCaptureService extends Service {
     private static final long NO_AUDIO_TIMEOUT_MS = 3000L;
     private static final long SILENCE_STOP_MS = 1000L;
     private static final long MAX_SEGMENT_MS = 6000L;
+    private static volatile boolean runtimeActive;
 
     private volatile boolean captureActive;
     private volatile AudioRecord recorder;
@@ -328,6 +329,7 @@ public final class PlaybackCaptureService extends Service {
     }
 
     private void updateState(boolean active, String status) {
+        runtimeActive = active;
         getPreferences().edit()
                 .putBoolean(MainActivity.KEY_CAPTURE_ACTIVE, active)
                 .putString(MainActivity.KEY_CAPTURE_STATUS, status == null ? "" : status)
@@ -379,7 +381,7 @@ public final class PlaybackCaptureService extends Service {
     }
 
     static boolean isActive(Context context) {
-        return context.getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
+        return runtimeActive && context.getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE)
                 .getBoolean(MainActivity.KEY_CAPTURE_ACTIVE, false);
     }
 
