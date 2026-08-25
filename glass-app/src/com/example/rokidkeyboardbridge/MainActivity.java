@@ -4915,34 +4915,45 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         || shouldPauseAmbient()) {
                     continue;
                 }
-                final String transcript;
+                String transcript;
+                boolean audioFallback = false;
                 if (chunk.transcript.length() > 0) {
                     transcript = chunk.transcript.trim();
                 } else {
                     postAmbientStatus("AMBIENT: " + chunk.source + "を文字化中", -3355444);
-                    transcript = requestPhoneSpeechText(chunk.pcm, 16000).trim();
-                }
-                String normalized = normalizeForDuplicateCheck(transcript);
-                if (!isUsefulAmbientTranscript(transcript)) {
-                    Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
-                            + " reason=not_useful");
-                    continue;
+                    try {
+                        transcript = requestPhoneSpeechText(chunk.pcm, 16000).trim();
+                    } catch (PhoneSttResponseException phoneSttError) {
+                        transcript = "";
+                        audioFallback = true;
+                        Log.w(TAG, "ambient phone STT returned no speech; using one-call "
+                                + "Gemini audio analysis: " + phoneSttError.getMessage());
+                    }
                 }
                 boolean relatedContinuation = "関連".equals(chunk.source);
-                if (!relatedContinuation
-                        && isDuplicateAmbientTranscript(normalized, System.currentTimeMillis())) {
-                    Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
-                            + " reason=duplicate");
-                    continue;
+                if (!audioFallback) {
+                    String normalized = normalizeForDuplicateCheck(transcript);
+                    if (!isUsefulAmbientTranscript(transcript)) {
+                        Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
+                                + " reason=not_useful");
+                        continue;
+                    }
+                    if (!relatedContinuation
+                            && isDuplicateAmbientTranscript(normalized,
+                            System.currentTimeMillis())) {
+                        Log.i(TAG, "ambient transcript ignored chars=" + transcript.length()
+                                + " reason=duplicate");
+                        continue;
+                    }
+                    Log.i(TAG, "ambient transcript accepted chars=" + transcript.length()
+                            + " source=" + chunk.source);
+                    this.lastAmbientTranscript = normalized;
+                    if (!relatedContinuation) {
+                        this.lastAmbientContext = transcript;
+                        rememberAmbientRecentContext(transcript);
+                    }
+                    this.lastAmbientTranscriptAt = System.currentTimeMillis();
                 }
-                Log.i(TAG, "ambient transcript accepted chars=" + transcript.length()
-                        + " source=" + chunk.source);
-                this.lastAmbientTranscript = normalized;
-                if (!relatedContinuation) {
-                    this.lastAmbientContext = transcript;
-                    rememberAmbientRecentContext(transcript);
-                }
-                this.lastAmbientTranscriptAt = System.currentTimeMillis();
                 long now = System.currentTimeMillis();
                 if (now < this.ambientBackoffUntil
                         || now - this.lastAmbientRequestAt < AMBIENT_MIN_REQUEST_GAP_MS
@@ -4960,16 +4971,32 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 this.lastAmbientRequestAt = now;
                 this.ambientRequestActive = true;
-                postAmbientStatus("AMBIENT: " + chunk.source + "を統合解析中", -3355444);
+                postAmbientStatus(audioFallback
+                        ? "AMBIENT: Geminiで音声を統合解析中"
+                        : "AMBIENT: " + chunk.source + "を統合解析中", -3355444);
                 String raw = requestAmbientExplanation(apiKey, transcript,
-                        relatedContinuation, this.ambientRecentContext);
+                        relatedContinuation, this.ambientRecentContext,
+                        audioFallback ? makeWav(chunk.pcm, 16000) : null);
                 this.ambientRequestActive = false;
                 if (!this.ambientMode || generation != this.ambientGeneration
                         || this.geminiRequestActive || this.voiceRecording) {
                     continue;
                 }
+                if (audioFallback) {
+                    String recognizedContext = extractAmbientRecognizedContext(raw);
+                    if (isUsefulAmbientTranscript(recognizedContext)) {
+                        transcript = recognizedContext;
+                        String normalized = normalizeForDuplicateCheck(transcript);
+                        this.lastAmbientTranscript = normalized;
+                        this.lastAmbientTranscriptAt = System.currentTimeMillis();
+                        this.lastAmbientContext = transcript;
+                        rememberAmbientRecentContext(transcript);
+                        Log.i(TAG, "ambient Gemini audio context chars="
+                                + transcript.length());
+                    }
+                }
                 final String result = formatAmbientExplanation(raw, chunk.source, transcript,
-                        relatedContinuation);
+                        relatedContinuation || audioFallback);
                 if (result.length() > 0) {
                     Log.i(TAG, "ambient analysis displayed chars=" + result.length());
                     this.handler.post(new Runnable() {
@@ -5679,7 +5706,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private String requestAmbientExplanation(String apiKey, String transcript,
-            boolean relatedContinuation, String recentContext) throws Exception {
+            boolean relatedContinuation, String recentContext, byte[] audioWav) throws Exception {
+        boolean audioInput = audioWav != null && audioWav.length > 44;
         String excerpt = transcript == null ? "" : transcript.trim();
         if (excerpt.length() > AMBIENT_MAX_TRANSCRIPT_CHARS) {
             excerpt = excerpt.substring(0, AMBIENT_MAX_TRANSCRIPT_CHARS);
@@ -5688,7 +5716,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (context.length() > AMBIENT_MAX_CONTEXT_CHARS) {
             context = context.substring(context.length() - AMBIENT_MAX_CONTEXT_CHARS);
         }
-        String continuationInstruction = relatedContinuation
+        String continuationInstruction = audioInput
+                ? "スマホ側の文字起こしが空だったため、添付音声を直接聞き取り、文字起こしと統合分析を1回で行ってください。\n"
+                : relatedContinuation
                 ? "今回は新しい音声がありません。直前の会話から直接つながる未提示の関連知識だけを選び、前回と同じ解説・検証・指摘を繰り返さないでください。\n"
                 : "今回は新しく認識した音声です。解説、主張の検証、会話ロジックの確認、関連知識を一度に行ってください。\n";
         String searchInstruction = relatedContinuation
@@ -5702,10 +5732,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 + searchInstruction
                 + "(3)直近の会話に明確な自己矛盾、時系列不整合、因果の飛躍、計算・単位の不一致がある場合の短い注意。"
                 + "冗談、感想、価値判断、曖昧な文字起こしには論理指摘をしないでください。"
-                + "(4)会話に直接役立つ追加知識。新しい音声では解説語の見出しを<transcript>内の表記から選んでください。"
+                + "(4)会話に直接役立つ追加知識。新しい入力では解説語の見出しを、文字起こしまたは添付音声に実際に出た表記から選んでください。"
                 + "全体で重要度順に最大5件、各30〜80字の簡潔な日本語にしてください。該当する観点だけを出し、無理に全種別を埋めないでください。"
                 + "出力は1行につき必ず「種別｜見出し｜本文」とし、種別は解説・検証・論理・関連のいずれかにしてください。"
                 + "検証本文の先頭は[確認]、[要注意]、[不明]のいずれかにし、検索した場合は本文末尾に主要な情報源名を短く含めてください。"
+                + (audioInput
+                ? "音声を聞き取れた場合は最初の1行だけ「文脈｜認識内容｜文字起こし」の形式で付けてください。この内部文脈行は最大5件の分析項目に含めません。"
+                : "")
                 + "意味のある対象がない場合だけNONEを返し、前置き、Markdown、箇条書き記号は付けないでください。"
                 + "\n<recent_context>\n" + context + "\n</recent_context>"
                 + "\n<transcript>\n" + excerpt + "\n</transcript>";
@@ -5717,7 +5750,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.activeAmbientConnection = connection;
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(8000);
-            connection.setReadTimeout(30000);
+            connection.setReadTimeout(audioInput ? 45000 : 30000);
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
             connection.setRequestProperty("x-goog-api-key", apiKey);
@@ -5725,6 +5758,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
             part.put("text", prompt);
             JSONArray parts = new JSONArray();
             parts.put(part);
+            if (audioInput) {
+                JSONObject audioData = new JSONObject();
+                audioData.put("mime_type", "audio/wav");
+                audioData.put("data", Base64.encodeToString(audioWav, Base64.NO_WRAP));
+                JSONObject audioPart = new JSONObject();
+                audioPart.put("inline_data", audioData);
+                parts.put(audioPart);
+            }
             JSONObject content = new JSONObject();
             content.put("role", "user");
             content.put("parts", parts);
@@ -5740,7 +5781,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 body.put("tools", tools);
             }
             JSONObject generationConfig = new JSONObject();
-            generationConfig.put("maxOutputTokens", 900);
+            generationConfig.put("maxOutputTokens", audioInput ? 1100 : 900);
             generationConfig.put("temperature", 0.1d);
             body.put("generationConfig", generationConfig);
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
@@ -5817,6 +5858,26 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             }
         }
+    }
+
+    private String extractAmbientRecognizedContext(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.length() == 0) {
+            return "";
+        }
+        String[] lines = value.replace("```json", "").replace("```", "")
+                .split("\\r?\\n");
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i] == null ? "" : lines[i].trim();
+            String[] fields = line.split("[｜|]", 3);
+            if (fields.length >= 3 && "文脈".equals(fields[0].trim())) {
+                String transcript = fields[2].trim().replace("\"", "");
+                return transcript.length() > AMBIENT_MAX_TRANSCRIPT_CHARS
+                        ? transcript.substring(0, AMBIENT_MAX_TRANSCRIPT_CHARS)
+                        : transcript;
+            }
+        }
+        return "";
     }
 
     private String formatAmbientExplanation(String raw, String source, String transcript,
