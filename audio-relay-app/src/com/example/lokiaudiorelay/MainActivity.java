@@ -42,6 +42,7 @@ public final class MainActivity extends Activity {
     static final String KEY_RELAY_TOKEN = "relay_token";
     static final String KEY_CAPTURE_ACTIVE = "capture_active";
     static final String KEY_CAPTURE_STATUS = "capture_status";
+    static final String KEY_AUTO_CAPTURE = "auto_capture";
     static final int PORT = 8765;
     private static final int REQUEST_AUDIO = 10;
     private static final int REQUEST_CAPTURE = 20;
@@ -50,6 +51,7 @@ public final class MainActivity extends Activity {
     private EditText tokenInput;
     private TextView statusView;
     private Button captureButton;
+    private boolean bootAutoLaunch;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable stateUpdater = new Runnable() {
         @Override public void run() {
@@ -61,6 +63,8 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        bootAutoLaunch = getIntent() != null
+                && getIntent().getBooleanExtra(BootReceiver.EXTRA_BOOT_AUTO_LAUNCH, false);
         buildUi();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -70,6 +74,15 @@ public final class MainActivity extends Activity {
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 11);
+        }
+        if (getPreferences().getBoolean(KEY_AUTO_CAPTURE, true)) {
+            handler.postDelayed(new Runnable() {
+                @Override public void run() {
+                    if (!isFinishing() && !PlaybackCaptureService.isActive(MainActivity.this)) {
+                        requestCapture();
+                    }
+                }
+            }, 900L);
         }
     }
 
@@ -100,7 +113,7 @@ public final class MainActivity extends Activity {
         help.setText("Bluetooth送信元の端末で再生音を取得し、電脳秘書ロキへ渡します。\n"
                 + "1. Galaxyの秘書アプリで「音声PAIR」\n"
                 + "2. この端末で「Galaxyを検索」\n"
-                + "3. 「再生音声 ON」→共有を許可\n\n"
+                + "3. 初回だけ接続すると、次回から自動開始します\n\n"
                 + "音声は保存しません。DRMなど取得を禁止したアプリの音声は対象外です。");
         help.setTextSize(14);
         help.setTextColor(Color.DKGRAY);
@@ -155,13 +168,15 @@ public final class MainActivity extends Activity {
         root.addView(pairRow);
 
         captureButton = new Button(this);
-        captureButton.setText("再生音声 ON");
+        captureButton.setText("再生音声を開始");
         captureButton.setTextSize(18);
         captureButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 if (PlaybackCaptureService.isActive(MainActivity.this)) {
+                    getPreferences().edit().putBoolean(KEY_AUTO_CAPTURE, false).apply();
                     stopCapture();
                 } else {
+                    getPreferences().edit().putBoolean(KEY_AUTO_CAPTURE, true).apply();
                     requestCapture();
                 }
             }
@@ -218,6 +233,13 @@ public final class MainActivity extends Activity {
             startService(service);
         }
         setStatus("再生音声を開始しています", false);
+        if (bootAutoLaunch) {
+            handler.postDelayed(new Runnable() {
+                @Override public void run() {
+                    moveTaskToBack(true);
+                }
+            }, 600L);
+        }
     }
 
     private void stopCapture() {
@@ -368,9 +390,19 @@ public final class MainActivity extends Activity {
 
     private void refreshState() {
         boolean active = PlaybackCaptureService.isActive(this);
-        if (captureButton != null) captureButton.setText(active ? "再生音声 OFF" : "再生音声 ON");
+        if (captureButton != null) {
+            captureButton.setText(active ? "再生音声 動作中（押すと停止）" : "再生音声を開始");
+        }
+        String savedHost = getPreferences().getString(KEY_RELAY_HOST, "").trim();
+        if (hostInput != null && !hostInput.hasFocus()
+                && savedHost.length() > 0
+                && !savedHost.equals(hostInput.getText().toString().trim())) {
+            hostInput.setText(savedHost);
+        }
         String serviceStatus = getPreferences().getString(KEY_CAPTURE_STATUS, "");
-        if (active && serviceStatus.length() > 0) setStatus(serviceStatus, false);
+        if (active && serviceStatus.length() > 0) {
+            setStatus(serviceStatus + (savedHost.length() == 0 ? "" : " / Galaxy " + savedHost), false);
+        }
     }
 
     private void setStatus(String value, boolean error) {

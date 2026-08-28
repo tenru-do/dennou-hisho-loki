@@ -124,6 +124,8 @@ public final class MainActivity extends Activity {
     private static final String KEY_WEATHER_FORECAST = "weather_forecast";
     private static final String KEY_WEATHER_TIME = "weather_time";
     private static final String KEY_PENDING_COMMAND = "pending_command";
+    private static final String KEY_LAST_CODEX_NOTIFICATION = "last_codex_notification";
+    private static final String KEY_LAST_CODEX_NOTIFICATION_AT = "last_codex_notification_at";
     private static final String KEY_GLASS_RUNTIME_STATE = "glass_runtime_state";
     private static final String KEY_GLASS_RUNTIME_MESSAGE = "glass_runtime_message";
     private static final String KEY_GLASS_WAIT_UNTIL = "glass_wait_until";
@@ -138,6 +140,8 @@ public final class MainActivity extends Activity {
     private static final String KEY_AMBIENT_RELAY_AT = "ambient_relay_at";
     private static final String KEY_AMBIENT_SOURCE_ACTIVE = "ambient_source_active";
     private static final String KEY_AMBIENT_SOURCE_SEEN_AT = "ambient_source_seen_at";
+    private static final String KEY_AMBIENT_CONSUMER_SEEN_AT = "ambient_consumer_seen_at";
+    private static final long AMBIENT_CONSUMER_TIMEOUT_MS = 30000L;
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
@@ -958,6 +962,7 @@ public final class MainActivity extends Activity {
             boolean news = request != null && request.startsWith("GET /news");
             boolean morning = request != null && request.startsWith("GET /morning");
             boolean command = request != null && request.startsWith("GET /command");
+            boolean postCommand = request != null && request.startsWith("POST /command");
             boolean ackCommand = request != null && request.startsWith("GET /ack_command");
             boolean control = request != null && request.startsWith("GET /control");
             boolean memory = request != null && request.startsWith("GET /memory");
@@ -1005,6 +1010,7 @@ public final class MainActivity extends Activity {
                     : mail ? buildMailJson().toString()
                     : news ? buildNewsJson(parseStringQuery(request, "q", "")).toString()
                     : morning ? MorningBriefingManager.readStoredForPlayback(this).toString()
+                    : postCommand ? buildPostCommandResult(bodyText).toString()
                     : command ? buildCommandJson().toString()
                     : ackCommand ? buildAckCommandJson().toString()
                     : control ? buildControlJson().toString()
@@ -1012,7 +1018,8 @@ public final class MainActivity extends Activity {
                     : health ? buildHealthJson().toString()
                     : weather ? buildWeatherJson(parseIntQuery(request, "offset", 0)).toString()
                     : transit ? buildTransitJson().toString()
-                    : ambientPlayback ? buildAmbientPlaybackJson().toString()
+                    : ambientPlayback ? buildAmbientPlaybackJson(
+                            "1".equals(parseStringQuery(request, "active", ""))).toString()
                     : ackAmbientPlayback ? buildAckAmbientPlaybackJson(
                             parseLongQuery(request, "id", 0L)).toString()
                     : ambientSourceState ? buildAmbientSourceStateJson(bodyText).toString()
@@ -1053,6 +1060,12 @@ public final class MainActivity extends Activity {
         String relaySource = shortText(request.optString("source", "Bluetooth"), 30);
         if (ambientRelay) {
             updateAmbientSourceState(true);
+            if (!isAmbientConsumerActive()) {
+                root.put("ok", true);
+                root.put("transcript", "");
+                root.put("inactive", true);
+                return root;
+            }
         }
         String encoded = request.optString("pcm", "");
         int sampleRate = request.optInt("sampleRate", 16000);
@@ -1095,9 +1108,12 @@ public final class MainActivity extends Activity {
         return root;
     }
 
-    private JSONObject buildAmbientPlaybackJson() throws Exception {
+    private JSONObject buildAmbientPlaybackJson(boolean activeHeartbeat) throws Exception {
         SharedPreferences preferences = getPreferences();
         long now = System.currentTimeMillis();
+        if (activeHeartbeat) {
+            preferences.edit().putLong(KEY_AMBIENT_CONSUMER_SEEN_AT, now).apply();
+        }
         long seenAt = preferences.getLong(KEY_AMBIENT_SOURCE_SEEN_AT, 0L);
         boolean active = preferences.getBoolean(KEY_AMBIENT_SOURCE_ACTIVE, false)
                 && now - seenAt < 35000L;
@@ -1143,7 +1159,13 @@ public final class MainActivity extends Activity {
         JSONObject root = new JSONObject();
         root.put("ok", true);
         root.put("active", active);
+        root.put("consumerActive", isAmbientConsumerActive());
         return root;
+    }
+
+    private boolean isAmbientConsumerActive() {
+        long seenAt = getPreferences().getLong(KEY_AMBIENT_CONSUMER_SEEN_AT, 0L);
+        return System.currentTimeMillis() - seenAt < AMBIENT_CONSUMER_TIMEOUT_MS;
     }
 
     private void updateAmbientSourceState(boolean active) {
@@ -1777,6 +1799,46 @@ public final class MainActivity extends Activity {
         }
         root.put("ok", true);
         root.put("command", command == null ? "" : command);
+        return root;
+    }
+
+    private JSONObject buildPostCommandResult(String bodyText) throws Exception {
+        String command = "";
+        if (bodyText != null && bodyText.trim().length() > 0) {
+            if (bodyText.trim().startsWith("{")) {
+                command = new JSONObject(bodyText).optString("command", "").trim();
+            } else {
+                command = formValue(bodyText, "command").trim();
+            }
+        }
+        command = shortText(command, MAX_COMMAND_CHARS);
+        boolean duplicateCodexNotification = false;
+        if (command.startsWith("__CODEX_NOTIFY__:")) {
+            SharedPreferences preferences = getPreferences();
+            long now = System.currentTimeMillis();
+            duplicateCodexNotification = command.equals(
+                    preferences.getString(KEY_LAST_CODEX_NOTIFICATION, ""))
+                    && now - preferences.getLong(KEY_LAST_CODEX_NOTIFICATION_AT, 0L) < 60000L;
+            if (!duplicateCodexNotification) {
+                preferences.edit()
+                        .putString(KEY_LAST_CODEX_NOTIFICATION, command)
+                        .putLong(KEY_LAST_CODEX_NOTIFICATION_AT, now)
+                        .apply();
+            } else {
+                Log.i(TAG, "duplicate Codex notification suppressed");
+            }
+        }
+        if (command.length() > 0 && !duplicateCodexNotification) {
+            synchronized (MainActivity.class) {
+                pendingCommand = command;
+            }
+            getPreferences().edit().putString(KEY_PENDING_COMMAND, command).apply();
+            Log.i(TAG, "remote command queued chars=" + command.length());
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("queued", command.length() > 0 && !duplicateCodexNotification);
+        root.put("duplicate", duplicateCodexNotification);
         return root;
     }
 
