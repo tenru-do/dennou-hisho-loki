@@ -56,6 +56,7 @@ Known environment-dependent areas include:
 - Gemini model availability, billing state, and quota
 - Android media-projection/playback-capture support and source-app DRM policy
 - Google Maps notification wording and OpenStreetMap road/intersection coverage
+- destination remaining time is minute-based and depends on a fresh Google Maps arrival clock or usable GPS/route progress; moving-route behavior still needs testing across devices
 
 ## Google Workspace scope
 

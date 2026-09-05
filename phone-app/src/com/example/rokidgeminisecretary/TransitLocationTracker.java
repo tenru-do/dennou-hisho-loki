@@ -60,6 +60,7 @@ public final class TransitLocationTracker implements LocationListener {
     private static final long ACTIVE_GPS_INTERVAL_MS = 5000L;
     private static final long ACTIVE_NETWORK_INTERVAL_MS = 10000L;
     private static final long RETURN_TO_IDLE_MS = 120000L;
+    private static final long NAVIGATION_GRACE_MS = 30000L;
 
     private static TransitLocationTracker instance;
 
@@ -74,6 +75,7 @@ public final class TransitLocationTracker implements LocationListener {
     private Location lastQueryLocation;
     private long lastQueryAt;
     private long lastMovingAt;
+    private long navigationActiveUntil;
     private float smoothedSpeed;
     private float smoothedHeading = Float.NaN;
     private String pendingPredictionKey = "";
@@ -95,6 +97,27 @@ public final class TransitLocationTracker implements LocationListener {
         if (instance != null) {
             instance.stopInternal();
             instance = null;
+        }
+    }
+
+    public static synchronized void setNavigationActive(boolean active) {
+        if (instance != null) {
+            instance.setNavigationActiveInternal(active);
+        }
+    }
+
+    private synchronized void setNavigationActiveInternal(boolean active) {
+        long now = System.currentTimeMillis();
+        if (active) {
+            navigationActiveUntil = now + NAVIGATION_GRACE_MS;
+            if (registered && !highRateTracking) {
+                registerLocationUpdates(true);
+                Log.i(TAG, "navigation HUD requested high-rate GPS");
+            }
+        } else if (registered && highRateTracking && now >= navigationActiveUntil
+                && (lastMovingAt == 0L || now - lastMovingAt > RETURN_TO_IDLE_MS)) {
+            registerLocationUpdates(false);
+            Log.i(TAG, "navigation HUD released high-rate GPS");
         }
     }
 
@@ -226,10 +249,11 @@ public final class TransitLocationTracker implements LocationListener {
             }
         }
 
-        if (speed >= MIN_TRANSIT_SPEED_MPS && !highRateTracking) {
+        boolean navigationTracking = now < navigationActiveUntil;
+        if ((navigationTracking || speed >= MIN_TRANSIT_SPEED_MPS) && !highRateTracking) {
             registerLocationUpdates(true);
-        } else if (highRateTracking && lastMovingAt > 0L
-                && now - lastMovingAt > RETURN_TO_IDLE_MS) {
+        } else if (highRateTracking && !navigationTracking
+                && (lastMovingAt == 0L || now - lastMovingAt > RETURN_TO_IDLE_MS)) {
             registerLocationUpdates(false);
         }
 

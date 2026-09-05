@@ -10,10 +10,10 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 ## APKのダウンロード
 
 1. 次のAPKをダウンロードします。
-   - [DennouHishoLoki-phone-v0.9.47-alpha.apk](apk/DennouHishoLoki-phone-v0.9.47-alpha.apk?raw=1)：Androidスマホ側
+   - [DennouHishoLoki-phone-v0.9.48-alpha.apk](apk/DennouHishoLoki-phone-v0.9.48-alpha.apk?raw=1)：Androidスマホ側
    - [DennouHishoLoki-glass-v0.9.97-alpha.apk](apk/DennouHishoLoki-glass-v0.9.97-alpha.apk?raw=1)：Rokidグラス側
    - [DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk](apk/DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk?raw=1)：Bluetooth再生音をAMBへ渡す端末だけに入れる任意アプリ
-   - [SHA-256チェックサム](apk/SHA256SUMS-v0.9.8-alpha.txt)：ダウンロード後の整合性確認用
+   - [SHA-256チェックサム](apk/SHA256SUMS-v0.9.9-alpha.txt)：ダウンロード後の整合性確認用
 2. スマホ版はスマホでAPKを開いてインストールします。
 3. グラス版は開発者ケーブルとADBを使用してインストールします。
 

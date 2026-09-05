@@ -3065,6 +3065,11 @@ public final class MainActivity extends Activity {
                 result.put("error", "location_permission_missing");
             }
         }
+        boolean navigationActive = result.optBoolean("navigationActive", false);
+        // Ordinary rail estimation can stay in a low-power GPS mode. An active
+        // Maps navigation session needs fresh samples so the remaining distance
+        // and duration do not stay frozen at the route's initial values.
+        TransitLocationTracker.setNavigationActive(navigationActive);
         result.put("topCompact", estimatedTransit.optString("compact", ""));
         result.put("topTime", estimatedTransit.optLong("time", 0L));
         Location location = getBestAvailableLocation();
@@ -3076,7 +3081,7 @@ public final class MainActivity extends Activity {
             result.put("bearing", location.hasBearing() ? location.getBearing() : -1.0f);
             result.put("speed", location.hasSpeed() ? location.getSpeed() : -1.0f);
         }
-        if (result.optBoolean("navigationActive", false) && location != null) {
+        if (navigationActive && location != null) {
             String currentRoad = cachedCurrentRoad(location);
             if (currentRoad.length() > 0) {
                 result.put("currentRoad", currentRoad);
@@ -3099,7 +3104,7 @@ public final class MainActivity extends Activity {
         result.put("routeDestination", routeDestination);
         result.put("route", routeFresh ? new JSONArray(routeText) : new JSONArray());
         result.put("routeError", preferences.getString(KEY_MAP_ROUTE_ERROR, ""));
-        if (result.optBoolean("navigationActive", false) && routeFresh
+        if (navigationActive && routeFresh
                 && location != null && maneuverText.length() > 2) {
             JSONObject routeMetrics = buildRouteHudMetrics(location, routeText, maneuverText,
                     routeDistanceMeters, routeDurationSeconds);
@@ -3119,7 +3124,17 @@ public final class MainActivity extends Activity {
                 if (routeArrival.length() > 0) result.put("arrival", routeArrival);
             }
         }
-        if (result.optBoolean("navigationActive", false)
+        // Google Maps' advertised arrival clock is more authoritative than the
+        // static OSRM duration. Recalculate it on every HUD poll so the initial
+        // value counts down even while route geometry or GPS briefly stalls.
+        if (navigationActive) {
+            String liveDuration = remainingDurationFromNavigationArrival(
+                    result.optString("arrival", ""), System.currentTimeMillis());
+            if (liveDuration.length() > 0) {
+                result.put("totalRemainingDuration", liveDuration);
+            }
+        }
+        if (navigationActive
                 && (maneuverText.length() <= 2 || routeDataVersion < 3
                 || routeDistanceMeters <= 0.0f || routeDurationSeconds <= 0.0f)
                 && routeDestination.length() > 0
@@ -3144,6 +3159,49 @@ public final class MainActivity extends Activity {
             result.put("currentRoad", "");
         }
         return result;
+    }
+
+    private String remainingDurationFromNavigationArrival(String value, long now) {
+        String text = safe(value).trim();
+        if (text.length() == 0 || (!text.contains("着") && !text.contains("到着"))) {
+            return "";
+        }
+        Matcher clock = Pattern.compile(
+                "(?<![0-9])([01]?[0-9]|2[0-3])\\s*[:：]\\s*([0-5][0-9])\\s*(?:着|到着)")
+                .matcher(text);
+        if (!clock.find()) {
+            clock = Pattern.compile(
+                    "(?:着|到着)[^0-9]{0,4}([01]?[0-9]|2[0-3])\\s*[:：]\\s*([0-5][0-9])")
+                    .matcher(text);
+            if (!clock.find()) return "";
+        }
+        try {
+            int hour = Integer.parseInt(clock.group(1));
+            int minute = Integer.parseInt(clock.group(2));
+            Calendar arrival = Calendar.getInstance();
+            arrival.setTimeInMillis(now);
+            arrival.set(Calendar.HOUR_OF_DAY, hour);
+            arrival.set(Calendar.MINUTE, minute);
+            arrival.set(Calendar.SECOND, 0);
+            arrival.set(Calendar.MILLISECOND, 0);
+            // Around midnight, a destination clock can belong to tomorrow.
+            if (arrival.getTimeInMillis() < now - 2L * 60L * 1000L) {
+                long pastBy = now - arrival.getTimeInMillis();
+                // A clock shortly before now is a stale notification, not an
+                // arrival tomorrow. A large negative offset is the normal
+                // midnight rollover (for example 23:50 -> 00:03).
+                if (pastBy < 6L * 60L * 60L * 1000L) return "";
+                arrival.add(Calendar.DAY_OF_MONTH, 1);
+            }
+            long remainingMs = arrival.getTimeInMillis() - now;
+            if (remainingMs <= 0L || remainingMs > 36L * 60L * 60L * 1000L) {
+                return "";
+            }
+            double roundedUpSeconds = Math.ceil(remainingMs / 60000.0) * 60.0;
+            return formatRouteDuration(roundedUpSeconds);
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private String cachedCurrentRoad(Location current) {
