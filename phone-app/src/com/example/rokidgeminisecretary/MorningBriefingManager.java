@@ -57,7 +57,7 @@ final class MorningBriefingManager {
     private static final String KEY_CUSTOM = "custom_instructions";
     private static final String KEY_PROFILE_ZODIAC = "morning_profile_zodiac";
     private static final String KEY_HOROSCOPE_ANNOUNCED_DATE = "topic_horoscope_announced_date";
-    private static final int FORMAT_VERSION = 8;
+    private static final int FORMAT_VERSION = 9;
     private static final String KEY_WEATHER_LOCATION = "weather_location";
     private static final String KEY_WEATHER_CONDITION = "weather_condition";
     private static final String KEY_WEATHER_TEMPERATURE = "weather_temperature";
@@ -259,7 +259,7 @@ final class MorningBriefingManager {
                 }
             }
 
-            JSONArray eventWeather = buildEventWeather(context, events, homeHourly);
+            JSONArray eventWeather = buildEventWeather(context, events, homeHourly, region);
             JSONArray rawTopNews = fetchNews("", 10);
             JSONArray rawLocalNews = fetchNews(region + " ニュース", 7);
             JSONArray rawLocalEvents = filterUpcomingEvents(
@@ -392,9 +392,11 @@ final class MorningBriefingManager {
     }
 
     private static JSONArray buildEventWeather(Context context, JSONArray events,
-                                                HourlyForecast fallback) throws Exception {
+                                                HourlyForecast fallback,
+                                                String homeRegion) throws Exception {
         JSONArray result = new JSONArray();
         HashMap<String, HourlyForecast> cache = new HashMap<String, HourlyForecast>();
+        HashMap<String, String> regionCache = new HashMap<String, String>();
         ArrayList<String> announcedPlaces = new ArrayList<String>();
         ArrayList<Long> announcedTimes = new ArrayList<Long>();
         int destinations = 0;
@@ -419,44 +421,62 @@ final class MorningBriefingManager {
             announcedTimes.add(begin);
             HourlyForecast forecast = fallback;
             boolean destinationSpecific = false;
+            String weatherRegion = clean(homeRegion);
             if (place.length() > 0 && destinations < 2) {
                 String key = normalizePlace(place);
                 if (cache.containsKey(key)) {
                     forecast = cache.get(key);
                     destinationSpecific = forecast != null;
+                    weatherRegion = destinationSpecific
+                            ? clean(regionCache.get(key)) : clean(homeRegion);
                 } else {
                     destinations++;
                     try {
-                        double[] coordinate = geocode(context, place);
+                        GeocodedPlace coordinate = geocode(context, place);
                         forecast = coordinate == null ? fallback
-                                : fetchHourly(coordinate[0], coordinate[1]);
+                                : fetchHourly(coordinate.latitude, coordinate.longitude);
                         cache.put(key, forecast);
                         destinationSpecific = coordinate != null && forecast != null;
+                        weatherRegion = destinationSpecific
+                                ? coordinate.regionLabel : clean(homeRegion);
+                        regionCache.put(key, weatherRegion);
                     } catch (Exception error) {
                         cache.put(key, null);
+                        regionCache.put(key, clean(homeRegion));
                         forecast = fallback;
+                        weatherRegion = clean(homeRegion);
                     }
                 }
             }
+            if (weatherRegion.length() == 0) weatherRegion = "現在地周辺";
             JSONObject weather = rainAdvice(forecast,
                     begin - 90L * 60L * 1000L,
                     event.optLong("end", 0L) + 90L * 60L * 1000L,
-                    place.length() == 0 ? "現在地周辺" : place);
+                    weatherRegion);
             weather.put("title", event.optString("title", ""));
             weather.put("begin", begin);
             weather.put("location", place);
+            weather.put("weatherRegion", weatherRegion);
             weather.put("destinationSpecific", destinationSpecific);
             result.put(weather);
         }
         return result;
     }
 
-    private static double[] geocode(Context context, String place) throws Exception {
+    private static GeocodedPlace geocode(Context context, String place) throws Exception {
         if (!Geocoder.isPresent()) return null;
         List<Address> addresses = new Geocoder(context, Locale.JAPAN)
                 .getFromLocationName(place, 1);
         if (addresses == null || addresses.isEmpty()) return null;
-        return new double[]{addresses.get(0).getLatitude(), addresses.get(0).getLongitude()};
+        Address address = addresses.get(0);
+        String admin = clean(address.getAdminArea());
+        String locality = clean(address.getLocality());
+        if (locality.length() == 0) locality = clean(address.getSubAdminArea());
+        String label = locality;
+        if (admin.length() > 0 && !label.startsWith(admin)) label = admin + label;
+        if (label.length() == 0) label = "予定先周辺";
+        return new GeocodedPlace(address.getLatitude(), address.getLongitude(),
+                shortText(label, 40));
     }
 
     private static Location bestLastLocation(Context context) {
@@ -976,7 +996,7 @@ final class MorningBriefingManager {
         if (profileSign.length() == 0) {
             JSONObject item = new JSONObject();
             item.put("rank", 0);
-            item.put("sign", "");
+            item.put("sign", "全星座共通");
             item.put("fortune", fortunes[Math.floorMod(date.toString().hashCode(),
                     fortunes.length)]);
             item.put("generic", true);
@@ -1065,10 +1085,11 @@ final class MorningBriefingManager {
             JSONObject item = horoscope.optJSONObject(0);
             if (item != null) {
                 if (item.optBoolean("generic", false)) {
-                    out.append("最初に、今日の総合運です。占いは娯楽としてお楽しみください。\n")
+                    out.append("最初に、全星座共通の今日の総合運です。占いは娯楽としてお楽しみください。\n")
                             .append(item.optString("fortune", "")).append("。\n\n");
                 } else {
-                    out.append("最初に、今日の星座占いです。占いは娯楽としてお楽しみください。\n")
+                    out.append("最初に、").append(item.optString("sign", "星座未設定"))
+                            .append("の今日の星座占いです。占いは娯楽としてお楽しみください。\n")
                             .append(item.optString("sign", "")).append("は全体の")
                             .append(item.optInt("rank", 1)).append("位。")
                             .append(item.optString("fortune", "")).append("。\n\n");
@@ -1090,20 +1111,21 @@ final class MorningBriefingManager {
                     : formatTime(eventBegin) + "から、";
             out.append(timing)
                     .append(event.optString("title", "予定"));
-            String place = clean(event.optString("location", ""));
-            if (place.length() > 0) out.append("。場所は").append(place);
             out.append("。\n");
             for (int j = 0; j < eventWeather.length(); j++) {
                 JSONObject weather = eventWeather.optJSONObject(j);
                 if (weather != null && weather.optLong("begin", -1L) == event.optLong("begin", 0L)) {
-                    out.append("この予定に合わせた天気です。")
+                    String weatherRegion = clean(weather.optString("weatherRegion", region));
+                    if (weatherRegion.length() == 0) weatherRegion = region;
+                    out.append("この予定の時間帯は、").append(weatherRegion)
+                            .append("の予報では、")
                             .append(weather.optString("text", "")).append("\n");
                     break;
                 }
             }
         }
 
-        out.append("\n続いて、現在地周辺の天気です。\n");
+        out.append("\n続いて、").append(region).append("の天気です。\n");
         String condition = clean(prefs.getString(KEY_WEATHER_CONDITION, ""));
         String temperature = clean(prefs.getString(KEY_WEATHER_TEMPERATURE, ""));
         out.append(region).append("は").append(condition.length() == 0 ? "天気情報を確認中" : condition);
@@ -1113,13 +1135,15 @@ final class MorningBriefingManager {
                 date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                 date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() - 1L,
                 region);
-        out.append(homeRain.optString("text", "時間帯別予報は取得できませんでした。"))
+        out.append(region).append("の時間帯別予報では、")
+                .append(homeRain.optString("text", "時間帯別予報は取得できませんでした。"))
                 .append("\n");
         try {
             JSONArray daily = new JSONArray(prefs.getString(KEY_WEATHER_FORECAST, "[]"));
             JSONObject today = daily.optJSONObject(0);
             if (today != null) {
-                out.append("予想最高気温は").append(today.optString("max", "不明"))
+                out.append(region).append("の予想最高気温は")
+                        .append(today.optString("max", "不明"))
                         .append("度、最低気温は").append(today.optString("min", "不明"))
                         .append("度、日中の最大降水確率は")
                         .append(today.optInt("rain", 0)).append("パーセントです。\n");
@@ -1168,8 +1192,6 @@ final class MorningBriefingManager {
             JSONObject article = articles.optJSONObject(i);
             if (article == null) continue;
             out.append(i + 1).append("、").append(article.optString("title", ""));
-            String source = clean(article.optString("source", ""));
-            if (source.length() > 0) out.append("。情報元は").append(source);
             out.append("。\n");
         }
     }
@@ -1343,6 +1365,18 @@ final class MorningBriefingManager {
             this.times = times;
             this.rain = rain;
             this.temperatures = temperatures;
+        }
+    }
+
+    private static final class GeocodedPlace {
+        final double latitude;
+        final double longitude;
+        final String regionLabel;
+
+        GeocodedPlace(double latitude, double longitude, String regionLabel) {
+            this.latitude = latitude;
+            this.longitude = longitude;
+            this.regionLabel = regionLabel == null ? "" : regionLabel;
         }
     }
 }
