@@ -1,0 +1,3 @@
+7e80917588865e2004a764895e6ef4d4501f4a9c5d622f8e4970cfa219570f04  DennouHishoLoki-glass-v0.9.97-alpha.apk
+bfb4d9728a04f2513f37b4986fc6ce404c2f34eff9286a4f3c326e1a497a6546  DennouHishoLoki-phone-v0.9.47-alpha.apk
+16bce538f84b891c4ad2c6f64d4b6e5ec1f4d70cf049f0ff9cc7d8dc236af8ac  DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk

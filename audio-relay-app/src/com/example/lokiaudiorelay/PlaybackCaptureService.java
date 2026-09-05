@@ -29,8 +29,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.Inet4Address;
+import java.net.NetworkInterface;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 
 public final class PlaybackCaptureService extends Service {
     static final String ACTION_START = "com.example.lokiaudiorelay.START";
@@ -49,6 +54,9 @@ public final class PlaybackCaptureService extends Service {
     private static volatile boolean runtimeActive;
 
     private volatile boolean captureActive;
+    private volatile boolean consumerActive;
+    private volatile boolean lastReportedActive;
+    private volatile String lastReportedStatus = "";
     private volatile AudioRecord recorder;
     private MediaProjection projection;
     private MediaProjection.Callback projectionCallback;
@@ -130,6 +138,11 @@ public final class PlaybackCaptureService extends Service {
                     sendSourceState(true);
                     lastHeartbeat = now;
                 }
+                if (!consumerActive) {
+                    updateState(true, "再生音声 ON / グラス待ち（省電力）");
+                    Thread.sleep(3000L);
+                    continue;
+                }
                 byte[] pcm = recordSegment(recorder);
                 if (!captureActive) break;
                 if (pcm == null || pcm.length < 16000) {
@@ -144,7 +157,10 @@ public final class PlaybackCaptureService extends Service {
                             : "グラスへ送信済み（" + transcript.length() + "文字）");
                 } catch (Exception error) {
                     Log.w(TAG, "relay recognition failed", error);
-                    updateState(true, "Galaxy通信待ち: " + shortError(error));
+                    String detail = shortError(error);
+                    updateState(true, detail.contains("聞き取れる音声が見つかりません")
+                            ? "再生音声 ON / 聞き取りなし"
+                            : "Galaxy通信待ち: " + detail);
                     Thread.sleep(2500L);
                 }
             }
@@ -255,21 +271,42 @@ public final class PlaybackCaptureService extends Service {
             JSONObject body = new JSONObject();
             body.put("active", active);
             body.put("source", "Bluetooth");
-            postJson("ambient_source_state", body);
+            JSONObject response = postJson("ambient_source_state", body);
+            consumerActive = response.optBoolean("consumerActive", false);
         } catch (Exception error) {
             Log.w(TAG, "source state failed", error);
         }
     }
 
     private JSONObject postJson(String path, JSONObject body) throws Exception {
+        try {
+            return postJsonOnce(relayHost, path, body, 1500, 50000);
+        } catch (Exception firstError) {
+            String discovered = discoverRelayHost();
+            if (discovered.length() == 0 || discovered.equals(relayHost)) {
+                throw firstError;
+            }
+            Log.i(TAG, "Galaxy bridge moved " + relayHost + " -> " + discovered);
+            relayHost = discovered;
+            getPreferences().edit()
+                    .putString(MainActivity.KEY_RELAY_HOST, discovered)
+                    .putString(MainActivity.KEY_CAPTURE_STATUS,
+                            "接続先を自動更新 / 音声待ち")
+                    .apply();
+            return postJsonOnce(relayHost, path, body, 1500, 50000);
+        }
+    }
+
+    private JSONObject postJsonOnce(String host, String path, JSONObject body,
+            int connectTimeoutMs, int readTimeoutMs) throws Exception {
         byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
         HttpURLConnection connection = (HttpURLConnection) new URL(
-                "http://" + relayHost + ":" + MainActivity.PORT + "/" + path).openConnection();
+                "http://" + host + ":" + MainActivity.PORT + "/" + path).openConnection();
         connection.setRequestMethod("POST");
-        connection.setConnectTimeout(1500);
+        connection.setConnectTimeout(connectTimeoutMs);
         // Galaxy may retry once with its second recognizer when the first
         // on-device/online attempt times out.
-        connection.setReadTimeout(50000);
+        connection.setReadTimeout(readTimeoutMs);
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         connection.setRequestProperty("X-Roki-Token", relayToken);
@@ -285,6 +322,61 @@ public final class PlaybackCaptureService extends Service {
             throw new IllegalStateException("HTTP " + code);
         }
         return new JSONObject(response.length() == 0 ? "{}" : response);
+    }
+
+    private String discoverRelayHost() {
+        for (String candidate : buildRecoveryCandidates()) {
+            if (candidate.equals(relayHost)) continue;
+            try {
+                JSONObject state = new JSONObject();
+                state.put("active", true);
+                state.put("source", "Bluetooth");
+                postJsonOnce(candidate, "ambient_source_state", state, 400, 900);
+                return candidate;
+            } catch (Exception ignored) {
+            }
+        }
+        return "";
+    }
+
+    private ArrayList<String> buildRecoveryCandidates() {
+        LinkedHashSet<String> hosts = new LinkedHashSet<String>();
+        String local = getLocalIpv4();
+        int localDot = local.lastIndexOf('.');
+        String prefix = localDot > 0 ? local.substring(0, localDot + 1) : "";
+        int oldDot = relayHost == null ? -1 : relayHost.lastIndexOf('.');
+        if (oldDot > 0 && relayHost.substring(0, oldDot + 1).equals(prefix)) {
+            try {
+                int previous = Integer.parseInt(relayHost.substring(oldDot + 1));
+                for (int distance = 1; distance <= 8; distance++) {
+                    if (previous - distance > 1) hosts.add(prefix + (previous - distance));
+                    if (previous + distance < 255) hosts.add(prefix + (previous + distance));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (prefix.length() > 0) {
+            int[] common = {10, 14, 21, 20, 9, 11, 12, 13, 15, 16, 2, 3, 4, 5,
+                    6, 7, 8, 17, 18, 19, 22, 23, 24, 25, 30, 50, 100, 101};
+            for (int value : common) hosts.add(prefix + value);
+        }
+        hosts.remove(local);
+        return new ArrayList<String>(hosts);
+    }
+
+    private String getLocalIpv4() {
+        try {
+            for (NetworkInterface network : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                for (java.net.InetAddress address : Collections.list(network.getInetAddresses())) {
+                    if (!address.isLoopbackAddress() && address instanceof Inet4Address) {
+                        String value = address.getHostAddress();
+                        if (value != null && !value.startsWith("169.254.")) return value;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
     }
 
     private String readAll(InputStream stream) throws Exception {
@@ -330,12 +422,20 @@ public final class PlaybackCaptureService extends Service {
 
     private void updateState(boolean active, String status) {
         runtimeActive = active;
+        String normalizedStatus = status == null ? "" : status;
+        if (lastReportedActive == active && lastReportedStatus.equals(normalizedStatus)) {
+            return;
+        }
+        lastReportedActive = active;
+        lastReportedStatus = normalizedStatus;
         getPreferences().edit()
                 .putBoolean(MainActivity.KEY_CAPTURE_ACTIVE, active)
-                .putString(MainActivity.KEY_CAPTURE_STATUS, status == null ? "" : status)
+                .putString(MainActivity.KEY_CAPTURE_STATUS, normalizedStatus)
                 .apply();
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (manager != null && active) manager.notify(NOTIFICATION_ID, buildNotification(status));
+        if (manager != null && active) {
+            manager.notify(NOTIFICATION_ID, buildNotification(normalizedStatus));
+        }
     }
 
     private void stopCapture(String status) {

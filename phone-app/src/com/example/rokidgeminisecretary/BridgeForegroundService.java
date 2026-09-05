@@ -17,11 +17,18 @@ public final class BridgeForegroundService extends Service {
     private static final String CHANNEL_ID = "rokid_secretary_bridge";
     private static final int NOTIFICATION_ID = 8765;
     private final Handler morningHandler = new Handler(Looper.getMainLooper());
+    private final Handler proactiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable morningCheck = new Runnable() {
         @Override public void run() {
             MorningBriefingManager.ensureFreshAsync(
                     BridgeForegroundService.this, false);
             morningHandler.postDelayed(this, 10L * 60L * 1000L);
+        }
+    };
+    private final Runnable proactiveCheck = new Runnable() {
+        @Override public void run() {
+            ProactiveAssistantManager.runAsync(BridgeForegroundService.this);
+            proactiveHandler.postDelayed(this, 60L * 1000L);
         }
     };
 
@@ -31,6 +38,7 @@ public final class BridgeForegroundService extends Service {
         startBridgeForeground();
         TransitLocationTracker.start(this);
         morningHandler.postDelayed(morningCheck, 3000L);
+        proactiveHandler.postDelayed(proactiveCheck, 5000L);
     }
 
     @Override
@@ -43,6 +51,7 @@ public final class BridgeForegroundService extends Service {
     @Override
     public void onDestroy() {
         morningHandler.removeCallbacks(morningCheck);
+        proactiveHandler.removeCallbacks(proactiveCheck);
         TransitLocationTracker.stop();
         super.onDestroy();
     }

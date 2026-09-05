@@ -3,6 +3,7 @@ package com.example.rokidgeminisecretary;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -109,6 +110,7 @@ public final class MainActivity extends Activity {
     // local bridge accept arbitrarily large request bodies.
     private static final int MAX_REQUEST_BODY_CHARS = 524288;
     private static final int MAX_COMMAND_CHARS = 3000;
+    private static final int MAX_PENDING_COMMANDS = 32;
     private static final int MAX_CUSTOM_CHARS = 2400;
     private static final String PREFS = "phone_secretary";
     private static final String KEY_CUSTOM = "custom_instructions";
@@ -124,6 +126,9 @@ public final class MainActivity extends Activity {
     private static final String KEY_WEATHER_FORECAST = "weather_forecast";
     private static final String KEY_WEATHER_TIME = "weather_time";
     private static final String KEY_PENDING_COMMAND = "pending_command";
+    private static final String KEY_PENDING_COMMAND_QUEUE = "pending_command_queue";
+    private static final String KEY_LAST_CODEX_NOTIFICATION = "last_codex_notification";
+    private static final String KEY_LAST_CODEX_NOTIFICATION_AT = "last_codex_notification_at";
     private static final String KEY_GLASS_RUNTIME_STATE = "glass_runtime_state";
     private static final String KEY_GLASS_RUNTIME_MESSAGE = "glass_runtime_message";
     private static final String KEY_GLASS_WAIT_UNTIL = "glass_wait_until";
@@ -138,6 +143,27 @@ public final class MainActivity extends Activity {
     private static final String KEY_AMBIENT_RELAY_AT = "ambient_relay_at";
     private static final String KEY_AMBIENT_SOURCE_ACTIVE = "ambient_source_active";
     private static final String KEY_AMBIENT_SOURCE_SEEN_AT = "ambient_source_seen_at";
+    private static final String KEY_AMBIENT_CONSUMER_SEEN_AT = "ambient_consumer_seen_at";
+    private static final String KEY_MAP_ROUTE_POINTS = "map_route_points";
+    private static final String KEY_MAP_ROUTE_MANEUVERS = "map_route_maneuvers";
+    private static final String KEY_MAP_ROUTE_DESTINATION = "map_route_destination";
+    private static final String KEY_MAP_ROUTE_TIME = "map_route_time";
+    private static final String KEY_MAP_ROUTE_ERROR = "map_route_error";
+    private static final String KEY_MAP_ROUTE_MODE = "map_route_mode";
+    private static final String KEY_MAP_ROUTE_DISTANCE = "map_route_distance";
+    private static final String KEY_MAP_ROUTE_DURATION = "map_route_duration";
+    private static final String KEY_MAP_ROUTE_DATA_VERSION = "map_route_data_version";
+    private static final String KEY_MAP_CURRENT_ROAD = "map_current_road";
+    private static final String KEY_MAP_CURRENT_ROAD_TIME = "map_current_road_time";
+    private static final String KEY_MAP_CURRENT_ROAD_LATITUDE = "map_current_road_latitude";
+    private static final String KEY_MAP_CURRENT_ROAD_LONGITUDE = "map_current_road_longitude";
+    private static final String KEY_NAVIGATION_HUD_SUPPRESSED = "navigation_hud_suppressed";
+    private static final long MAP_ROUTE_CACHE_MS = 12L * 60L * 60L * 1000L;
+    private static final long MAP_ROAD_REFRESH_MS = 60L * 1000L;
+    private static final long MAP_ROAD_CACHE_MS = 10L * 60L * 1000L;
+    private static final float MAP_ROAD_CACHE_RADIUS_METERS = 180.0f;
+    private static final int MAP_ROUTE_MAX_POINTS = 220;
+    private static final long AMBIENT_CONSUMER_TIMEOUT_MS = 30000L;
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
@@ -155,6 +181,9 @@ public final class MainActivity extends Activity {
     private TextView logView;
     private TextView customInfo;
     private EditText commandInput;
+    private EditText navigationDestinationInput;
+    private Button navigationModeButton;
+    private Button navigationHudButton;
     private EditText customInput;
     private EditText bridgeTokenInput;
     private LinearLayout customPanel;
@@ -173,6 +202,10 @@ public final class MainActivity extends Activity {
     private final Handler weatherHandler = new Handler(Looper.getMainLooper());
     private final Handler glassStateHandler = new Handler(Looper.getMainLooper());
     private volatile boolean weatherRefreshInFlight;
+    private volatile boolean navigationRouteFetchInFlight;
+    private volatile boolean navigationRoadLookupInFlight;
+    private volatile long navigationRouteRetryAfterMs;
+    private volatile int navigationRouteFailureCount;
     private final Runnable healthRefresh = new Runnable() {
         @Override public void run() {
             refreshHealthConnectSteps();
@@ -335,10 +368,14 @@ public final class MainActivity extends Activity {
                 if (text.length() == 0) {
                     return;
                 }
-                synchronized (MainActivity.class) {
-                    pendingCommand = text;
+                // Use the same persistent queue as background/Codex commands.
+                // This makes a foreground send observable in logs and prevents
+                // an activity recreation from losing the command before the
+                // glasses complete their next poll.
+                if (!queueBridgeCommand(MainActivity.this, text, true)) {
+                    updateStatus("送信失敗", "入力を命令キューへ保存できませんでした");
+                    return;
                 }
-                getPreferences().edit().putString(KEY_PENDING_COMMAND, text).apply();
                 addAiLog("ユーザー: " + text);
                 updateStatus("送信待ち", "グラスが受け取るまで保持します: " + shortText(text, 80));
                 commandInput.setText("");
@@ -427,8 +464,8 @@ public final class MainActivity extends Activity {
                 synchronized (MainActivity.class) {
                     pendingControl = "stop";
                     pendingCommand = "";
+                    persistPendingCommandsLocked(getPreferences(), new ArrayList<String>());
                 }
-                getPreferences().edit().remove(KEY_PENDING_COMMAND).apply();
                 addAiLog("操作: 停止 / 次の会話へ");
             }
         });
@@ -623,6 +660,69 @@ public final class MainActivity extends Activity {
 
         toolsPanel.addView(wifiRow);
 
+        navigationDestinationInput = new EditText(this);
+        navigationDestinationInput.setSingleLine(true);
+        navigationDestinationInput.setHint("Googleマップの目的地");
+        navigationDestinationInput.setTextSize(14);
+        navigationDestinationInput.setMinHeight(0);
+        navigationDestinationInput.setPadding(8, 2, 8, 2);
+        navigationDestinationInput.setText(
+                getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""));
+        toolsPanel.addView(navigationDestinationInput,
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout navigationRow = new LinearLayout(this);
+        navigationRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        navigationModeButton = new Button(this);
+        navigationModeButton.setText(navigationModeLabel(navigationMode()));
+        navigationModeButton.setTextSize(12);
+        navigationModeButton.setMinHeight(0);
+        navigationModeButton.setPadding(4, 0, 4, 0);
+        navigationModeButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                cycleNavigationMode();
+            }
+        });
+        navigationRow.addView(navigationModeButton, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.8f));
+
+        Button startNavigation = new Button(this);
+        startNavigation.setText("MAPナビ");
+        startNavigation.setTextSize(12);
+        startNavigation.setMinHeight(0);
+        startNavigation.setPadding(4, 0, 4, 0);
+        startNavigation.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                launchGoogleMapsNavigation();
+            }
+        });
+        navigationRow.addView(startNavigation, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        navigationHudButton = new Button(this);
+        navigationHudButton.setTextSize(12);
+        navigationHudButton.setMinHeight(0);
+        navigationHudButton.setPadding(4, 0, 4, 0);
+        navigationHudButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                boolean suppressed = !isNavigationHudSuppressed();
+                setNavigationHudSuppressed(suppressed);
+                updateStatus(suppressed ? "ナビHUD停止" : "ナビHUD再開",
+                        suppressed
+                                ? "Googleマップの案内は継続し、グラス表示だけを隠します"
+                                : "グラスへナビ表示を再開します");
+            }
+        });
+        updateNavigationHudButton();
+        navigationRow.addView(navigationHudButton, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        toolsPanel.addView(navigationRow);
+
         LinearLayout launchRow = new LinearLayout(this);
         launchRow.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -671,6 +771,374 @@ public final class MainActivity extends Activity {
         updateStatus("準備中", "カレンダー権限を確認しています。\nメールは通知アクセス許可後に読めます。");
         refreshCustomInfo();
         refreshLogs();
+    }
+
+    private void launchGoogleMapsNavigation() {
+        String destination = navigationDestinationInput == null ? ""
+                : navigationDestinationInput.getText().toString().trim();
+        destination = normalizeNavigationDestination(destination);
+        if (destination.length() == 0) {
+            updateStatus("目的地が未入力です", "目的地を入力してからMAPナビを押してください");
+            if (navigationDestinationInput != null) navigationDestinationInput.requestFocus();
+            return;
+        }
+        if (navigationDestinationInput != null) navigationDestinationInput.setText(destination);
+        setNavigationHudSuppressed(false);
+        final String mode = navigationMode();
+        prepareNavigationRouteAsync(destination, mode);
+        Intent intent;
+        if (destination.length() == 0) {
+            intent = getPackageManager().getLaunchIntentForPackage(
+                    "com.google.android.apps.maps");
+            if (intent == null) {
+                intent = new Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/maps"));
+            }
+        } else {
+            Uri directions = Uri.parse("https://www.google.com/maps/dir/?api=1"
+                    + "&destination=" + Uri.encode(destination)
+                    + "&travelmode=" + Uri.encode(mode)
+                    + "&dir_action=navigate");
+            intent = new Intent(Intent.ACTION_VIEW, directions);
+            intent.setPackage("com.google.android.apps.maps");
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(intent);
+            String permissionHint = hasNotificationListenerAccess()
+                    ? "案内開始後、進路通知をグラスへ表示します"
+                    : "通知アクセスが未許可です。操作内のMAILから許可してください";
+            updateStatus(destination.length() == 0 ? "Googleマップ起動" : "MAPナビ起動",
+                    permissionHint);
+        } catch (Exception firstError) {
+            try {
+                Intent browser = new Intent(Intent.ACTION_VIEW,
+                        destination.length() == 0
+                                ? Uri.parse("https://www.google.com/maps")
+                                : Uri.parse("https://www.google.com/maps/dir/?api=1"
+                                        + "&destination=" + Uri.encode(destination)
+                                        + "&travelmode=" + Uri.encode(mode)
+                                        + "&dir_action=navigate"));
+                startActivity(browser);
+                updateStatus("Googleマップをブラウザで起動",
+                        "Googleマップアプリが見つかりませんでした");
+            } catch (Exception secondError) {
+                updateStatus("MAP起動失敗", secondError.getMessage());
+            }
+        }
+    }
+
+    private String normalizeNavigationDestination(String value) {
+        String destination = value == null ? "" : value.trim();
+        destination = destination.replaceFirst("^(徒歩|歩き|車|自転車|電車)で", "");
+        Matcher station = Pattern.compile("([^\\s、。]+?駅)").matcher(destination);
+        if (station.find()) return station.group(1);
+        destination = destination.replaceFirst("(まで|へ|に行く|にいく)$", "");
+        return destination.trim();
+    }
+
+    private String navigationMode() {
+        String mode = getPreferences().getString(KEY_MAP_ROUTE_MODE, "walking");
+        if (!"walking".equals(mode) && !"driving".equals(mode)
+                && !"bicycling".equals(mode)) return "walking";
+        return mode;
+    }
+
+    private String navigationModeLabel(String mode) {
+        if ("driving".equals(mode)) return "車";
+        if ("bicycling".equals(mode)) return "自転車";
+        return "徒歩";
+    }
+
+    private void cycleNavigationMode() {
+        String current = navigationMode();
+        String next = "walking".equals(current) ? "driving"
+                : "driving".equals(current) ? "bicycling" : "walking";
+        getPreferences().edit().putString(KEY_MAP_ROUTE_MODE, next).apply();
+        if (navigationModeButton != null) {
+            navigationModeButton.setText(navigationModeLabel(next));
+        }
+    }
+
+    private void clearStoredNavigationRoute() {
+        getPreferences().edit()
+                .remove(KEY_MAP_ROUTE_POINTS)
+                .remove(KEY_MAP_ROUTE_MANEUVERS)
+                .remove(KEY_MAP_ROUTE_DESTINATION)
+                .remove(KEY_MAP_ROUTE_TIME)
+                .remove(KEY_MAP_ROUTE_ERROR)
+                .remove(KEY_MAP_ROUTE_DISTANCE)
+                .remove(KEY_MAP_ROUTE_DURATION)
+                .remove(KEY_MAP_ROUTE_DATA_VERSION)
+                .apply();
+    }
+
+    private boolean isNavigationHudSuppressed() {
+        return getPreferences().getBoolean(KEY_NAVIGATION_HUD_SUPPRESSED, false);
+    }
+
+    private void setNavigationHudSuppressed(boolean suppressed) {
+        getPreferences().edit().putBoolean(KEY_NAVIGATION_HUD_SUPPRESSED, suppressed).apply();
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            updateNavigationHudButton();
+        } else {
+            runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    updateNavigationHudButton();
+                }
+            });
+        }
+    }
+
+    private void updateNavigationHudButton() {
+        if (navigationHudButton != null) {
+            navigationHudButton.setText(isNavigationHudSuppressed() ? "HUD再開" : "HUD停止");
+        }
+    }
+
+    private void prepareNavigationRouteAsync(final String destination, final String mode) {
+        prepareNavigationRouteAsync(destination, mode, true);
+    }
+
+    private void prepareNavigationRouteAsync(final String destination, final String mode,
+                                             boolean clearExisting) {
+        if (navigationRouteFetchInFlight) return;
+        if (!clearExisting && System.currentTimeMillis() < navigationRouteRetryAfterMs) return;
+        navigationRouteFetchInFlight = true;
+        if (clearExisting) {
+            String existingDestination = getPreferences().getString(
+                    KEY_MAP_ROUTE_DESTINATION, "").trim();
+            if (!destination.equals(existingDestination)) {
+                clearStoredNavigationRoute();
+                // Keep the requested destination even while route acquisition is
+                // pending. Otherwise one transient OSRM/geocoder failure removes
+                // the retry key and the HUD can remain without a route forever.
+                getPreferences().edit()
+                        .putString(KEY_MAP_ROUTE_DESTINATION, destination)
+                        .apply();
+            }
+        }
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Location origin = getBestAvailableLocation();
+                    if (origin == null) {
+                        throw new IllegalStateException("current_location_unavailable");
+                    }
+                    double[] target = geocodeNavigationDestination(destination);
+                    if (target == null) {
+                        throw new IllegalStateException("destination_not_found");
+                    }
+                    NavigationRouteData routeData = NavigationRouteData.EMPTY;
+                    Exception lastRouteError = null;
+                    for (int attempt = 0; attempt < 3; attempt++) {
+                        try {
+                            routeData = fetchNavigationRoute(origin.getLatitude(),
+                                    origin.getLongitude(), target[0], target[1], mode);
+                            if (routeData.route.length() >= 2) break;
+                            lastRouteError = new IllegalStateException("route_not_found");
+                        } catch (Exception routeError) {
+                            lastRouteError = routeError;
+                            Log.w(TAG, "navigation route attempt " + (attempt + 1)
+                                    + " failed", routeError);
+                        }
+                        if (attempt < 2) Thread.sleep(1200L * (attempt + 1));
+                    }
+                    JSONArray route = routeData.route;
+                    if (route.length() < 2) {
+                        if (lastRouteError != null) throw lastRouteError;
+                        throw new IllegalStateException("route_not_found");
+                    }
+                    getPreferences().edit()
+                            .putString(KEY_MAP_ROUTE_POINTS, route.toString())
+                            .putString(KEY_MAP_ROUTE_MANEUVERS,
+                                    routeData.maneuvers.toString())
+                            .putString(KEY_MAP_ROUTE_DESTINATION, destination)
+                            .putLong(KEY_MAP_ROUTE_TIME, System.currentTimeMillis())
+                            .putFloat(KEY_MAP_ROUTE_DISTANCE,
+                                    (float) routeData.distanceMeters)
+                            .putFloat(KEY_MAP_ROUTE_DURATION,
+                                    (float) routeData.durationSeconds)
+                            .putInt(KEY_MAP_ROUTE_DATA_VERSION, 3)
+                            .remove(KEY_MAP_ROUTE_ERROR)
+                            .apply();
+                    navigationRouteFailureCount = 0;
+                    navigationRouteRetryAfterMs = 0L;
+                    Log.i(TAG, "navigation route cached points=" + route.length());
+                } catch (Exception error) {
+                    navigationRouteFailureCount = Math.min(5,
+                            navigationRouteFailureCount + 1);
+                    navigationRouteRetryAfterMs = System.currentTimeMillis()
+                            + Math.min(120000L,
+                            10000L * (1L << Math.max(0, navigationRouteFailureCount - 1)));
+                    getPreferences().edit()
+                            .putString(KEY_MAP_ROUTE_ERROR,
+                                    error.getMessage() == null
+                                            ? error.getClass().getSimpleName()
+                                            : error.getMessage())
+                            .apply();
+                    Log.w(TAG, "navigation route preparation failed", error);
+                } finally {
+                    navigationRouteFetchInFlight = false;
+                }
+            }
+        }, "NavigationRouteFetch").start();
+    }
+
+    private double[] geocodeNavigationDestination(String destination) throws Exception {
+        try {
+            if (Geocoder.isPresent()) {
+                List<Address> results = new Geocoder(this, Locale.JAPAN)
+                        .getFromLocationName(destination, 1);
+                if (results != null && !results.isEmpty()) {
+                    Address address = results.get(0);
+                    return new double[]{address.getLatitude(), address.getLongitude()};
+                }
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "Android geocoder failed; using Nominatim", error);
+        }
+        String url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1"
+                + "&countrycodes=jp&q=" + URLEncoder.encode(destination, "UTF-8");
+        JSONArray results = new JSONArray(fetchNavigationText(url));
+        if (results.length() == 0) return null;
+        JSONObject first = results.optJSONObject(0);
+        if (first == null) return null;
+        double latitude = Double.parseDouble(first.optString("lat", ""));
+        double longitude = Double.parseDouble(first.optString("lon", ""));
+        return new double[]{latitude, longitude};
+    }
+
+    private NavigationRouteData fetchNavigationRoute(double originLatitude,
+                                                      double originLongitude,
+                                                      double targetLatitude,
+                                                      double targetLongitude,
+                                                      String mode)
+            throws Exception {
+        String coordinates = String.format(Locale.US, "%.6f,%.6f;%.6f,%.6f",
+                originLongitude, originLatitude, targetLongitude, targetLatitude);
+        String backend = "walking".equals(mode) ? "routed-foot"
+                : "bicycling".equals(mode) ? "routed-bike" : "routed-car";
+        String url = "https://routing.openstreetmap.de/" + backend
+                + "/route/v1/driving/" + coordinates
+                + "?overview=full&geometries=geojson&steps=true";
+        JSONObject response = new JSONObject(fetchNavigationText(url));
+        JSONArray routes = response.optJSONArray("routes");
+        if (routes == null || routes.length() == 0) return NavigationRouteData.EMPTY;
+        JSONObject firstRoute = routes.optJSONObject(0);
+        JSONObject geometry = firstRoute == null ? null : firstRoute.optJSONObject("geometry");
+        JSONArray coordinatesJson = geometry == null ? null : geometry.optJSONArray("coordinates");
+        if (coordinatesJson == null || coordinatesJson.length() < 2) {
+            return NavigationRouteData.EMPTY;
+        }
+        JSONArray result = new JSONArray();
+        int count = coordinatesJson.length();
+        int stride = Math.max(1, (int) Math.ceil(count / (double) MAP_ROUTE_MAX_POINTS));
+        for (int index = 0; index < count; index += stride) {
+            JSONArray coordinate = coordinatesJson.optJSONArray(index);
+            if (coordinate == null || coordinate.length() < 2) continue;
+            JSONArray point = new JSONArray();
+            point.put(coordinate.optDouble(1));
+            point.put(coordinate.optDouble(0));
+            result.put(point);
+        }
+        if ((count - 1) % stride != 0) {
+            JSONArray last = coordinatesJson.optJSONArray(count - 1);
+            if (last != null && last.length() >= 2) {
+                JSONArray point = new JSONArray();
+                point.put(last.optDouble(1));
+                point.put(last.optDouble(0));
+                result.put(point);
+            }
+        }
+        JSONArray maneuvers = new JSONArray();
+        JSONArray legs = firstRoute == null ? null : firstRoute.optJSONArray("legs");
+        if (legs != null) {
+            for (int legIndex = 0; legIndex < legs.length(); legIndex++) {
+                JSONObject leg = legs.optJSONObject(legIndex);
+                JSONArray steps = leg == null ? null : leg.optJSONArray("steps");
+                if (steps == null) continue;
+                for (int stepIndex = 0; stepIndex < steps.length(); stepIndex++) {
+                    JSONObject step = steps.optJSONObject(stepIndex);
+                    JSONObject maneuver = step == null ? null : step.optJSONObject("maneuver");
+                    JSONArray point = maneuver == null ? null : maneuver.optJSONArray("location");
+                    String type = maneuver == null ? "" : maneuver.optString("type", "");
+                    if (point == null || point.length() < 2) continue;
+                    double longitude = point.optDouble(0, Double.NaN);
+                    double latitude = point.optDouble(1, Double.NaN);
+                    if (Double.isNaN(latitude) || Double.isNaN(longitude)) continue;
+                    int routeIndex = nearestCoordinateIndex(coordinatesJson, latitude, longitude);
+                    JSONObject item = new JSONObject();
+                    item.put("latitude", latitude);
+                    item.put("longitude", longitude);
+                    item.put("progress", coordinatesJson.length() <= 1 ? 1.0
+                            : routeIndex / (double) (coordinatesJson.length() - 1));
+                    item.put("type", type);
+                    item.put("modifier", maneuver.optString("modifier", ""));
+                    item.put("name", step.optString("name", ""));
+                    item.put("distance", step.optDouble("distance", -1.0));
+                    item.put("duration", step.optDouble("duration", -1.0));
+                    maneuvers.put(item);
+                }
+            }
+        }
+        return new NavigationRouteData(result, maneuvers,
+                firstRoute.optDouble("distance", -1.0),
+                firstRoute.optDouble("duration", -1.0));
+    }
+
+    private int nearestCoordinateIndex(JSONArray coordinates, double latitude,
+                                       double longitude) {
+        int bestIndex = 0;
+        double bestScore = Double.MAX_VALUE;
+        for (int index = 0; index < coordinates.length(); index++) {
+            JSONArray point = coordinates.optJSONArray(index);
+            if (point == null || point.length() < 2) continue;
+            double deltaLatitude = point.optDouble(1) - latitude;
+            double deltaLongitude = (point.optDouble(0) - longitude)
+                    * Math.cos(Math.toRadians(latitude));
+            double score = deltaLatitude * deltaLatitude + deltaLongitude * deltaLongitude;
+            if (score < bestScore) {
+                bestScore = score;
+                bestIndex = index;
+            }
+        }
+        return bestIndex;
+    }
+
+    private String fetchNavigationText(String urlText) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(urlText).openConnection();
+        connection.setConnectTimeout(7000);
+        connection.setReadTimeout(10000);
+        connection.setRequestProperty("User-Agent",
+                "DennoHishoLoki/0.9 (+https://github.com/tenru-do/dennou-hisho-loki)");
+        int code = connection.getResponseCode();
+        InputStream stream = code >= 200 && code < 300
+                ? connection.getInputStream() : connection.getErrorStream();
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8));
+        StringBuilder builder = new StringBuilder();
+        char[] buffer = new char[4096];
+        int read;
+        while ((read = reader.read(buffer)) >= 0 && builder.length() < 1048576) {
+            builder.append(buffer, 0, read);
+        }
+        reader.close();
+        connection.disconnect();
+        if (code < 200 || code >= 300) {
+            throw new IllegalStateException("route_http_" + code);
+        }
+        return builder.toString();
+    }
+
+    private boolean hasNotificationListenerAccess() {
+        try {
+            String enabled = Settings.Secure.getString(getContentResolver(),
+                    "enabled_notification_listeners");
+            return enabled != null && enabled.contains(getPackageName());
+        } catch (Exception error) {
+            return false;
+        }
     }
 
     private void updateMorningCollectionButton() {
@@ -958,6 +1426,7 @@ public final class MainActivity extends Activity {
             boolean news = request != null && request.startsWith("GET /news");
             boolean morning = request != null && request.startsWith("GET /morning");
             boolean command = request != null && request.startsWith("GET /command");
+            boolean postCommand = request != null && request.startsWith("POST /command");
             boolean ackCommand = request != null && request.startsWith("GET /ack_command");
             boolean control = request != null && request.startsWith("GET /control");
             boolean memory = request != null && request.startsWith("GET /memory");
@@ -970,6 +1439,8 @@ public final class MainActivity extends Activity {
             boolean postHealth = request != null && request.startsWith("POST /health");
             boolean weather = request != null && request.startsWith("GET /weather");
             boolean transit = request != null && request.startsWith("GET /transit");
+            boolean navigationHudControl = request != null
+                    && request.startsWith("GET /navigation_hud");
             boolean stt = request != null && request.startsWith("POST /stt");
             boolean ambientPlayback = request != null && request.startsWith("GET /ambient_playback");
             boolean ackAmbientPlayback = request != null && request.startsWith("GET /ack_ambient_playback");
@@ -1005,14 +1476,18 @@ public final class MainActivity extends Activity {
                     : mail ? buildMailJson().toString()
                     : news ? buildNewsJson(parseStringQuery(request, "q", "")).toString()
                     : morning ? MorningBriefingManager.readStoredForPlayback(this).toString()
+                    : postCommand ? buildPostCommandResult(bodyText).toString()
                     : command ? buildCommandJson().toString()
                     : ackCommand ? buildAckCommandJson().toString()
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
                     : weather ? buildWeatherJson(parseIntQuery(request, "offset", 0)).toString()
+                    : navigationHudControl ? buildNavigationHudControlJson(
+                            parseStringQuery(request, "action", "toggle")).toString()
                     : transit ? buildTransitJson().toString()
-                    : ambientPlayback ? buildAmbientPlaybackJson().toString()
+                    : ambientPlayback ? buildAmbientPlaybackJson(
+                            "1".equals(parseStringQuery(request, "active", ""))).toString()
                     : ackAmbientPlayback ? buildAckAmbientPlaybackJson(
                             parseLongQuery(request, "id", 0L)).toString()
                     : ambientSourceState ? buildAmbientSourceStateJson(bodyText).toString()
@@ -1053,6 +1528,12 @@ public final class MainActivity extends Activity {
         String relaySource = shortText(request.optString("source", "Bluetooth"), 30);
         if (ambientRelay) {
             updateAmbientSourceState(true);
+            if (!isAmbientConsumerActive()) {
+                root.put("ok", true);
+                root.put("transcript", "");
+                root.put("inactive", true);
+                return root;
+            }
         }
         String encoded = request.optString("pcm", "");
         int sampleRate = request.optInt("sampleRate", 16000);
@@ -1095,9 +1576,12 @@ public final class MainActivity extends Activity {
         return root;
     }
 
-    private JSONObject buildAmbientPlaybackJson() throws Exception {
+    private JSONObject buildAmbientPlaybackJson(boolean activeHeartbeat) throws Exception {
         SharedPreferences preferences = getPreferences();
         long now = System.currentTimeMillis();
+        if (activeHeartbeat) {
+            preferences.edit().putLong(KEY_AMBIENT_CONSUMER_SEEN_AT, now).apply();
+        }
         long seenAt = preferences.getLong(KEY_AMBIENT_SOURCE_SEEN_AT, 0L);
         boolean active = preferences.getBoolean(KEY_AMBIENT_SOURCE_ACTIVE, false)
                 && now - seenAt < 35000L;
@@ -1143,7 +1627,13 @@ public final class MainActivity extends Activity {
         JSONObject root = new JSONObject();
         root.put("ok", true);
         root.put("active", active);
+        root.put("consumerActive", isAmbientConsumerActive());
         return root;
+    }
+
+    private boolean isAmbientConsumerActive() {
+        long seenAt = getPreferences().getLong(KEY_AMBIENT_CONSUMER_SEEN_AT, 0L);
+        return System.currentTimeMillis() - seenAt < AMBIENT_CONSUMER_TIMEOUT_MS;
     }
 
     private void updateAmbientSourceState(boolean active) {
@@ -1770,23 +2260,129 @@ public final class MainActivity extends Activity {
         JSONObject root = new JSONObject();
         String command;
         synchronized (MainActivity.class) {
-            command = pendingCommand;
-        }
-        if ((command == null || command.length() == 0) && activeActivity != null) {
-            command = activeActivity.getPreferences().getString(KEY_PENDING_COMMAND, "");
+            ArrayList<String> queue = readPendingCommandsLocked(getPreferences());
+            command = queue.isEmpty() ? "" : queue.get(0);
+            // Also migrates the former one-slot preference into the FIFO format.
+            persistPendingCommandsLocked(getPreferences(), queue);
         }
         root.put("ok", true);
         root.put("command", command == null ? "" : command);
         return root;
     }
 
+    private static ArrayList<String> readPendingCommandsLocked(SharedPreferences preferences) {
+        ArrayList<String> queue = new ArrayList<String>();
+        String encoded = preferences.getString(KEY_PENDING_COMMAND_QUEUE, "");
+        if (encoded != null && encoded.trim().length() > 0) {
+            try {
+                JSONArray array = new JSONArray(encoded);
+                for (int index = 0;
+                        index < array.length() && queue.size() < MAX_PENDING_COMMANDS;
+                        index++) {
+                    String item = shortText(array.optString(index, "").trim(), MAX_COMMAND_CHARS);
+                    if (item.length() > 0) queue.add(item);
+                }
+            } catch (Exception error) {
+                Log.w(TAG, "pending command queue could not be decoded", error);
+            }
+        }
+        if (queue.isEmpty()) {
+            String legacy = pendingCommand == null ? "" : pendingCommand.trim();
+            if (legacy.length() == 0) {
+                legacy = preferences.getString(KEY_PENDING_COMMAND, "").trim();
+            }
+            legacy = shortText(legacy, MAX_COMMAND_CHARS);
+            if (legacy.length() > 0) queue.add(legacy);
+        }
+        return queue;
+    }
+
+    private static void persistPendingCommandsLocked(SharedPreferences preferences,
+                                                       ArrayList<String> queue) {
+        JSONArray encoded = new JSONArray();
+        if (queue != null) {
+            for (String item : queue) {
+                if (encoded.length() >= MAX_PENDING_COMMANDS) break;
+                String command = shortText(item == null ? "" : item.trim(), MAX_COMMAND_CHARS);
+                if (command.length() > 0) encoded.put(command);
+            }
+        }
+        pendingCommand = encoded.length() == 0 ? "" : encoded.optString(0, "");
+        SharedPreferences.Editor editor = preferences.edit();
+        if (encoded.length() == 0) {
+            editor.remove(KEY_PENDING_COMMAND_QUEUE).remove(KEY_PENDING_COMMAND);
+        } else {
+            editor.putString(KEY_PENDING_COMMAND_QUEUE, encoded.toString())
+                    .putString(KEY_PENDING_COMMAND, pendingCommand);
+        }
+        editor.apply();
+    }
+
+    static boolean queueBridgeCommand(Context context, String rawCommand, boolean replacePending) {
+        if (context == null) return false;
+        String command = shortText(rawCommand == null ? "" : rawCommand.trim(), MAX_COMMAND_CHARS);
+        if (command.length() == 0) return false;
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, MODE_PRIVATE);
+        synchronized (MainActivity.class) {
+            ArrayList<String> queue = readPendingCommandsLocked(preferences);
+            if (!replacePending && !queue.isEmpty()) return false;
+            // User input and Codex notifications are independent events. Appending
+            // prevents a second sender from overwriting a command before the glasses
+            // complete their next three-second poll.
+            if (queue.size() >= MAX_PENDING_COMMANDS) queue.remove(0);
+            queue.add(command);
+            persistPendingCommandsLocked(preferences, queue);
+        }
+        Log.i(TAG, "bridge command appended chars=" + command.length());
+        return true;
+    }
+
+    private JSONObject buildPostCommandResult(String bodyText) throws Exception {
+        String command = "";
+        if (bodyText != null && bodyText.trim().length() > 0) {
+            if (bodyText.trim().startsWith("{")) {
+                command = new JSONObject(bodyText).optString("command", "").trim();
+            } else {
+                command = formValue(bodyText, "command").trim();
+            }
+        }
+        command = shortText(command, MAX_COMMAND_CHARS);
+        boolean duplicateCodexNotification = false;
+        if (command.startsWith("__CODEX_NOTIFY__:")) {
+            SharedPreferences preferences = getPreferences();
+            long now = System.currentTimeMillis();
+            duplicateCodexNotification = command.equals(
+                    preferences.getString(KEY_LAST_CODEX_NOTIFICATION, ""))
+                    && now - preferences.getLong(KEY_LAST_CODEX_NOTIFICATION_AT, 0L) < 60000L;
+            if (!duplicateCodexNotification) {
+                preferences.edit()
+                        .putString(KEY_LAST_CODEX_NOTIFICATION, command)
+                        .putLong(KEY_LAST_CODEX_NOTIFICATION_AT, now)
+                        .apply();
+            } else {
+                Log.i(TAG, "duplicate Codex notification suppressed");
+            }
+        }
+        if (command.length() > 0 && !duplicateCodexNotification) {
+            queueBridgeCommand(this, command, true);
+            Log.i(TAG, "remote command appended chars=" + command.length());
+        }
+        JSONObject root = new JSONObject();
+        root.put("ok", true);
+        root.put("queued", command.length() > 0 && !duplicateCodexNotification);
+        root.put("duplicate", duplicateCodexNotification);
+        return root;
+    }
+
     private JSONObject buildAckCommandJson() throws Exception {
         JSONObject root = new JSONObject();
         synchronized (MainActivity.class) {
-            pendingCommand = "";
+            ArrayList<String> queue = readPendingCommandsLocked(getPreferences());
+            if (!queue.isEmpty()) queue.remove(0);
+            persistPendingCommandsLocked(getPreferences(), queue);
+            root.put("remaining", queue.size());
         }
         if (activeActivity != null) {
-            activeActivity.getPreferences().edit().remove(KEY_PENDING_COMMAND).apply();
             activeActivity.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -2458,15 +3054,441 @@ public final class MainActivity extends Activity {
 
     private JSONObject buildTransitJson() throws Exception {
         JSONObject maps = MailNotificationService.recentTransitJson();
+        JSONObject estimatedTransit = TransitLocationTracker.recentTransitJson(this);
+        JSONObject result;
         if (maps.optBoolean("ok", false)) {
             maps.put("estimated", false);
-            return maps;
+            result = maps;
+        } else {
+            result = estimatedTransit;
+            if (!result.optBoolean("ok", false) && !hasLocationPermission()) {
+                result.put("error", "location_permission_missing");
+            }
         }
-        JSONObject estimated = TransitLocationTracker.recentTransitJson(this);
-        if (!estimated.optBoolean("ok", false) && !hasLocationPermission()) {
-            estimated.put("error", "location_permission_missing");
+        result.put("topCompact", estimatedTransit.optString("compact", ""));
+        result.put("topTime", estimatedTransit.optLong("time", 0L));
+        Location location = getBestAvailableLocation();
+        if (location != null) {
+            result.put("latitude", location.getLatitude());
+            result.put("longitude", location.getLongitude());
+            result.put("locationTime", location.getTime());
+            result.put("accuracy", location.hasAccuracy() ? location.getAccuracy() : -1.0f);
+            result.put("bearing", location.hasBearing() ? location.getBearing() : -1.0f);
+            result.put("speed", location.hasSpeed() ? location.getSpeed() : -1.0f);
         }
-        return estimated;
+        if (result.optBoolean("navigationActive", false) && location != null) {
+            String currentRoad = cachedCurrentRoad(location);
+            if (currentRoad.length() > 0) {
+                result.put("currentRoad", currentRoad);
+            }
+            refreshCurrentRoadAsync(location);
+        }
+        SharedPreferences preferences = getPreferences();
+        long routeTime = preferences.getLong(KEY_MAP_ROUTE_TIME, 0L);
+        String routeText = preferences.getString(KEY_MAP_ROUTE_POINTS, "");
+        String maneuverText = preferences.getString(KEY_MAP_ROUTE_MANEUVERS, "");
+        String routeDestination = preferences.getString(KEY_MAP_ROUTE_DESTINATION, "");
+        float routeDistanceMeters = preferences.getFloat(KEY_MAP_ROUTE_DISTANCE, -1.0f);
+        float routeDurationSeconds = preferences.getFloat(KEY_MAP_ROUTE_DURATION, -1.0f);
+        int routeDataVersion = preferences.getInt(KEY_MAP_ROUTE_DATA_VERSION, 0);
+        boolean routeFresh = routeTime > 0L
+                && System.currentTimeMillis() - routeTime <= MAP_ROUTE_CACHE_MS
+                && routeText.length() > 2;
+        result.put("routeReady", routeFresh);
+        result.put("routeTime", routeFresh ? routeTime : 0L);
+        result.put("routeDestination", routeDestination);
+        result.put("route", routeFresh ? new JSONArray(routeText) : new JSONArray());
+        result.put("routeError", preferences.getString(KEY_MAP_ROUTE_ERROR, ""));
+        if (result.optBoolean("navigationActive", false) && routeFresh
+                && location != null && maneuverText.length() > 2) {
+            JSONObject routeMetrics = buildRouteHudMetrics(location, routeText, maneuverText,
+                    routeDistanceMeters, routeDurationSeconds);
+            if (result.optString("nextDistance", "").length() == 0) {
+                String routeDistance = routeMetrics.optString("nextDistance", "");
+                if (routeDistance.length() > 0) result.put("nextDistance", routeDistance);
+            }
+            String[] metricNames = {"afterNextInstruction", "afterNextDistance",
+                    "afterNextDuration", "totalRemainingDistance",
+                    "totalRemainingDuration", "routeArrival", "currentRoad"};
+            for (String metricName : metricNames) {
+                String metricValue = routeMetrics.optString(metricName, "");
+                if (metricValue.length() > 0) result.put(metricName, metricValue);
+            }
+            if (result.optString("arrival", "").length() == 0) {
+                String routeArrival = routeMetrics.optString("routeArrival", "");
+                if (routeArrival.length() > 0) result.put("arrival", routeArrival);
+            }
+        }
+        if (result.optBoolean("navigationActive", false)
+                && (maneuverText.length() <= 2 || routeDataVersion < 3
+                || routeDistanceMeters <= 0.0f || routeDurationSeconds <= 0.0f)
+                && routeDestination.length() > 0
+                && !navigationRouteFetchInFlight
+                && System.currentTimeMillis() >= navigationRouteRetryAfterMs) {
+            prepareNavigationRouteAsync(routeDestination, navigationMode(), false);
+        }
+        boolean suppressed = isNavigationHudSuppressed();
+        result.put("suppressed", suppressed);
+        if (suppressed) {
+            result.put("navigationActive", false);
+            result.put("instruction", "");
+            result.put("detail", "");
+            result.put("nextDistance", "");
+            result.put("arrival", "");
+            result.put("afterNextInstruction", "");
+            result.put("afterNextDistance", "");
+            result.put("afterNextDuration", "");
+            result.put("totalRemainingDistance", "");
+            result.put("totalRemainingDuration", "");
+            result.put("routeArrival", "");
+            result.put("currentRoad", "");
+        }
+        return result;
+    }
+
+    private String cachedCurrentRoad(Location current) {
+        SharedPreferences preferences = getPreferences();
+        String road = preferences.getString(KEY_MAP_CURRENT_ROAD, "").trim();
+        long time = preferences.getLong(KEY_MAP_CURRENT_ROAD_TIME, 0L);
+        if (!isUsefulRoadName(road) || time <= 0L
+                || System.currentTimeMillis() - time > MAP_ROAD_CACHE_MS) {
+            return "";
+        }
+        if (!preferences.contains(KEY_MAP_CURRENT_ROAD_LATITUDE)
+                || !preferences.contains(KEY_MAP_CURRENT_ROAD_LONGITUDE)) {
+            return "";
+        }
+        Location cached = new Location("road-cache");
+        cached.setLatitude(Double.longBitsToDouble(preferences.getLong(
+                KEY_MAP_CURRENT_ROAD_LATITUDE, Double.doubleToRawLongBits(Double.NaN))));
+        cached.setLongitude(Double.longBitsToDouble(preferences.getLong(
+                KEY_MAP_CURRENT_ROAD_LONGITUDE, Double.doubleToRawLongBits(Double.NaN))));
+        if (Double.isNaN(cached.getLatitude()) || Double.isNaN(cached.getLongitude())
+                || current.distanceTo(cached) > MAP_ROAD_CACHE_RADIUS_METERS) {
+            return "";
+        }
+        return road;
+    }
+
+    private void refreshCurrentRoadAsync(Location current) {
+        if (navigationRoadLookupInFlight || current == null) return;
+        SharedPreferences preferences = getPreferences();
+        long cachedAt = preferences.getLong(KEY_MAP_CURRENT_ROAD_TIME, 0L);
+        if (cachedAt > 0L && System.currentTimeMillis() - cachedAt < MAP_ROAD_REFRESH_MS
+                && cachedCurrentRoad(current).length() > 0) {
+            return;
+        }
+        navigationRoadLookupInFlight = true;
+        final Location snapshot = new Location(current);
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    String road = reverseGeocodeRoadName(snapshot);
+                    if (road.length() > 0) {
+                        getPreferences().edit()
+                                .putString(KEY_MAP_CURRENT_ROAD, shortInline(road, 36))
+                                .putLong(KEY_MAP_CURRENT_ROAD_TIME, System.currentTimeMillis())
+                                .putLong(KEY_MAP_CURRENT_ROAD_LATITUDE,
+                                        Double.doubleToRawLongBits(snapshot.getLatitude()))
+                                .putLong(KEY_MAP_CURRENT_ROAD_LONGITUDE,
+                                        Double.doubleToRawLongBits(snapshot.getLongitude()))
+                                .apply();
+                    }
+                } catch (Exception error) {
+                    Log.d(TAG, "current road lookup unavailable: " + error.getMessage());
+                } finally {
+                    navigationRoadLookupInFlight = false;
+                }
+            }
+        }, "NavigationRoadLookup").start();
+    }
+
+    private String reverseGeocodeRoadName(Location location) throws Exception {
+        if (Geocoder.isPresent()) {
+            try {
+                List<Address> addresses = new Geocoder(this, Locale.JAPAN)
+                        .getFromLocation(location.getLatitude(), location.getLongitude(), 1);
+                if (addresses != null && !addresses.isEmpty()) {
+                    String road = safe(addresses.get(0).getThoroughfare()).trim();
+                    if (isUsefulRoadName(road)) return road;
+                }
+            } catch (Exception error) {
+                Log.d(TAG, "Android road geocoder unavailable: " + error.getMessage());
+            }
+        }
+        String url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2"
+                + "&zoom=18&addressdetails=1&lat="
+                + String.format(Locale.US, "%.6f", location.getLatitude())
+                + "&lon=" + String.format(Locale.US, "%.6f", location.getLongitude());
+        JSONObject response = new JSONObject(fetchNavigationText(url));
+        JSONObject address = response.optJSONObject("address");
+        if (address == null) return "";
+        String[] keys = {"road", "pedestrian", "footway", "path", "residential",
+                "living_street", "cycleway"};
+        for (String key : keys) {
+            String road = address.optString(key, "").trim();
+            if (isUsefulRoadName(road)) return road;
+        }
+        return "";
+    }
+
+    private boolean isUsefulRoadName(String value) {
+        String road = safe(value).trim();
+        if (road.length() == 0) return false;
+        String compact = road.replaceAll("[\\s縲]", "");
+        if (compact.matches("[0-9０-９一二三四五六七八九十]+丁目(?:[0-9０-９一二三四五六七八九十-]*番地?)?")) {
+            return false;
+        }
+        return !compact.matches("[0-9０-９一二三四五六七八九十-]+(番地?|号)?");
+    }
+
+    private JSONObject buildRouteHudMetrics(Location current, String routeText,
+                                             String maneuverText,
+                                             float routeTotalDistance,
+                                             float routeTotalDuration) {
+        JSONObject result = new JSONObject();
+        try {
+            JSONArray route = new JSONArray(routeText);
+            JSONArray maneuvers = new JSONArray(maneuverText);
+            if (route.length() < 2 || maneuvers.length() == 0) return result;
+            int nearestIndex = 0;
+            float nearestDistance = Float.MAX_VALUE;
+            for (int index = 0; index < route.length(); index++) {
+                JSONArray point = route.optJSONArray(index);
+                if (point == null || point.length() < 2) continue;
+                float distance = coordinateDistance(current.getLatitude(),
+                        current.getLongitude(), point.optDouble(0), point.optDouble(1));
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestIndex = index;
+                }
+            }
+            if (nearestDistance > 500.0f) return result;
+            double currentProgress = nearestIndex / (double) (route.length() - 1);
+            ArrayList<JSONObject> future = new ArrayList<JSONObject>();
+            String currentRoad = "";
+            for (int index = 0; index < maneuvers.length(); index++) {
+                JSONObject maneuver = maneuvers.optJSONObject(index);
+                if (maneuver == null) continue;
+                double progress = maneuver.optDouble("progress", -1.0);
+                String roadName = maneuver.optString("name", "").trim();
+                if (progress <= currentProgress + 0.002 && roadName.length() > 0) {
+                    currentRoad = roadName;
+                }
+                if (progress <= currentProgress + 0.0005) continue;
+                int targetIndex = routeIndexForProgress(route, progress);
+                float fromCurrent = nearestDistance
+                        + routeDistanceBetween(route, nearestIndex, targetIndex);
+                if (fromCurrent < 8.0f) continue;
+                future.add(maneuver);
+                if (future.size() >= 2) break;
+            }
+            if (currentRoad.length() == 0 && maneuvers.length() > 0) {
+                JSONObject firstManeuver = maneuvers.optJSONObject(0);
+                if (firstManeuver != null) {
+                    currentRoad = firstManeuver.optString("name", "").trim();
+                }
+            }
+            if (currentRoad.length() > 0) result.put("currentRoad", currentRoad);
+            if (!future.isEmpty()) {
+                JSONObject next = future.get(0);
+                int nextIndex = routeIndexForProgress(route,
+                        next.optDouble("progress", currentProgress));
+                float distance = nearestDistance
+                        + routeDistanceBetween(route, nearestIndex, nextIndex);
+                if (distance >= 8.0f) result.put("nextDistance", formatRouteDistance(distance));
+            }
+            if (future.size() >= 2) {
+                JSONObject next = future.get(0);
+                JSONObject afterNext = future.get(1);
+                String instruction = routeManeuverInstruction(afterNext);
+                if (instruction.length() > 0) result.put("afterNextInstruction", instruction);
+                int nextIndex = routeIndexForProgress(route,
+                        next.optDouble("progress", currentProgress));
+                int afterIndex = routeIndexForProgress(route,
+                        afterNext.optDouble("progress", currentProgress));
+                float afterDistance = routeDistanceBetween(route, nextIndex, afterIndex);
+                if (afterDistance <= 0.0f) {
+                    afterDistance = (float) next.optDouble("distance", -1.0);
+                }
+                if (afterDistance > 0.0f) {
+                    result.put("afterNextDistance", formatRouteDistance(afterDistance));
+                }
+                double afterDuration = next.optDouble("duration", -1.0);
+                if (afterDuration <= 0.0 && routeTotalDistance > 0.0f
+                        && routeTotalDuration > 0.0f && afterDistance > 0.0f) {
+                    afterDuration = routeTotalDuration
+                            * (afterDistance / routeTotalDistance);
+                }
+                if (afterDuration > 0.0) {
+                    result.put("afterNextDuration", formatRouteDuration(afterDuration));
+                }
+            }
+            float remainingDistance = nearestDistance
+                    + routeDistanceBetween(route, nearestIndex, route.length() - 1);
+            if (remainingDistance > 0.0f) {
+                result.put("totalRemainingDistance", formatRouteDistance(remainingDistance));
+            }
+            double remainingDuration = -1.0;
+            if (routeTotalDistance > 0.0f && routeTotalDuration > 0.0f
+                    && remainingDistance > 0.0f) {
+                remainingDuration = routeTotalDuration
+                        * Math.min(1.0, remainingDistance / routeTotalDistance);
+                result.put("totalRemainingDuration", formatRouteDuration(remainingDuration));
+                long arrivalAt = System.currentTimeMillis()
+                        + Math.max(60000L, Math.round(remainingDuration * 1000.0));
+                result.put("routeArrival", new SimpleDateFormat("HH:mm'着'", Locale.JAPAN)
+                        .format(new Date(arrivalAt)));
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "route HUD metrics failed", error);
+        }
+        return result;
+    }
+
+    private int routeIndexForProgress(JSONArray route, double progress) {
+        if (route == null || route.length() <= 1) return 0;
+        return Math.max(0, Math.min(route.length() - 1,
+                (int) Math.ceil(Math.max(0.0, Math.min(1.0, progress))
+                        * (route.length() - 1))));
+    }
+
+    private float routeDistanceBetween(JSONArray route, int fromIndex, int toIndex) {
+        if (route == null || route.length() < 2) return 0.0f;
+        int start = Math.max(0, Math.min(route.length() - 1, fromIndex));
+        int end = Math.max(start, Math.min(route.length() - 1, toIndex));
+        float distance = 0.0f;
+        for (int index = start; index < end; index++) {
+            JSONArray from = route.optJSONArray(index);
+            JSONArray to = route.optJSONArray(index + 1);
+            if (from == null || to == null) continue;
+            distance += coordinateDistance(from.optDouble(0), from.optDouble(1),
+                    to.optDouble(0), to.optDouble(1));
+        }
+        return distance;
+    }
+
+    private String routeManeuverInstruction(JSONObject maneuver) {
+        if (maneuver == null) return "";
+        String type = maneuver.optString("type", "").toLowerCase(Locale.US);
+        String modifier = maneuver.optString("modifier", "").toLowerCase(Locale.US);
+        String name = maneuver.optString("name", "").trim();
+        if ("arrive".equals(type)) return "目的地に到着";
+        String action;
+        if (modifier.contains("uturn")) action = "Uターン";
+        else if (modifier.contains("sharp right")) action = "大きく右へ";
+        else if (modifier.contains("sharp left")) action = "大きく左へ";
+        else if (modifier.contains("slight right")) action = "斜め右へ";
+        else if (modifier.contains("slight left")) action = "斜め左へ";
+        else if (modifier.contains("right")) action = "右折";
+        else if (modifier.contains("left")) action = "左折";
+        else if (modifier.contains("straight")) action = "直進";
+        else if (type.contains("roundabout")) action = "ロータリーへ";
+        else if (type.contains("merge")) action = "合流";
+        else action = "進む";
+        if (name.length() == 0) return action;
+        if ("右折".equals(action) || "左折".equals(action) || "直進".equals(action)) {
+            return name + "を" + action;
+        }
+        return action + " " + name;
+    }
+
+    private String formatRouteDuration(double seconds) {
+        long minutes = Math.max(1L, Math.round(seconds / 60.0));
+        if (minutes < 60L) return minutes + "分";
+        long hours = minutes / 60L;
+        long rest = minutes % 60L;
+        return rest == 0L ? hours + "時間" : hours + "時間" + rest + "分";
+    }
+
+    private String routeNextActionDistance(Location current, String routeText,
+                                           String maneuverText) {
+        try {
+            JSONArray route = new JSONArray(routeText);
+            JSONArray maneuvers = new JSONArray(maneuverText);
+            if (route.length() < 2 || maneuvers.length() == 0) return "";
+            int nearestIndex = 0;
+            float nearestDistance = Float.MAX_VALUE;
+            for (int index = 0; index < route.length(); index++) {
+                JSONArray point = route.optJSONArray(index);
+                if (point == null || point.length() < 2) continue;
+                float distance = coordinateDistance(current.getLatitude(),
+                        current.getLongitude(), point.optDouble(0), point.optDouble(1));
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestIndex = index;
+                }
+            }
+            if (nearestDistance > 500.0f) return "";
+            double currentProgress = nearestIndex / (double) (route.length() - 1);
+            for (int index = 0; index < maneuvers.length(); index++) {
+                JSONObject maneuver = maneuvers.optJSONObject(index);
+                if (maneuver == null) continue;
+                double progress = maneuver.optDouble("progress", -1.0);
+                if (progress <= currentProgress + 0.0005) continue;
+                int targetIndex = Math.max(nearestIndex + 1, Math.min(route.length() - 1,
+                        (int) Math.ceil(progress * (route.length() - 1))));
+                float distance = nearestDistance;
+                for (int routeIndex = nearestIndex; routeIndex < targetIndex; routeIndex++) {
+                    JSONArray from = route.optJSONArray(routeIndex);
+                    JSONArray to = route.optJSONArray(routeIndex + 1);
+                    if (from == null || to == null) continue;
+                    distance += coordinateDistance(from.optDouble(0), from.optDouble(1),
+                            to.optDouble(0), to.optDouble(1));
+                }
+                if (distance < 8.0f) continue;
+                return formatRouteDistance(distance);
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "next route action distance failed", error);
+        }
+        return "";
+    }
+
+    private float coordinateDistance(double fromLatitude, double fromLongitude,
+                                     double toLatitude, double toLongitude) {
+        float[] result = new float[1];
+        Location.distanceBetween(fromLatitude, fromLongitude,
+                toLatitude, toLongitude, result);
+        return result[0];
+    }
+
+    private String formatRouteDistance(float metres) {
+        if (metres >= 1000.0f) {
+            float kilometres = metres / 1000.0f;
+            return String.format(Locale.JAPAN,
+                    kilometres >= 10.0f ? "%.0f km" : "%.1f km", kilometres);
+        }
+        int rounded = metres >= 100.0f
+                ? Math.max(10, Math.round(metres / 10.0f) * 10)
+                : Math.max(1, Math.round(metres));
+        return rounded + " m";
+    }
+
+    private JSONObject buildNavigationHudControlJson(String action) throws Exception {
+        String command = action == null ? "toggle" : action.trim().toLowerCase(Locale.US);
+        boolean suppressed = isNavigationHudSuppressed();
+        if ("hide".equals(command) || "off".equals(command)) {
+            suppressed = true;
+        } else if ("show".equals(command) || "on".equals(command)) {
+            suppressed = false;
+        } else {
+            suppressed = !suppressed;
+        }
+        final boolean resultSuppressed = suppressed;
+        setNavigationHudSuppressed(resultSuppressed);
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                updateStatus(resultSuppressed ? "ナビHUD停止" : "ナビHUD再開",
+                        resultSuppressed
+                                ? "グラスからナビ表示を隠しました"
+                                : "グラスからナビ表示を再開しました");
+            }
+        });
+        JSONObject result = new JSONObject();
+        result.put("ok", true);
+        result.put("suppressed", resultSuppressed);
+        return result;
     }
 
     private JSONObject buildWeatherJson(int dayOffset) throws Exception {
@@ -2605,16 +3627,27 @@ public final class MainActivity extends Activity {
             return null;
         }
         Location best = null;
+        Location bestWithSpeed = null;
         for (String provider : manager.getProviders(true)) {
             try {
                 Location candidate = manager.getLastKnownLocation(provider);
                 if (candidate != null && (best == null || candidate.getTime() > best.getTime())) {
                     best = candidate;
                 }
+                if (candidate != null && candidate.hasSpeed()
+                        && (bestWithSpeed == null
+                        || candidate.getTime() > bestWithSpeed.getTime())) {
+                    bestWithSpeed = candidate;
+                }
             } catch (Exception ignored) {
             }
         }
-        if (best != null && System.currentTimeMillis() - best.getTime() <= 900000L) {
+        long now = System.currentTimeMillis();
+        if (bestWithSpeed != null && now - bestWithSpeed.getTime() <= 120000L
+                && (best == null || best.getTime() - bestWithSpeed.getTime() <= 60000L)) {
+            return bestWithSpeed;
+        }
+        if (best != null && now - best.getTime() <= 900000L) {
             return best;
         }
         if (Build.VERSION.SDK_INT >= 30) {
@@ -3020,11 +4053,11 @@ public final class MainActivity extends Activity {
         return builder.toString();
     }
 
-    private String safe(String value) {
+    private static String safe(String value) {
         return value == null ? "" : value;
     }
 
-    private String shortText(String value, int max) {
+    private static String shortText(String value, int max) {
         String text = safe(value)
                 .replace('\n', ' ')
                 .replace('\r', ' ')
@@ -3287,5 +4320,22 @@ public final class MainActivity extends Activity {
                 || "直接回答".equals(kind)
                 || "カスタム指示".equals(kind)
                 || "操作".equals(kind);
+    }
+
+    private static final class NavigationRouteData {
+        static final NavigationRouteData EMPTY = new NavigationRouteData(
+                new JSONArray(), new JSONArray(), -1.0, -1.0);
+        final JSONArray route;
+        final JSONArray maneuvers;
+        final double distanceMeters;
+        final double durationSeconds;
+
+        NavigationRouteData(JSONArray route, JSONArray maneuvers,
+                            double distanceMeters, double durationSeconds) {
+            this.route = route == null ? new JSONArray() : route;
+            this.maneuvers = maneuvers == null ? new JSONArray() : maneuvers;
+            this.distanceMeters = distanceMeters;
+            this.durationSeconds = durationSeconds;
+        }
     }
 }
