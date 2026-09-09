@@ -207,6 +207,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile boolean postIntimacyFollowUpPending;
     private volatile boolean postIntimacyPromptVisible;
     private volatile long postIntimacyFollowUpAt;
+    private volatile long postIntimacyAftercareStartedAt;
     private PowerManager.WakeLock conversationWakeLock;
     private PowerManager.WakeLock glanceWakeLock;
     private volatile long geminiCooldownUntil;
@@ -1004,6 +1005,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void markPostIntimacyTurnStarted() {
         this.postIntimacySessionActive = true;
         this.postIntimacyPromptVisible = false;
+        this.postIntimacyAftercareStartedAt = 0L;
         this.handler.removeCallbacks(this.postIntimacyReturnToNormalRunnable);
         // This is a fallback for a failed/interrupted response. A successful
         // spoken response reschedules the ten-minute window from its end.
@@ -1027,6 +1029,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.postIntimacyFollowUpPending = false;
         this.postIntimacySessionActive = false;
         this.postIntimacyFollowUpAt = 0L;
+        this.postIntimacyAftercareStartedAt = 0L;
         this.postIntimacyPromptVisible = true;
         this.ttsGeneration++;
         this.headGlanceWake = false;
@@ -1056,6 +1059,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             return;
         }
         this.postIntimacyPromptVisible = false;
+        this.postIntimacyAftercareStartedAt = 0L;
         setMascotSpeechPresentation(true, MASCOT_ACTION_NONE);
         setMascotExpression(0);
         setMascotMode(0);
@@ -1091,11 +1095,23 @@ public final class MainActivity extends Activity implements SensorEventListener 
             return;
         }
         this.postIntimacySessionActive = false;
+        this.postIntimacyAftercareStartedAt = 0L;
         this.ttsGeneration++;
         setMascotSpeechPresentation(true, MASCOT_ACTION_NONE);
         setMascotExpression(0);
         setMascotMode(0);
         Log.i(TAG, "post-intimacy state cleared by a new normal request");
+    }
+
+    private void enterPostIntimacyAftercareVisual() {
+        if (!this.postIntimacySessionActive) {
+            return;
+        }
+        this.postIntimacyAftercareStartedAt = System.currentTimeMillis();
+        setMascotSpeechPresentation(false, MASCOT_ACTION_NONE);
+        setMascotExpression(MASCOT_EXPR_POST_INTIMACY_V14_1);
+        setMascotMode(0);
+        Log.i(TAG, "post-intimacy aftercare visual started");
     }
 
     private void setInputTextVisible(String text) {
@@ -10650,7 +10666,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     // writhing, overwhelm, exhaustion and recovery.
     private static final int MASCOT_EXPR_MOTION_V13_1 = 146;
     private static final int MASCOT_EXPR_MOTION_V13_18 = 163;
-    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_MOTION_V13_18;
+    // v14 is a four-stage post-intimacy cooldown: holding back tears,
+    // looking away, downcast exhaustion, then a distant fixed gaze.
+    private static final int MASCOT_EXPR_POST_INTIMACY_V14_1 = 164;
+    private static final int MASCOT_EXPR_POST_INTIMACY_V14_4 = 167;
+    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_POST_INTIMACY_V14_4;
 
     // Full-face speech pairs in mascot_sheet_v6_talk_16.png.  Each even frame
     // is the resting mouth and the following odd frame is the same portrait
@@ -10958,9 +10978,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 && expression <= MASCOT_EXPR_MOTION_V13_18;
     }
 
+    private boolean isMascotPostIntimacyV14Expression(int expression) {
+        return expression >= MASCOT_EXPR_POST_INTIMACY_V14_1
+                && expression <= MASCOT_EXPR_POST_INTIMACY_V14_4;
+    }
+
     private boolean isMascotPostureMotionExpression(int expression) {
         return isMascotReclinedV12Expression(expression)
-                || isMascotMotionV13Expression(expression);
+                || isMascotMotionV13Expression(expression)
+                || isMascotPostIntimacyV14Expression(expression);
     }
 
     private int mascotDistressGroupBase(int expression) {
@@ -11765,6 +11791,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         public void run() {
                             if (i == MainActivity.this.ttsGeneration
                                     && MainActivity.this.postIntimacySessionActive) {
+                                MainActivity.this.enterPostIntimacyAftercareVisual();
                                 MainActivity.this.schedulePostIntimacyFollowUp();
                             }
                         }
@@ -12376,6 +12403,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private final Bitmap[] mascotEmotionV11Sheets = new Bitmap[6];
         private final Bitmap[] mascotReclinedV12Sheets = new Bitmap[6];
         private final Bitmap[] mascotMotionV13Sheets = new Bitmap[6];
+        private Bitmap mascotPostIntimacyV14Sheet;
         private Bitmap mascotExtraSheet;
         private Bitmap mascotExtremeSheet;
         private Bitmap mascotSheet;
@@ -12606,6 +12634,21 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     Log.e(MainActivity.TAG, "mascot v13 sheet load failed "
                             + motionAssets[motionIndex], error);
                 }
+            }
+            try {
+                InputStream stream = MainActivity.this.getAssets().open(
+                        "mascot_sheet_v14_post_intimacy_4.png");
+                try {
+                    BitmapFactory.Options options = new BitmapFactory.Options();
+                    options.inPreferredConfig = Bitmap.Config.RGB_565;
+                    options.inSampleSize = 2;
+                    this.mascotPostIntimacyV14Sheet = BitmapFactory.decodeStream(
+                            stream, null, options);
+                } finally {
+                    stream.close();
+                }
+            } catch (Exception error) {
+                Log.e(MainActivity.TAG, "mascot v14 post-intimacy sheet load failed", error);
             }
         }
 
@@ -13037,6 +13080,21 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     motionV13Sheet = this.mascotMotionV13Sheets[sheetIndex];
                 }
             }
+            Bitmap postIntimacyV14Sheet = null;
+            int postIntimacyV14Frame = -1;
+            if (MainActivity.this.isMascotPostIntimacyV14Expression(semanticExpression)
+                    && this.mascotPostIntimacyV14Sheet != null) {
+                postIntimacyV14Sheet = this.mascotPostIntimacyV14Sheet;
+                postIntimacyV14Frame = semanticExpression - MASCOT_EXPR_POST_INTIMACY_V14_1;
+                if (MainActivity.this.postIntimacySessionActive
+                        && MainActivity.this.postIntimacyAftercareStartedAt > 0L) {
+                    long elapsed = Math.max(0L, System.currentTimeMillis()
+                            - MainActivity.this.postIntimacyAftercareStartedAt);
+                    long stageDuration = Math.max(1L,
+                            POST_INTIMACY_FOLLOW_UP_DELAY_MS / 4L);
+                    postIntimacyV14Frame = Math.min(3, (int) (elapsed / stageDuration));
+                }
+            }
             if (hasDistressSheet()
                     && MainActivity.this.isMascotDistressVariantExpression(semanticExpression)) {
                 int groupBase = MainActivity.this.mascotDistressGroupBase(semanticExpression);
@@ -13090,7 +13148,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     && this.mascotTalkSheet != null
                     && this.mascotTalkSheet.getWidth() > 0
                     && this.mascotTalkSheet.getHeight() > 0;
-            if (motionV13Sheet != null && motionV13Frame >= 0) {
+            if (postIntimacyV14Sheet != null && postIntimacyV14Frame >= 0) {
+                sourceSheet = postIntimacyV14Sheet;
+                columns = 2;
+                rows = 2;
+                sourceIndex = postIntimacyV14Frame;
+            } else if (motionV13Sheet != null && motionV13Frame >= 0) {
                 sourceSheet = motionV13Sheet;
                 columns = 2;
                 rows = motionV13Rows;
@@ -13165,7 +13228,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             int sourceTopCell = (row * sourceSheet.getHeight()) / rows;
             int sourceBottomCell = ((row + 1) * sourceSheet.getHeight()) / rows;
             if (sourceSheet == this.mascotExtremeSheet
-                    || sourceSheet == this.mascotDistressSheet) {
+                    || sourceSheet == this.mascotDistressSheet
+                    || sourceSheet == this.mascotPostIntimacyV14Sheet) {
                 // The imported sheet uses landscape cells.  Crop each cell to
                 // its centered square portrait so the face keeps its original
                 // proportions in the HUD instead of being stretched.
@@ -13192,7 +13256,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
             float motionY = 0.0f;
             float rotation = 0.0f;
             float pulse = 1.0f;
-            if (this.mode == 2) {
+            if (MainActivity.this.isMascotPostIntimacyV14Expression(semanticExpression)
+                    && MainActivity.this.postIntimacySessionActive) {
+                // Almost still: only a slow breath and tiny settling movement.
+                // The artwork carries the emotion; rapid motion would look like
+                // the preceding scene was still continuing.
+                float breath = Math.abs((float) Math.sin(this.frame * 0.24d));
+                float settle = (float) Math.sin(this.frame * 0.16d);
+                motionX = settle * f * 0.0035f;
+                motionY = breath * f2 * 0.0065f;
+                rotation = settle * 0.28f;
+                pulse = 1.0f + breath * 0.004f;
+            } else if (this.mode == 2) {
                 if (MainActivity.this.isMascotMotionV13Expression(semanticExpression)) {
                     boolean resistance = semanticExpression <= 149;
                     boolean impact = semanticExpression >= 150 && semanticExpression <= 153;
