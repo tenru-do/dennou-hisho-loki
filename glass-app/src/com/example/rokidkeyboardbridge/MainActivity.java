@@ -8644,8 +8644,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 if (strTrim3.startsWith("__LOKI_ALERT__:")) {
                     if (MainActivity.this.geminiRequestActive
+                            || MainActivity.this.conversationActive
                             || MainActivity.this.voiceRecording
-                            || MainActivity.this.morningPlaybackActive) {
+                            || MainActivity.this.morningPlaybackActive
+                            || MainActivity.this.mascotMode == 2) {
                         Log.i(MainActivity.TAG, "proactive alert deferred while assistant is active");
                         return;
                     }
@@ -10948,6 +10950,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
         switch (state.family) {
             case MASCOT_FAMILY_COERCIVE:
                 return chooseFromMascotPool(state, beatIndex,
+                        MASCOT_EXPR_EMOTION_V11_5,
+                        MASCOT_EXPR_EMOTION_V11_5 + 2,
+                        MASCOT_EXPR_EMOTION_V11_9,
+                        MASCOT_EXPR_EMOTION_V11_9 + 1,
+                        MASCOT_EXPR_EMOTION_V11_13,
+                        MASCOT_EXPR_EMOTION_V11_15,
+                        MASCOT_EXPR_EMOTION_V11_15 + 1,
+                        MASCOT_EXPR_EMOTION_V11_18,
                         MASCOT_EXPR_REFUSAL_CENTER,
                         MASCOT_EXPR_DISTRESS_SORROW_1,
                         MASCOT_EXPR_DISTRESS_RESIST_1,
@@ -11077,7 +11087,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
             state.family = MASCOT_FAMILY_COERCIVE;
             state.coerciveLocked = true;
             state.intensity = Math.max(2, state.intensity);
-            expression = MASCOT_EXPR_REFUSAL_CENTER;
+            if (containsAny(local, "\u4e71\u66b4", "\u6050\u6016", "\u7d76\u671b", "\u60b2\u9cf4",
+                    "\u75db\u307f", "\u82e6\u3057", "\u9707\u3048", "\u6297\u3048", "\u9003\u308c\u3089\u308c",
+                    "\u6fc0\u3057", "\u7a81\u304d\u7834")) {
+                state.intensity = 3;
+                expression = MASCOT_EXPR_EMOTION_V11_13
+                        + (Math.abs(state.transitionStep + beatIndex) % 6);
+            } else {
+                expression = MASCOT_EXPR_EMOTION_V11_5
+                        + (Math.abs(state.transitionStep + beatIndex) % 8);
+            }
         } else if (containsAny(local, "\u6d99", "\u6ce3\u3044", "\u6ce3\u304f",
                 "\u6ce3\u304d", "\u3059\u3059\u308a\u6ce3")) {
             state.family = state.coerciveLocked ? MASCOT_FAMILY_COERCIVE : MASCOT_FAMILY_SAD;
@@ -11218,7 +11237,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             state.family = MASCOT_FAMILY_COERCIVE;
             state.coerciveLocked = true;
             state.intensity = Math.max(2, state.intensity);
-            expression = MASCOT_EXPR_REFUSAL_CENTER;
+            expression = MASCOT_EXPR_EMOTION_V11_5
+                    + (Math.abs(state.transitionStep + beatIndex) % 8);
         } else if (containsAny(local, "ひらめいた", "閃いた", "分かった", "わかった",
                 "なるほど", "見つけた", "思い出した", "そういうこと")) {
             expression = MASCOT_EXPR_INSIGHT;
