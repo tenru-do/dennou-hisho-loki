@@ -10512,7 +10512,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     // reclined, with gravity-spread and motion-dishevelled hair.
     private static final int MASCOT_EXPR_RECLINED_V12_1 = 128;
     private static final int MASCOT_EXPR_RECLINED_V12_18 = 145;
-    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_RECLINED_V12_18;
+    // v13 adds a second posture-aware motion arc: resistance, impact,
+    // writhing, overwhelm, exhaustion and recovery.
+    private static final int MASCOT_EXPR_MOTION_V13_1 = 146;
+    private static final int MASCOT_EXPR_MOTION_V13_18 = 163;
+    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_MOTION_V13_18;
 
     // Full-face speech pairs in mascot_sheet_v6_talk_16.png.  Each even frame
     // is the resting mouth and the following odd frame is the same portrait
@@ -10758,6 +10762,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private boolean isMascotReclinedV12Expression(int expression) {
         return expression >= MASCOT_EXPR_RECLINED_V12_1
                 && expression <= MASCOT_EXPR_RECLINED_V12_18;
+    }
+
+    private boolean isMascotMotionV13Expression(int expression) {
+        return expression >= MASCOT_EXPR_MOTION_V13_1
+                && expression <= MASCOT_EXPR_MOTION_V13_18;
+    }
+
+    private boolean isMascotPostureMotionExpression(int expression) {
+        return isMascotReclinedV12Expression(expression)
+                || isMascotMotionV13Expression(expression);
     }
 
     private int mascotDistressGroupBase(int expression) {
@@ -11086,10 +11100,21 @@ public final class MainActivity extends Activity implements SensorEventListener 
             // Deliberately traverse different head angles and intensity groups.
             // A flat semantic match used to repeat one portrait for several beats.
             int[] reclinedSequence = state.intensity >= 3
-                    ? new int[]{114, 116, 118, 120, 122, 124, 126, 127, 123, 121}
-                    : new int[]{114, 116, 118, 120, 115, 117, 119, 121};
-            expression = reclinedSequence[Math.abs(state.transitionStep + beatIndex)
-                    % reclinedSequence.length];
+                    ? new int[]{146, 147, 148, 149,
+                    132, 134, 136, 138,
+                    150, 151, 152, 153,
+                    154, 155, 156, 157,
+                    140, 142, 158, 159,
+                    160, 161, 162, 163}
+                    : new int[]{132, 134, 136, 138,
+                    146, 147, 148, 149, 154, 156, 160, 162};
+            int sequenceIndex = Math.abs(state.transitionStep) % reclinedSequence.length;
+            int postureExpression = reclinedSequence[sequenceIndex];
+            state.previousExpression = state.lastExpression;
+            state.lastExpression = postureExpression;
+            state.lastVisualGroup = 200 + postureExpression;
+            state.transitionStep++;
+            return postureExpression;
         }
 
         // Sentence-level changes are easier to read than a new portrait every
@@ -11465,7 +11490,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                     && !mascotEmotionState.coerciveLocked
                                     && !MainActivity.this.isMascotEmotionV11Expression(
                                             mascotExpressions[beatIndex])
-                                    && !MainActivity.this.isMascotReclinedV12Expression(
+                                    && !MainActivity.this.isMascotPostureMotionExpression(
                                             mascotExpressions[beatIndex]);
                             mascotActionStyles[beatIndex] = MainActivity.this.chooseMascotActionStyle(
                                     mascotBeats[beatIndex], mascotExpressions[beatIndex], narration);
@@ -12145,6 +12170,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private Bitmap mascotDistressSheet;
         private final Bitmap[] mascotEmotionV11Sheets = new Bitmap[6];
         private final Bitmap[] mascotReclinedV12Sheets = new Bitmap[6];
+        private final Bitmap[] mascotMotionV13Sheets = new Bitmap[6];
         private Bitmap mascotExtraSheet;
         private Bitmap mascotExtremeSheet;
         private Bitmap mascotSheet;
@@ -12349,6 +12375,31 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 } catch (Exception error) {
                     Log.e(MainActivity.TAG, "mascot v12 sheet load failed "
                             + reclinedAssets[reclinedIndex], error);
+                }
+            }
+            String[] motionAssets = new String[]{
+                    "mascot_sheet_v13_motion_a.png",
+                    "mascot_sheet_v13_motion_b.png",
+                    "mascot_sheet_v13_motion_c.png",
+                    "mascot_sheet_v13_motion_d.png",
+                    "mascot_sheet_v13_motion_e.png",
+                    "mascot_sheet_v13_motion_f.png"
+            };
+            for (int motionIndex = 0; motionIndex < motionAssets.length; motionIndex++) {
+                try {
+                    InputStream stream = MainActivity.this.getAssets().open(motionAssets[motionIndex]);
+                    try {
+                        BitmapFactory.Options options = new BitmapFactory.Options();
+                        options.inPreferredConfig = Bitmap.Config.RGB_565;
+                        options.inSampleSize = 2;
+                        this.mascotMotionV13Sheets[motionIndex] = BitmapFactory.decodeStream(
+                                stream, null, options);
+                    } finally {
+                        stream.close();
+                    }
+                } catch (Exception error) {
+                    Log.e(MainActivity.TAG, "mascot v13 sheet load failed "
+                            + motionAssets[motionIndex], error);
                 }
             }
         }
@@ -12763,6 +12814,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     reclinedV12Sheet = this.mascotReclinedV12Sheets[sheetIndex];
                 }
             }
+            Bitmap motionV13Sheet = null;
+            int motionV13Frame = -1;
+            int motionV13Rows = 2;
+            if (MainActivity.this.isMascotMotionV13Expression(semanticExpression)) {
+                int v13Index = semanticExpression - MASCOT_EXPR_MOTION_V13_1;
+                int sheetIndex;
+                if (v13Index < 12) {
+                    sheetIndex = v13Index / 4;
+                    motionV13Frame = v13Index % 4;
+                } else {
+                    sheetIndex = 3 + ((v13Index - 12) / 2);
+                    motionV13Frame = (v13Index - 12) % 2;
+                    motionV13Rows = 1;
+                }
+                if (sheetIndex >= 0 && sheetIndex < this.mascotMotionV13Sheets.length) {
+                    motionV13Sheet = this.mascotMotionV13Sheets[sheetIndex];
+                }
+            }
             if (hasDistressSheet()
                     && MainActivity.this.isMascotDistressVariantExpression(semanticExpression)) {
                 int groupBase = MainActivity.this.mascotDistressGroupBase(semanticExpression);
@@ -12816,7 +12885,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     && this.mascotTalkSheet != null
                     && this.mascotTalkSheet.getWidth() > 0
                     && this.mascotTalkSheet.getHeight() > 0;
-            if (reclinedV12Sheet != null && reclinedV12Frame >= 0) {
+            if (motionV13Sheet != null && motionV13Frame >= 0) {
+                sourceSheet = motionV13Sheet;
+                columns = 2;
+                rows = motionV13Rows;
+                sourceIndex = motionV13Frame;
+            } else if (reclinedV12Sheet != null && reclinedV12Frame >= 0) {
                 sourceSheet = reclinedV12Sheet;
                 columns = 2;
                 rows = reclinedV12Rows;
@@ -12914,7 +12988,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
             float rotation = 0.0f;
             float pulse = 1.0f;
             if (this.mode == 2) {
-                if (MainActivity.this.isMascotReclinedV12Expression(semanticExpression)) {
+                if (MainActivity.this.isMascotMotionV13Expression(semanticExpression)) {
+                    boolean resistance = semanticExpression <= 149;
+                    boolean impact = semanticExpression >= 150 && semanticExpression <= 153;
+                    boolean writhing = semanticExpression >= 154 && semanticExpression <= 157;
+                    boolean overwhelmed = semanticExpression >= 158 && semanticExpression <= 159;
+                    boolean exhausted = semanticExpression >= 160 && semanticExpression <= 161;
+                    float irregular = (float) (Math.sin(this.frame * (resistance ? 1.62d : 1.08d))
+                            + 0.31d * Math.sin((this.frame + 3) * 2.31d));
+                    float recoil = (float) Math.sin((this.frame + 1) * (impact ? 1.18d : 0.69d));
+                    motionX = irregular * f * (resistance ? 0.060f
+                            : (writhing ? 0.039f : (exhausted ? 0.010f : 0.025f)));
+                    motionY = recoil * f2 * (impact ? 0.046f
+                            : (overwhelmed ? 0.041f : (exhausted ? 0.015f : 0.028f)));
+                    rotation = irregular * (resistance ? 5.4f
+                            : (writhing ? 3.5f : (exhausted ? 0.8f : 2.4f)));
+                    pulse = 1.0f + Math.abs(recoil) * (overwhelmed ? 0.032f
+                            : (exhausted ? 0.009f : 0.021f));
+                } else if (MainActivity.this.isMascotReclinedV12Expression(semanticExpression)) {
                     // The artwork already carries posture and gravity. Add
                     // irregular whole-head movement only; never overlay lines
                     // or substitute a generic talking mouth.
