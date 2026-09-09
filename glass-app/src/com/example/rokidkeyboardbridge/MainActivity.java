@@ -102,7 +102,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long GEMINI_LOCAL_PACING_MS = 75000;
     private static final long AMBIENT_MIN_REQUEST_GAP_MS = 12000L;
     private static final long AMBIENT_ERROR_BACKOFF_MS = 60000L;
-    private static final long AMBIENT_RESULT_VISIBLE_MS = 25000L;
+    private static final long AMBIENT_RESULT_VISIBLE_MS = 45000L;
     private static final float AMBIENT_RESULT_BRIGHTNESS = 0.16f;
     private static final float IDLE_BRIGHTNESS_CAP = 0.06f;
     private static final float IDLE_BRIGHTNESS_FLOOR = 0.035f;
@@ -262,6 +262,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile AudioRecord ambientRecorder;
     private volatile AudioRecord ambientPlaybackRecorder;
     private volatile int ambientMicSourceIndex;
+    private volatile boolean ambientMicSourceConfirmed;
+    private volatile int ambientMicLowSignalStreak;
     private MediaProjectionManager mediaProjectionManager;
     private MediaProjection mediaProjection;
     private MediaProjection.Callback mediaProjectionCallback;
@@ -355,6 +357,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 return;
             }
             MainActivity.this.ambientResultVisible = false;
+            MainActivity.this.lastAmbientContext = "";
+            MainActivity.this.ambientRecentContext = "";
+            MainActivity.this.ambientRecentContextAt = 0L;
             if (MainActivity.this.answer != null) {
                 String value = MainActivity.this.answer.getText() == null ? ""
                         : MainActivity.this.answer.getText().toString();
@@ -5552,6 +5557,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ambientRecentContextAt = 0L;
         this.lastAmbientTranscriptAt = 0L;
         this.lastAmbientRelayId = 0L;
+        this.ambientMicSourceConfirmed = false;
+        this.ambientMicLowSignalStreak = 0;
         clearAmbientAudioQueue();
         Log.i(TAG, "ambient started mode=" + ambientInputModeLabel()
                 + " playbackRelay=" + ambientUsesPlayback());
@@ -5825,8 +5832,19 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     this.lastAmbientContext = transcript;
                     rememberAmbientRecentContext(transcript);
                 }
-                final String result = formatAmbientExplanation(raw, chunk.source, transcript,
+                String formattedResult = formatAmbientExplanation(raw, chunk.source, transcript,
                         relatedContinuation || audioFallback);
+                if (formattedResult.length() == 0 && audioFallback
+                        && isUsefulAmbientTranscript(transcript)) {
+                    // Gemini sometimes returns only the required transcription
+                    // context line. Do not silently keep showing an older scene;
+                    // surface the newly heard words as a local, no-extra-API fallback.
+                    formattedResult = formatAmbientRecognitionFallback(
+                            transcript, chunk.source);
+                    Log.i(TAG, "ambient analysis used recognition fallback chars="
+                            + transcript.length());
+                }
+                final String result = formattedResult;
                 if (result.length() > 0) {
                     Log.i(TAG, "ambient analysis displayed chars=" + result.length());
                     this.handler.post(new Runnable() {
@@ -5897,6 +5915,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         stopAmbientCapture();
         clearAmbientAudioQueue();
         disconnectActiveAmbient();
+        // An AMB result sets conversationActive while it is visible. Clearing
+        // only ambientResultVisible left shouldPauseAmbient() true forever after
+        // a button/VOICE action, so capture never resumed when the pause elapsed.
+        setConversationActive(false);
     }
 
     private void pauseAmbientForLifecycle(long pauseMs) {
@@ -6366,14 +6388,27 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             if (!heardVoice || voiceHits < AMBIENT_MIC_MIN_VOICE_HITS
                     || maxLevel <= AMBIENT_MIC_LEVEL_THRESHOLD) {
-                this.ambientMicSourceIndex = (selectedIndex + 1) % sources.length;
+                this.ambientMicLowSignalStreak++;
+                boolean keepConfirmedSource = this.ambientMicSourceConfirmed
+                        && selectedIndex == preferredIndex
+                        && this.ambientMicLowSignalStreak < 40;
+                if (keepConfirmedSource) {
+                    this.ambientMicSourceIndex = selectedIndex;
+                } else {
+                    this.ambientMicSourceIndex = (selectedIndex + 1) % sources.length;
+                    this.ambientMicSourceConfirmed = false;
+                    this.ambientMicLowSignalStreak = 0;
+                }
                 Log.d(TAG, "ambient microphone low signal source="
                         + audioSourceLabel(selectedSource) + " level=" + maxLevel
                         + " hits=" + voiceHits + " next="
-                        + audioSourceLabel(sources[this.ambientMicSourceIndex]));
+                        + audioSourceLabel(sources[this.ambientMicSourceIndex])
+                        + " confirmed=" + keepConfirmedSource);
                 return null;
             }
             this.ambientMicSourceIndex = selectedIndex;
+            this.ambientMicSourceConfirmed = true;
+            this.ambientMicLowSignalStreak = 0;
             byte[] raw = pcm.toByteArray();
             Log.i(TAG, "ambient speech captured bytes=" + raw.length
                     + " source=" + audioSourceLabel(selectedSource)
@@ -6780,6 +6815,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 + "発話が不明でも環境音が明瞭なら、認識内容を『環境音: 電車の走行音、ドア音』のように記してください。"
                 + "<transcript>が空でなければ、それは同時刻のBluetooth側文字起こしです。添付された周囲音と混同せず、両方を現在の情報として扱ってください。"
                 + "最初の1行だけ「文脈｜認識内容｜文字起こしまたは環境音」の形式で付けてください。この内部文脈行は最大5件の分析項目に含めません。"
+                + "認識内容が4文字以上ある場合は、文脈行だけで終了せず、その後に現在の音声に対応する『文言』または『環境』を最低1件必ず出してください。"
                 : "")
                 + "意味のある対象がない場合だけNONEを返し、前置き、Markdown、箇条書き記号は付けないでください。"
                 + "\n<avoid_terms>\n" + avoidTerms + "\n</avoid_terms>"
@@ -7049,6 +7085,23 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return accepted == 0 ? "" : display.toString();
     }
 
+    private String formatAmbientRecognitionFallback(String transcript, String source) {
+        String value = transcript == null ? "" : transcript.trim()
+                .replace('\n', ' ').replace('\r', ' ').replaceAll("\\s+", " ");
+        if (!isUsefulAmbientTranscript(value) || containsAmbientPromptLeak(value)) {
+            return "";
+        }
+        if (value.length() > 180) {
+            value = value.substring(0, 180) + "…";
+        }
+        String sourceLabel = "周囲＋Bluetooth".equals(source) ? "周囲＋Bluetooth"
+                : "Bluetooth".equals(source) ? "Bluetooth" : "周囲";
+        if (value.startsWith("環境音:") || value.startsWith("環境音：")) {
+            return "【AMB取得・" + sourceLabel + "】\n◇ 現在の環境\n" + value;
+        }
+        return "【AMB取得・" + sourceLabel + "】\n◎ 聞き取り\n" + value;
+    }
+
     private void showAmbientResult(String result) {
         if (!this.ambientMode || result == null || result.trim().length() == 0
                 || this.geminiRequestActive || this.voiceRecording
@@ -7069,6 +7122,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 System.currentTimeMillis() + AMBIENT_RESULT_VISIBLE_MS);
         setConversationActive(true);
         this.handler.removeCallbacks(this.hideAmbientResultRunnable);
+        // Keep the latest result long enough to read, but do not present an old
+        // environment (for example a train carriage) as the current scene forever.
+        // A newer result resets this timer.
+        this.handler.postDelayed(this.hideAmbientResultRunnable,
+                AMBIENT_RESULT_VISIBLE_MS);
     }
 
     private byte[] makeWav(byte[] bArr, int i) throws Exception {
