@@ -10386,6 +10386,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (str == null) {
                 str = "";
             }
+            str = normalizeTtsVocalizations(str);
             jSONObject.put("content", str);
             // Interrupt only when a new answer begins. Continuation chunks belong
             // to the same utterance and should not restart the Rokid assistant.
@@ -10404,6 +10405,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
             Log.e(TAG, "PhoneTTS failed", e);
             setStatus("PhoneTTS error: " + e.getMessage(), -256);
         }
+    }
+
+    private String normalizeTtsVocalizations(String text) {
+        if (text == null || text.isEmpty()) return "";
+        // Very long runs are synthesized as a flat, mechanical vowel. Keep the
+        // emotional cue but cap it at a naturally pronounceable three sounds.
+        return text.replaceAll("([\u3042\u3041\u30a2\u30a1\u3044\u3043\u30a4\u30a3\u3046\u3045\u30a6\u30a5\u3048\u3047\u30a8\u30a7\u304a\u3049\u30aa\u30a9])\\1{3,}", "$1$1$1");
     }
 
     private static final int MASCOT_FAMILY_NEUTRAL = 0;
@@ -10473,7 +10481,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final int MASCOT_EXPR_EMOTION_V11_13 = 122;
     private static final int MASCOT_EXPR_EMOTION_V11_15 = 124;
     private static final int MASCOT_EXPR_EMOTION_V11_18 = 127;
-    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_EMOTION_V11_18;
+    // v12 is an additional posture set: the same emotional progression while
+    // reclined, with gravity-spread and motion-dishevelled hair.
+    private static final int MASCOT_EXPR_RECLINED_V12_1 = 128;
+    private static final int MASCOT_EXPR_RECLINED_V12_18 = 145;
+    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_RECLINED_V12_18;
 
     // Full-face speech pairs in mascot_sheet_v6_talk_16.png.  Each even frame
     // is the resting mouth and the following odd frame is the same portrait
@@ -10511,6 +10523,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         int repeatCount;
         int transitionStep;
         boolean coerciveLocked;
+        boolean reclinedLocked;
     }
 
     /* JADX INFO: Access modifiers changed from: private */
@@ -10605,6 +10618,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             state.coerciveLocked = true;
             state.intensity = 3;
             state.targetIntensity = 3;
+            state.reclinedLocked = true;
         } else if (isIntimateMascotSpeech(context)) {
             state.family = MASCOT_FAMILY_INTIMATE;
             state.intensity = 1;
@@ -10629,6 +10643,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         if (state.targetIntensity == 0) {
             state.targetIntensity = state.intensity;
+        }
+        if (containsAny(context, "\u62bc\u3057\u5012", "\u4ef0\u5411\u3051", "\u6a2a\u305f\u308f",
+                "\u5bdd\u304b\u3055", "\u30d9\u30c3\u30c9", "\u5e8a\u306b", "\u306e\u3051\u305e",
+                "\u4ef0\u3051\u53cd", "\u4e0b\u304b\u3089\u7a81\u304d\u4e0a\u3052")) {
+            state.reclinedLocked = true;
         }
         return state;
     }
@@ -10707,6 +10726,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private boolean isMascotEmotionV11Expression(int expression) {
         return expression >= MASCOT_EXPR_EMOTION_V11_1
                 && expression <= MASCOT_EXPR_EMOTION_V11_18;
+    }
+
+    private boolean isMascotReclinedV12Expression(int expression) {
+        return expression >= MASCOT_EXPR_RECLINED_V12_1
+                && expression <= MASCOT_EXPR_RECLINED_V12_18;
     }
 
     private int mascotDistressGroupBase(int expression) {
@@ -11027,6 +11051,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
             expression = chooseFromMascotPool(state, beatIndex, 3, 10, 35, 31);
         }
 
+        // A reclined high-intensity scene stays in the purpose-built new set.
+        // This prevents generic talking/intimate portraits from flashing
+        // between the posture-aware frames.
+        if (state.reclinedLocked && state.coerciveLocked
+                && !isMascotEmotionV11Expression(expression)) {
+            int base = state.intensity >= 3
+                    ? MASCOT_EXPR_EMOTION_V11_13 : MASCOT_EXPR_EMOTION_V11_5;
+            int count = state.intensity >= 3 ? 6 : 8;
+            expression = base + (Math.abs(state.transitionStep + beatIndex) % count);
+        }
+
         // Sentence-level changes are easier to read than a new portrait every
         // couple of seconds.  Keep an inferred (non-explicit) mood for roughly
         // three beats, while explicit cues such as surprise/refusal/impact may
@@ -11065,6 +11100,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         state.lastExpression = expression;
         state.lastVisualGroup = mascotExpressionVisualGroup(expression);
         state.transitionStep++;
+        if (state.reclinedLocked && isMascotEmotionV11Expression(expression)) {
+            expression += MASCOT_EXPR_RECLINED_V12_1 - MASCOT_EXPR_EMOTION_V11_1;
+        }
         return expression;
     }
 
@@ -11396,6 +11434,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             mascotMouthAnimations[beatIndex] = !narration
                                     && !mascotEmotionState.coerciveLocked
                                     && !MainActivity.this.isMascotEmotionV11Expression(
+                                            mascotExpressions[beatIndex])
+                                    && !MainActivity.this.isMascotReclinedV12Expression(
                                             mascotExpressions[beatIndex]);
                             mascotActionStyles[beatIndex] = MainActivity.this.chooseMascotActionStyle(
                                     mascotBeats[beatIndex], mascotExpressions[beatIndex], narration);
@@ -12074,6 +12114,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private Bitmap mascotBreathingSheet;
         private Bitmap mascotDistressSheet;
         private final Bitmap[] mascotEmotionV11Sheets = new Bitmap[6];
+        private final Bitmap[] mascotReclinedV12Sheets = new Bitmap[6];
         private Bitmap mascotExtraSheet;
         private Bitmap mascotExtremeSheet;
         private Bitmap mascotSheet;
@@ -12253,6 +12294,31 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 } catch (Exception error) {
                     Log.e(MainActivity.TAG, "mascot v11 sheet load failed "
                             + emotionAssets[emotionIndex], error);
+                }
+            }
+            String[] reclinedAssets = new String[]{
+                    "mascot_sheet_v12_reclined_a.png",
+                    "mascot_sheet_v12_reclined_b.png",
+                    "mascot_sheet_v12_reclined_c.png",
+                    "mascot_sheet_v12_reclined_d.png",
+                    "mascot_sheet_v12_reclined_e.png",
+                    "mascot_sheet_v12_reclined_f.png"
+            };
+            for (int reclinedIndex = 0; reclinedIndex < reclinedAssets.length; reclinedIndex++) {
+                try {
+                    InputStream stream = MainActivity.this.getAssets().open(reclinedAssets[reclinedIndex]);
+                    try {
+                        BitmapFactory.Options options = new BitmapFactory.Options();
+                        options.inPreferredConfig = Bitmap.Config.RGB_565;
+                        options.inSampleSize = 2;
+                        this.mascotReclinedV12Sheets[reclinedIndex] = BitmapFactory.decodeStream(
+                                stream, null, options);
+                    } finally {
+                        stream.close();
+                    }
+                } catch (Exception error) {
+                    Log.e(MainActivity.TAG, "mascot v12 sheet load failed "
+                            + reclinedAssets[reclinedIndex], error);
                 }
             }
         }
@@ -12649,6 +12715,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     emotionV11Sheet = this.mascotEmotionV11Sheets[sheetIndex];
                 }
             }
+            Bitmap reclinedV12Sheet = null;
+            int reclinedV12Frame = -1;
+            int reclinedV12Rows = 2;
+            if (MainActivity.this.isMascotReclinedV12Expression(semanticExpression)) {
+                int v12Index = semanticExpression - MASCOT_EXPR_RECLINED_V12_1;
+                int sheetIndex;
+                if (v12Index < 12) {
+                    sheetIndex = v12Index / 4;
+                    reclinedV12Frame = v12Index % 4;
+                } else {
+                    sheetIndex = 3 + ((v12Index - 12) / 2);
+                    reclinedV12Frame = (v12Index - 12) % 2;
+                    reclinedV12Rows = 1;
+                }
+                if (sheetIndex >= 0 && sheetIndex < this.mascotReclinedV12Sheets.length) {
+                    reclinedV12Sheet = this.mascotReclinedV12Sheets[sheetIndex];
+                }
+            }
             if (hasDistressSheet()
                     && MainActivity.this.isMascotDistressVariantExpression(semanticExpression)) {
                 int groupBase = MainActivity.this.mascotDistressGroupBase(semanticExpression);
@@ -12702,7 +12786,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     && this.mascotTalkSheet != null
                     && this.mascotTalkSheet.getWidth() > 0
                     && this.mascotTalkSheet.getHeight() > 0;
-            if (emotionV11Sheet != null && emotionV11Frame >= 0) {
+            if (reclinedV12Sheet != null && reclinedV12Frame >= 0) {
+                sourceSheet = reclinedV12Sheet;
+                columns = 2;
+                rows = reclinedV12Rows;
+                sourceIndex = reclinedV12Frame;
+            } else if (emotionV11Sheet != null && emotionV11Frame >= 0) {
                 sourceSheet = emotionV11Sheet;
                 columns = emotionV11Columns;
                 rows = emotionV11Rows;
@@ -12795,7 +12884,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
             float rotation = 0.0f;
             float pulse = 1.0f;
             if (this.mode == 2) {
-                if (MainActivity.this.isMascotRefusalExpression(semanticExpression)) {
+                if (MainActivity.this.isMascotReclinedV12Expression(semanticExpression)) {
+                    // The artwork already carries posture and gravity. Add
+                    // irregular whole-head movement only; never overlay lines
+                    // or substitute a generic talking mouth.
+                    float struggle = (float) Math.sin(this.frame * 1.28d);
+                    float recoil = (float) Math.sin((this.frame + 2) * 0.67d);
+                    motionX = struggle * f * 0.025f;
+                    motionY = recoil * f2 * 0.020f;
+                    rotation = struggle * 2.4f;
+                    pulse = 1.0f + Math.abs(recoil) * 0.014f;
+                } else if (MainActivity.this.isMascotRefusalExpression(semanticExpression)) {
                     // Strong but readable resistance: the whole portrait moves,
                     // never a detached mouth or decorative motion-line overlay.
                     float shake = (float) Math.sin(this.frame * 1.55d);
