@@ -1340,7 +1340,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.answer.setTextSize(11.0f);
         this.answer.setPadding(3, 2, 3, 4);
         this.answer.setTextIsSelectable(true);
-        this.answer.setMovementMethod(new ScrollingMovementMethod());
+        // The parent is already a ScrollView. Giving the TextView its own
+        // ScrollingMovementMethod creates two independent scroll positions;
+        // speech-follow scrolling can then move the inner text into blank
+        // space even though the comment view itself is still visible.
+        this.answer.setMovementMethod(null);
         this.answer.setFocusable(false);
         this.answer.setFocusableInTouchMode(false);
         this.answer.addTextChangedListener(new TextWatcher() {
