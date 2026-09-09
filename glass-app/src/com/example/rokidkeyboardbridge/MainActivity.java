@@ -6705,12 +6705,37 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (value.length() < 4) {
             return false;
         }
+        if (isAmbientNonResultText(value)) {
+            return false;
+        }
+        String meaningful = value.replaceAll("[^\\p{L}\\p{N}]", "");
+        if (meaningful.length() < 4) {
+            return false;
+        }
         String compact = normalizeForDuplicateCheck(value);
         return !(compact.equals("おはようございます")
                 || compact.equals("こんにちは")
                 || compact.equals("こんばんは")
                 || compact.equals("ありがとうございます")
                 || compact.equals("ありがとうございました"));
+    }
+
+    private boolean isAmbientNonResultText(String text) {
+        String value = text == null ? "" : text.trim().toLowerCase(java.util.Locale.ROOT);
+        return value.length() == 0
+                || value.contains("聞き取れない")
+                || value.contains("聞き取れません")
+                || value.contains("認識できない")
+                || value.contains("認識できません")
+                || value.contains("判別できない")
+                || value.contains("判別できません")
+                || value.contains("特定できない")
+                || value.contains("特定できません")
+                || value.contains("不明瞭")
+                || value.contains("解析不能")
+                || value.contains("音声待ち")
+                || value.contains("原因不明")
+                || value.contains("情報不足");
     }
 
     private void rememberAmbientRecentContext(String transcript) {
@@ -6838,7 +6863,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 + (audioInput
                 ? "音声を聞き取れた場合は、実際に聞こえた発言を省略・要約せず、可能な範囲で語順どおり文字起こししてください。"
                 + "複数の発言は句点でつなぎ、聞こえていない語やこの指示文の語を補わないでください。"
-                + "発話が不明でも環境音が明瞭なら、認識内容を『環境音: 電車の走行音、ドア音』のように記してください。"
+                + "発話がなくても、音源を高い確度で識別できる特徴的な環境音だけは『環境音: 認識内容』と記してください。一般的な衝撃音や連続音から電車・ドアなどを推測してはいけません。"
+                + "聞き取れない、認識できない、不明、情報不足などの失敗報告は一切出力せず、意味のある対象がなければNONEだけを返してください。"
                 + "<transcript>が空でなければ、それは同時刻のBluetooth側文字起こしです。添付された周囲音と混同せず、両方を現在の情報として扱ってください。"
                 + "最初の1行だけ「文脈｜認識内容｜文字起こしまたは環境音」の形式で付けてください。この内部文脈行は最大5件の分析項目に含めません。"
                 + "認識内容が4文字以上ある場合は、文脈行だけで終了せず、その後に現在の音声に対応する『文言』または『環境』を最低1件必ず出してください。"
@@ -7045,6 +7071,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             kind = kind.replace("【", "").replace("】", "").trim();
             term = term.replace("\"", "").replace("'", "").trim();
+            if (isAmbientNonResultText(term) || isAmbientNonResultText(explanation)) {
+                continue;
+            }
             boolean sourceItem = "根拠".equals(kind);
             if (!("警告".equals(kind) || "環境".equals(kind) || "文言".equals(kind) || "解説".equals(kind) || "検証".equals(kind)
                     || "論理".equals(kind) || "関連".equals(kind) || sourceItem)) {
