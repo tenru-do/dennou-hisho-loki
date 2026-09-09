@@ -6708,7 +6708,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (isAmbientNonResultText(value)) {
             return false;
         }
-        String meaningful = value.replaceAll("[^\\p{L}\\p{N}]", "");
+        // Media timestamps such as 00:00:00-00:00:02 are metadata/noise, not
+        // speech. They previously replaced a useful answer in the HUD.
+        String withoutTimecodes = value.replaceAll(
+                "\\b\\d{1,2}:\\d{2}(?::\\d{2})?\\b", "");
+        String meaningful = withoutTimecodes.replaceAll("[^\\p{L}\\p{N}]", "");
         if (meaningful.length() < 4) {
             return false;
         }
@@ -8654,6 +8658,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             strTrim3.substring("__LOKI_ALERT__:".length()).trim());
                     MainActivity.this.handler.post(new Runnable() {
                         @Override public void run() {
+                            // A Codex report is user-facing content, not AMB
+                            // context. Do not let a short noise capture replace
+                            // it while the user is still reading it.
+                            MainActivity.this.pauseAmbientForUserAction(120000L);
                             MainActivity.this.showAssistantNotification(
                                     proactiveAlert.optString("title", "ロキ"),
                                     proactiveAlert.optString("message", ""),
@@ -11429,7 +11437,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     // The Rokid service does not report an utterance-complete callback.
                     // Keep the HUD on briefly after the conservative speech estimate so
                     // the display never disappears during the last spoken phrase.
-                    Thread.sleep(500L);
+                    Thread.sleep(8000L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     return;
