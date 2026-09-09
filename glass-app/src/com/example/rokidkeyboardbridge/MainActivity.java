@@ -10454,7 +10454,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final int MASCOT_EXPR_DISTRESS_RESIST_4 = 105;
     private static final int MASCOT_EXPR_DISTRESS_BREAKDOWN_1 = 106;
     private static final int MASCOT_EXPR_DISTRESS_BREAKDOWN_4 = 109;
-    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_DISTRESS_BREAKDOWN_4;
+    // v11 adds 18 independent high-detail emotional portraits. Existing
+    // sheets and expression IDs remain untouched.
+    private static final int MASCOT_EXPR_EMOTION_V11_1 = 110;
+    private static final int MASCOT_EXPR_EMOTION_V11_3 = 112;
+    private static final int MASCOT_EXPR_EMOTION_V11_5 = 114;
+    private static final int MASCOT_EXPR_EMOTION_V11_9 = 118;
+    private static final int MASCOT_EXPR_EMOTION_V11_13 = 122;
+    private static final int MASCOT_EXPR_EMOTION_V11_15 = 124;
+    private static final int MASCOT_EXPR_EMOTION_V11_18 = 127;
+    private static final int MASCOT_EXPR_MAX = MASCOT_EXPR_EMOTION_V11_18;
 
     // Full-face speech pairs in mascot_sheet_v6_talk_16.png.  Each even frame
     // is the resting mouth and the following odd frame is the same portrait
@@ -10674,6 +10683,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 && expression <= MASCOT_EXPR_DISTRESS_BREAKDOWN_4;
     }
 
+    private boolean isMascotEmotionV11Expression(int expression) {
+        return expression >= MASCOT_EXPR_EMOTION_V11_1
+                && expression <= MASCOT_EXPR_EMOTION_V11_18;
+    }
+
     private int mascotDistressGroupBase(int expression) {
         if (expression <= MASCOT_EXPR_DISTRESS_CRY_4) return 0;
         if (expression <= MASCOT_EXPR_DISTRESS_SORROW_4) return 4;
@@ -10691,6 +10705,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
             return MASCOT_TALK_REFUSAL;
         }
         if (isMascotDistressVariantExpression(expression)) {
+            return MASCOT_TALK_DISARRAY;
+        }
+        if (isMascotEmotionV11Expression(expression)) {
             return MASCOT_TALK_DISARRAY;
         }
         if (isMascotExtremeExpression(expression)) {
@@ -10801,6 +10818,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (isMascotDistressVariantExpression(expression)) {
             return MASCOT_ACTION_NONE;
         }
+        if (isMascotEmotionV11Expression(expression)) {
+            return MASCOT_ACTION_NONE;
+        }
         if (expression == 19 || expression == 26
                 || expression == MASCOT_EXPR_OVERWHELMED
                 || expression == MASCOT_EXPR_DISARRAY_BREATHLESS) {
@@ -10842,6 +10862,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         if (isMascotDistressVariantExpression(expression)) {
             return 120 + (mascotDistressGroupBase(expression) / 4);
+        }
+        if (isMascotEmotionV11Expression(expression)) {
+            return 140 + (expression - MASCOT_EXPR_EMOTION_V11_1);
         }
         return 1000 + expression;
     }
@@ -10926,12 +10949,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
             case MASCOT_FAMILY_SAD:
                 if (state.intensity >= 3) {
                     return chooseFromMascotPool(state, beatIndex,
+                            MASCOT_EXPR_EMOTION_V11_13,
+                            MASCOT_EXPR_EMOTION_V11_15,
+                            MASCOT_EXPR_EMOTION_V11_18,
                             MASCOT_EXPR_DISTRESS_CRY_1,
                             MASCOT_EXPR_DISTRESS_SORROW_1,
                             MASCOT_EXPR_DISTRESS_BREAKDOWN_1, 28, 36, 35);
                 }
                 if (state.intensity >= 2) {
                     return chooseFromMascotPool(state, beatIndex,
+                            MASCOT_EXPR_EMOTION_V11_1,
+                            MASCOT_EXPR_EMOTION_V11_3,
+                            MASCOT_EXPR_EMOTION_V11_9,
                             MASCOT_EXPR_DISTRESS_CRY_1,
                             MASCOT_EXPR_DISTRESS_SORROW_1,
                             MASCOT_EXPR_DISTRESS_RESIST_1,
@@ -11022,19 +11051,19 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (containsAny(local, "\u6ce3\u304d\u53eb", "\u60b2\u9cf4", "\u7d76\u53eb", "\u53f7\u6ce3")) {
             state.family = state.coerciveLocked ? MASCOT_FAMILY_COERCIVE : MASCOT_FAMILY_SAD;
             state.intensity = 3;
-            expression = MASCOT_EXPR_DISTRESS_BREAKDOWN_1
-                    + (Math.abs(state.transitionStep + beatIndex) % 4);
+            expression = MASCOT_EXPR_EMOTION_V11_13
+                    + (Math.abs(state.transitionStep + beatIndex) % 6);
         } else if (containsAny(local, "\u55da\u54bd", "\u3080\u305b\u3073\u6ce3", "\u3057\u3083\u304f\u308a\u4e0a\u3052")) {
             state.family = state.coerciveLocked ? MASCOT_FAMILY_COERCIVE : MASCOT_FAMILY_SAD;
             state.intensity = 3;
-            expression = MASCOT_EXPR_DISTRESS_CRY_1
+            expression = MASCOT_EXPR_EMOTION_V11_1
                     + (Math.abs(state.transitionStep + beatIndex) % 4);
         } else if (containsAny(local, "\u6d99\u3092\u3053\u3089", "\u6d99\u3092\u582a\u3048",
                 "\u6ce3\u304f\u306e\u3092\u3053\u3089", "\u6ce3\u304f\u306e\u3092\u582a\u3048",
                 "\u6d99\u3092\u5fc5\u6b7b\u306b\u3053\u3089", "\u6ce3\u304d\u305f\u3044\u306e\u3092\u3053\u3089")) {
             state.family = state.coerciveLocked ? MASCOT_FAMILY_COERCIVE : MASCOT_FAMILY_SAD;
             state.intensity = Math.max(2, state.intensity);
-            expression = MASCOT_EXPR_DISTRESS_RESIST_1
+            expression = MASCOT_EXPR_EMOTION_V11_5
                     + (Math.abs(state.transitionStep + beatIndex) % 4);
         } else if (isRefusalMascotSpeech(local)) {
             state.family = MASCOT_FAMILY_COERCIVE;
@@ -11045,7 +11074,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 "\u6ce3\u304d", "\u3059\u3059\u308a\u6ce3")) {
             state.family = state.coerciveLocked ? MASCOT_FAMILY_COERCIVE : MASCOT_FAMILY_SAD;
             state.intensity = Math.max(2, state.intensity);
-            expression = MASCOT_EXPR_DISTRESS_SORROW_1
+            expression = MASCOT_EXPR_EMOTION_V11_9
                     + (Math.abs(state.transitionStep + beatIndex) % 4);
         } else if (isImpactMascotSpeech(local)) {
             state.intensity = Math.max(2, state.intensity);
@@ -11999,6 +12028,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private Bitmap mascotActionSheet;
         private Bitmap mascotBreathingSheet;
         private Bitmap mascotDistressSheet;
+        private final Bitmap[] mascotEmotionV11Sheets = new Bitmap[6];
         private Bitmap mascotExtraSheet;
         private Bitmap mascotExtremeSheet;
         private Bitmap mascotSheet;
@@ -12154,6 +12184,31 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             } catch (Exception e) {
                 Log.e(MainActivity.TAG, "mascot distress sheet load failed", e);
+            }
+            String[] emotionAssets = new String[]{
+                    "mascot_sheet_v11_emotion_a.png",
+                    "mascot_sheet_v11_emotion_b.png",
+                    "mascot_sheet_v11_emotion_c.png",
+                    "mascot_sheet_v11_emotion_d.png",
+                    "mascot_sheet_v11_emotion_e.png",
+                    "mascot_sheet_v11_emotion_f.png"
+            };
+            for (int emotionIndex = 0; emotionIndex < emotionAssets.length; emotionIndex++) {
+                try {
+                    InputStream stream = MainActivity.this.getAssets().open(emotionAssets[emotionIndex]);
+                    try {
+                        BitmapFactory.Options options = new BitmapFactory.Options();
+                        options.inPreferredConfig = Bitmap.Config.RGB_565;
+                        options.inSampleSize = 2;
+                        this.mascotEmotionV11Sheets[emotionIndex] = BitmapFactory.decodeStream(
+                                stream, null, options);
+                    } finally {
+                        stream.close();
+                    }
+                } catch (Exception error) {
+                    Log.e(MainActivity.TAG, "mascot v11 sheet load failed "
+                            + emotionAssets[emotionIndex], error);
+                }
             }
         }
 
@@ -12530,6 +12585,25 @@ public final class MainActivity extends Activity implements SensorEventListener 
             int breathingFrame = -1;
             int extremeFrame = -1;
             int distressFrame = -1;
+            Bitmap emotionV11Sheet = null;
+            int emotionV11Frame = -1;
+            int emotionV11Columns = 2;
+            int emotionV11Rows = 2;
+            if (MainActivity.this.isMascotEmotionV11Expression(semanticExpression)) {
+                int v11Index = semanticExpression - MASCOT_EXPR_EMOTION_V11_1;
+                int sheetIndex;
+                if (v11Index < 12) {
+                    sheetIndex = v11Index / 4;
+                    emotionV11Frame = v11Index % 4;
+                } else {
+                    sheetIndex = 3 + ((v11Index - 12) / 2);
+                    emotionV11Frame = (v11Index - 12) % 2;
+                    emotionV11Rows = 1;
+                }
+                if (sheetIndex >= 0 && sheetIndex < this.mascotEmotionV11Sheets.length) {
+                    emotionV11Sheet = this.mascotEmotionV11Sheets[sheetIndex];
+                }
+            }
             if (hasDistressSheet()
                     && MainActivity.this.isMascotDistressVariantExpression(semanticExpression)) {
                 int groupBase = MainActivity.this.mascotDistressGroupBase(semanticExpression);
@@ -12583,7 +12657,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     && this.mascotTalkSheet != null
                     && this.mascotTalkSheet.getWidth() > 0
                     && this.mascotTalkSheet.getHeight() > 0;
-            if (distressFrame >= 0) {
+            if (emotionV11Sheet != null && emotionV11Frame >= 0) {
+                sourceSheet = emotionV11Sheet;
+                columns = emotionV11Columns;
+                rows = emotionV11Rows;
+                sourceIndex = emotionV11Frame;
+            } else if (distressFrame >= 0) {
                 sourceSheet = this.mascotDistressSheet;
                 columns = 4;
                 rows = 4;
@@ -12613,6 +12692,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 int talkPhase = this.frame % 6;
                 boolean mouthOpen = talkPhase == 1 || talkPhase == 2 || talkPhase == 4;
                 sourceIndex = talkBase + (mouthOpen ? 1 : 0);
+            } else if (iMax >= MASCOT_EXPR_EMOTION_V11_1) {
+                sourceIndex = 0;
             } else if (iMax >= MASCOT_EXPR_DISTRESS_CRY_1) {
                 sourceIndex = 0;
             } else if (iMax >= MASCOT_EXPR_HEIGHTENED_TENSION_1) {
@@ -12696,6 +12777,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         rotation = struggle * (strong ? 3.6f : 2.2f);
                         pulse = 1.0f + (breath * 0.018f);
                     }
+                } else if (MainActivity.this.isMascotEmotionV11Expression(semanticExpression)) {
+                    boolean strongest = semanticExpression >= MASCOT_EXPR_EMOTION_V11_13;
+                    float tremble = (float) Math.sin(this.frame * (strongest ? 1.22d : 0.82d));
+                    float breath = Math.abs((float) Math.sin(this.frame * (strongest ? 0.94d : 0.62d)));
+                    motionX = tremble * f * (strongest ? 0.024f : 0.011f);
+                    motionY = breath * f2 * (strongest ? 0.031f : 0.018f);
+                    rotation = tremble * (strongest ? 2.0f : 0.9f);
+                    pulse = 1.0f + (breath * (strongest ? 0.021f : 0.010f));
                 } else if (MainActivity.this.isMascotDistressVariantExpression(semanticExpression)) {
                     boolean breakdown = semanticExpression >= MASCOT_EXPR_DISTRESS_BREAKDOWN_1;
                     boolean resisting = semanticExpression >= MASCOT_EXPR_DISTRESS_RESIST_1
