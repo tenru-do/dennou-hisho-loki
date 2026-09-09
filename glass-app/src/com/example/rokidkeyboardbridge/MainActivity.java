@@ -179,6 +179,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long CONVERSATION_CONTEXT_TTL_MS = 30L * 60L * 1000L;
     private static final long CONTINUOUS_CONVERSATION_WINDOW_MS = 12L * 60L * 1000L;
     private static final long MEDICAL_CONTEXT_TTL_MS = 2L * 60L * 60L * 1000L;
+    private static final long POST_INTIMACY_FOLLOW_UP_DELAY_MS = 10L * 60L * 1000L;
+    private static final long POST_INTIMACY_PROMPT_VISIBLE_MS = 8500L;
+    private static final String POST_INTIMACY_PROMPT =
+            "\u305d\u308d\u305d\u308d\u8eab\u652f\u5ea6\u3092\u3057\u3066\u3082\u3044\u3044\u3067\u3059\u304b\uff1f";
     private static final String PREFS = "gemini_settings";
     private static final String TAG = "RokidKeyboardAI";
     private static final boolean PREFER_GLASS_SYSTEM_SPEECH = false;
@@ -199,6 +203,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private IBinder assistBinder;
     private LinearLayout buttonPanel;
     private volatile boolean conversationActive;
+    private volatile boolean postIntimacySessionActive;
+    private volatile boolean postIntimacyFollowUpPending;
+    private volatile boolean postIntimacyPromptVisible;
+    private volatile long postIntimacyFollowUpAt;
     private PowerManager.WakeLock conversationWakeLock;
     private PowerManager.WakeLock glanceWakeLock;
     private volatile long geminiCooldownUntil;
@@ -351,6 +359,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
         @Override
         public void run() {
             MainActivity.this.hideInputIfIdle();
+        }
+    };
+    private final Runnable postIntimacyFollowUpRunnable = new Runnable() {
+        @Override
+        public void run() {
+            MainActivity.this.runPostIntimacyFollowUp();
+        }
+    };
+    private final Runnable postIntimacyReturnToNormalRunnable = new Runnable() {
+        @Override
+        public void run() {
+            MainActivity.this.finishPostIntimacyPrompt();
         }
     };
     private final Runnable hideAmbientResultRunnable = new Runnable() {
@@ -706,6 +726,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.handler.removeCallbacks(this.transitUpdater);
         this.handler.removeCallbacks(this.pendingPhoneCommandRunner);
         this.handler.removeCallbacks(this.hideInputRunnable);
+        this.handler.removeCallbacks(this.postIntimacyFollowUpRunnable);
+        this.handler.removeCallbacks(this.postIntimacyReturnToNormalRunnable);
         this.handler.removeCallbacks(this.hideAmbientResultRunnable);
         this.handler.removeCallbacks(this.idleHudCleanupRunnable);
         this.handler.removeCallbacks(this.dimConversationRunnable);
@@ -963,6 +985,117 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void scheduleIdleHudCleanup() {
         this.handler.removeCallbacks(this.idleHudCleanupRunnable);
         this.handler.postDelayed(this.idleHudCleanupRunnable, 1000L);
+    }
+
+    private void schedulePostIntimacyFollowUp() {
+        if (!this.postIntimacySessionActive) {
+            return;
+        }
+        this.postIntimacyFollowUpPending = true;
+        this.postIntimacyFollowUpAt = System.currentTimeMillis()
+                + POST_INTIMACY_FOLLOW_UP_DELAY_MS;
+        this.handler.removeCallbacks(this.postIntimacyFollowUpRunnable);
+        this.handler.postDelayed(this.postIntimacyFollowUpRunnable,
+                POST_INTIMACY_FOLLOW_UP_DELAY_MS);
+        Log.i(TAG, "post-intimacy follow-up scheduled in "
+                + POST_INTIMACY_FOLLOW_UP_DELAY_MS + "ms");
+    }
+
+    private void markPostIntimacyTurnStarted() {
+        this.postIntimacySessionActive = true;
+        this.postIntimacyPromptVisible = false;
+        this.handler.removeCallbacks(this.postIntimacyReturnToNormalRunnable);
+        // This is a fallback for a failed/interrupted response. A successful
+        // spoken response reschedules the ten-minute window from its end.
+        schedulePostIntimacyFollowUp();
+    }
+
+    private void runPostIntimacyFollowUp() {
+        if (!this.postIntimacySessionActive || !this.postIntimacyFollowUpPending) {
+            return;
+        }
+        long remaining = this.postIntimacyFollowUpAt - System.currentTimeMillis();
+        if (remaining > 0L) {
+            this.handler.postDelayed(this.postIntimacyFollowUpRunnable, remaining);
+            return;
+        }
+        if (this.geminiRequestActive || this.voiceRecording || this.morningPlaybackActive
+                || this.mascotMode == 2 || (this.proximityStateKnown && !this.glassWorn)) {
+            this.handler.postDelayed(this.postIntimacyFollowUpRunnable, 30000L);
+            return;
+        }
+        this.postIntimacyFollowUpPending = false;
+        this.postIntimacySessionActive = false;
+        this.postIntimacyFollowUpAt = 0L;
+        this.postIntimacyPromptVisible = true;
+        this.ttsGeneration++;
+        this.headGlanceWake = false;
+        setGlanceHudVisible(true);
+        wakeDisplayForGlance();
+        setConversationActive(true);
+        setMascotMode(2);
+        setMascotSpeechPresentation(true, MASCOT_ACTION_NONE);
+        setMascotExpression(MASCOT_EXPR_AFTERGLOW);
+        if (this.answer != null) {
+            this.answer.setText(POST_INTIMACY_PROMPT);
+            scrollAnswerToTop();
+        }
+        if (this.answerScroll != null) {
+            this.answerScroll.setVisibility(View.VISIBLE);
+        }
+        setStatus("\u8eab\u652f\u5ea6\u306e\u78ba\u8a8d", Color.rgb(90, 220, 120));
+        speakWithPhoneTts(POST_INTIMACY_PROMPT, true);
+        this.handler.removeCallbacks(this.postIntimacyReturnToNormalRunnable);
+        this.handler.postDelayed(this.postIntimacyReturnToNormalRunnable,
+                POST_INTIMACY_PROMPT_VISIBLE_MS);
+        Log.i(TAG, "post-intimacy follow-up spoken; returning to normal mode");
+    }
+
+    private void finishPostIntimacyPrompt() {
+        if (!this.postIntimacyPromptVisible) {
+            return;
+        }
+        this.postIntimacyPromptVisible = false;
+        setMascotSpeechPresentation(true, MASCOT_ACTION_NONE);
+        setMascotExpression(0);
+        setMascotMode(0);
+        if (this.answer != null && POST_INTIMACY_PROMPT.contentEquals(this.answer.getText())) {
+            this.answer.setText("");
+        }
+        if (this.answerScroll != null) {
+            this.answerScroll.setVisibility(View.GONE);
+        }
+        if (this.status != null) {
+            this.status.setVisibility(View.GONE);
+        }
+        setConversationActive(false);
+        if (!this.headTiltActive) {
+            setGlanceHudVisible(false);
+        }
+    }
+
+    private void handlePostIntimacyIncomingPrompt(String prompt) {
+        if (!this.postIntimacySessionActive && !this.postIntimacyFollowUpPending
+                && !this.postIntimacyPromptVisible) {
+            return;
+        }
+        this.handler.removeCallbacks(this.postIntimacyFollowUpRunnable);
+        this.handler.removeCallbacks(this.postIntimacyReturnToNormalRunnable);
+        this.postIntimacyFollowUpPending = false;
+        this.postIntimacyFollowUpAt = 0L;
+        this.postIntimacyPromptVisible = false;
+        if (this.postIntimacySessionActive && isPostIntimacyContinuationRequest(prompt)) {
+            // Keep the scene state for a short continuation; the response end
+            // will restart the full ten-minute window.
+            schedulePostIntimacyFollowUp();
+            return;
+        }
+        this.postIntimacySessionActive = false;
+        this.ttsGeneration++;
+        setMascotSpeechPresentation(true, MASCOT_ACTION_NONE);
+        setMascotExpression(0);
+        setMascotMode(0);
+        Log.i(TAG, "post-intimacy state cleared by a new normal request");
     }
 
     private void setInputTextVisible(String text) {
@@ -3210,6 +3343,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             return;
         }
+        handlePostIntimacyIncomingPrompt(strTrim);
         final boolean bypassGeminiCooldown = this.bypassNextGeminiCooldown;
         this.bypassNextGeminiCooldown = false;
         if (handleMorningBriefingCommand(strTrim) || handleLocalCommand(strTrim)
@@ -10683,6 +10817,61 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return state;
     }
 
+    private boolean isPostIntimacyMetaRequest(String text) {
+        String value = text == null ? "" : text.toLowerCase(Locale.JAPAN);
+        return containsAny(value,
+                "\u8868\u60c5", "\u753b\u50cf", "\u30d1\u30bf\u30fc\u30f3", "\u30a2\u30cb\u30e1",
+                "\u30a2\u30d7\u30ea", "\u5b9f\u88c5", "\u30b3\u30fc\u30c9", "\u8abf\u6574", "\u30c6\u30b9\u30c8",
+                "\u30ed\u30b8\u30c3\u30af", "github", "api", "\u30d7\u30ed\u30f3\u30d7\u30c8", "\u6a5f\u80fd",
+                "\u306b\u3064\u3044\u3066\u6559\u3048", "\u610f\u5473", "\u4e00\u822c\u7684", "\u533b\u5b66\u7684",
+                "\u5b89\u5168\u6027", "\u30ea\u30b9\u30af", "\u907f\u598a", "\u6027\u611f\u67d3");
+    }
+
+    private boolean isExplicitPostIntimacySceneText(String text) {
+        String value = text == null ? "" : text.toLowerCase(Locale.JAPAN);
+        return containsAny(value,
+                "\u60c5\u4e8b", "\u6027\u884c\u70ba", "\u30bb\u30c3\u30af\u30b9\u3059\u308b", "\u30bb\u30c3\u30af\u30b9\u3057\u3066",
+                "\u611b\u3057\u5408", "\u62b1\u3044\u3066", "\u62b1\u304b\u308c", "\u5feb\u611f", "\u7d76\u9802",
+                "\u5598\u304e", "\u5598\u3050", "\u8eab\u3092\u59d4\u306d", "\u4f59\u97fb", "\u306e\u3051\u305e",
+                "\u4ef0\u3051\u53cd", "\u6fc0\u3057\u304f\u8cac\u3081", "\u7a81\u304d\u4e0a\u3052\u3089\u308c");
+    }
+
+    private boolean isPostIntimacyContinuationRequest(String text) {
+        String value = text == null ? "" : text.trim().toLowerCase(Locale.JAPAN);
+        if (value.length() == 0 || isPostIntimacyMetaRequest(value)) {
+            return false;
+        }
+        if (isExplicitPostIntimacySceneText(value) || isIntenseAssaultMascotScene(value)) {
+            return true;
+        }
+        if (containsAny(value,
+                "\u4e88\u5b9a", "\u5929\u6c17", "\u30e1\u30fc\u30eb", "\u30cb\u30e5\u30fc\u30b9", "\u8abf\u3079",
+                "\u6559\u3048", "\u78ba\u8a8d", "\u8d77\u52d5", "\u958b\u3044", "\u9001\u3063", "\u8a2d\u5b9a",
+                "\u30ca\u30d3", "\u5730\u56f3", "\u96fb\u8a71", "\u30e1\u30e2", "\u30bf\u30a4\u30de\u30fc", "\u30a2\u30e9\u30fc\u30e0",
+                "\u691c\u7d22", "\u8aad\u3093\u3067", "\u4f55\u6642", "\u4eca\u65e5", "\u660e\u65e5")) {
+            return false;
+        }
+        return value.length() <= 18 && containsAny(value,
+                "\u7d9a\u3051\u3066", "\u305d\u306e\u307e\u307e", "\u3082\u3063\u3068", "\u307e\u3060", "\u3082\u3046\u5c11\u3057",
+                "\u3084\u3081\u306a\u3044\u3067", "\u305d\u3070\u306b\u3044\u3066", "\u52d5\u304b\u306a\u3044\u3067", "\u4f59\u97fb");
+    }
+
+    private boolean shouldTrackPostIntimacyTurn(String prompt, String answer,
+            MascotEmotionState state) {
+        if (isPostIntimacyMetaRequest(prompt)) {
+            return false;
+        }
+        if (this.postIntimacySessionActive && isPostIntimacyContinuationRequest(prompt)) {
+            return true;
+        }
+        boolean explicitScene = isExplicitPostIntimacySceneText(prompt)
+                || isExplicitPostIntimacySceneText(answer)
+                || isIntenseAssaultMascotScene(prompt);
+        return explicitScene && state != null
+                && (state.family == MASCOT_FAMILY_INTIMATE
+                || state.family == MASCOT_FAMILY_COERCIVE || state.reclinedLocked);
+    }
+
     private boolean isClearlyPositiveMascotExpression(int expression) {
         return expression == 1 || expression == 5 || expression == 7
                 || expression == 12 || expression == 13 || expression == 14
@@ -11446,6 +11635,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void speakWithPhoneTtsChunked(String prompt, String str) {
         final String[] strArrSplitForTts = splitForTts(str);
         final MascotEmotionState mascotEmotionState = createMascotEmotionState(prompt, str);
+        final boolean postIntimacyTurn = shouldTrackPostIntimacyTurn(
+                prompt, str, mascotEmotionState);
+        if (postIntimacyTurn) {
+            markPostIntimacyTurnStarted();
+        }
         final int i = this.ttsGeneration + 1;
         this.ttsGeneration = i;
         Log.i(TAG, "PhoneTTS chunk count=" + strArrSplitForTts.length);
@@ -11564,6 +11758,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         });
                         return;
                     }
+                }
+                if (postIntimacyTurn) {
+                    MainActivity.this.handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (i == MainActivity.this.ttsGeneration
+                                    && MainActivity.this.postIntimacySessionActive) {
+                                MainActivity.this.schedulePostIntimacyFollowUp();
+                            }
+                        }
+                    });
                 }
                 try {
                     // The Rokid service does not report an utterance-complete callback.
