@@ -11082,11 +11082,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
         // This prevents generic talking/intimate portraits from flashing
         // between the posture-aware frames.
         if (state.reclinedLocked && state.coerciveLocked
-                && !isMascotEmotionV11Expression(expression)) {
-            int base = state.intensity >= 3
-                    ? MASCOT_EXPR_EMOTION_V11_13 : MASCOT_EXPR_EMOTION_V11_5;
-            int count = state.intensity >= 3 ? 6 : 8;
-            expression = base + (Math.abs(state.transitionStep + beatIndex) % count);
+                ) {
+            // Deliberately traverse different head angles and intensity groups.
+            // A flat semantic match used to repeat one portrait for several beats.
+            int[] reclinedSequence = state.intensity >= 3
+                    ? new int[]{114, 116, 118, 120, 122, 124, 126, 127, 123, 121}
+                    : new int[]{114, 116, 118, 120, 115, 117, 119, 121};
+            expression = reclinedSequence[Math.abs(state.transitionStep + beatIndex)
+                    % reclinedSequence.length];
         }
 
         // Sentence-level changes are easier to read than a new portrait every
@@ -11394,15 +11397,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
             boolean boundary = character == '\u3001' || character == '\u3002'
                     || character == '\uff01' || character == '\uff1f'
                     || character == '!' || character == '?' || character == '\n';
-            if ((boundary && current.length() >= 9) || current.length() >= 42) {
+            if ((boundary && current.length() >= 7) || current.length() >= 28) {
                 beats.add(current.toString().trim());
                 current.setLength(0);
-                if (beats.size() >= 8) {
+                if (beats.size() >= 12) {
                     break;
                 }
             }
         }
-        if (current.length() > 0 && beats.size() < 8) {
+        if (current.length() > 0 && beats.size() < 12) {
             beats.add(current.toString().trim());
         }
         if (beats.isEmpty()) {
@@ -11453,7 +11456,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         int beatCharacters = 0;
                         for (int beatIndex = 0; beatIndex < mascotBeats.length; beatIndex++) {
                             mascotExpressions[beatIndex] = MainActivity.this.chooseMascotExpressionForSpeechBeat(
-                                    mascotEmotionState, mascotBeats[beatIndex], (chunkIndex * 8) + beatIndex);
+                                    mascotEmotionState, mascotBeats[beatIndex], (chunkIndex * 12) + beatIndex);
                             boolean narration = MainActivity.this.isMascotNarrationBeat(mascotBeats[beatIndex]);
                             // High-intensity/distress portraits already contain the intended
                             // breathing expression.  Replacing them with a generic talking
@@ -12915,12 +12918,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     // The artwork already carries posture and gravity. Add
                     // irregular whole-head movement only; never overlay lines
                     // or substitute a generic talking mouth.
-                    float struggle = (float) Math.sin(this.frame * 1.28d);
-                    float recoil = (float) Math.sin((this.frame + 2) * 0.67d);
-                    motionX = struggle * f * 0.025f;
-                    motionY = recoil * f2 * 0.020f;
-                    rotation = struggle * 2.4f;
-                    pulse = 1.0f + Math.abs(recoil) * 0.014f;
+                    boolean resisting = semanticExpression >= 132 && semanticExpression <= 139;
+                    boolean overwhelmed = semanticExpression >= 140;
+                    float struggle = (float) (Math.sin(this.frame * 1.34d)
+                            + 0.38d * Math.sin((this.frame + 1) * 2.17d));
+                    float recoil = (float) Math.sin((this.frame + 2) * 0.71d);
+                    motionX = struggle * f * (resisting ? 0.047f : 0.027f);
+                    motionY = recoil * f2 * (overwhelmed ? 0.036f : 0.021f);
+                    rotation = struggle * (resisting ? 4.3f : 2.6f);
+                    pulse = 1.0f + Math.abs(recoil) * (overwhelmed ? 0.026f : 0.015f);
                 } else if (MainActivity.this.isMascotRefusalExpression(semanticExpression)) {
                     // Strong but readable resistance: the whole portrait moves,
                     // never a detached mouth or decorative motion-line overlay.
