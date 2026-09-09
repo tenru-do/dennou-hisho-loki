@@ -115,6 +115,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long AMBIENT_QUEUE_STALE_MS = 50000L;
     private static final int AMBIENT_MIC_LEVEL_THRESHOLD = 18;
     private static final int AMBIENT_MIC_MIN_VOICE_HITS = 2;
+    private static final int AMBIENT_CONFIRMED_MIC_LEVEL_THRESHOLD = 7;
+    private static final int AMBIENT_CONFIRMED_MIC_MIN_VOICE_HITS = 1;
     private static final int AMBIENT_MAX_TRANSCRIPT_CHARS = 1600;
     private static final int AMBIENT_MAX_CONTEXT_CHARS = 500;
     private static final long AMBIENT_CONTEXT_TTL_MS = 12L * 1000L;
@@ -154,6 +156,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final String KEY_VOICE_AUDIO_SOURCE_INDEX = "voice_audio_source_index";
     private static final String KEY_AMBIENT_INPUT_MODE = "ambient_input_mode";
     private static final String KEY_AMBIENT_ENABLED = "ambient_enabled";
+    private static final String KEY_AMBIENT_MIC_SOURCE_INDEX = "ambient_mic_source_index";
+    private static final String KEY_AMBIENT_MIC_SOURCE_CONFIRMED = "ambient_mic_source_confirmed";
     private static final String KEY_LAST_HIDDEN_NAZOKAKE_AT = "last_hidden_nazokake_at";
     private static final String KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL = "nazokake_awaiting_topic_until";
     private static final String KEY_NAZOKAKE_STYLE = "nazokake_style";
@@ -5557,7 +5561,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.ambientRecentContextAt = 0L;
         this.lastAmbientTranscriptAt = 0L;
         this.lastAmbientRelayId = 0L;
-        this.ambientMicSourceConfirmed = false;
+        this.ambientMicSourceIndex = getPreferences().getInt(
+                KEY_AMBIENT_MIC_SOURCE_INDEX, 4);
+        this.ambientMicSourceConfirmed = getPreferences().getBoolean(
+                KEY_AMBIENT_MIC_SOURCE_CONFIRMED, true);
         this.ambientMicLowSignalStreak = 0;
         clearAmbientAudioQueue();
         Log.i(TAG, "ambient started mode=" + ambientInputModeLabel()
@@ -6348,6 +6355,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
             int maxLevel = 0;
             int voiceHits = 0;
             boolean heardVoice = false;
+            boolean usingConfirmedSource = this.ambientMicSourceConfirmed
+                    && selectedIndex == preferredIndex;
+            int voiceThreshold = usingConfirmedSource
+                    ? AMBIENT_CONFIRMED_MIC_LEVEL_THRESHOLD
+                    : AMBIENT_MIC_LEVEL_THRESHOLD;
+            int minimumVoiceHits = usingConfirmedSource
+                    ? AMBIENT_CONFIRMED_MIC_MIN_VOICE_HITS
+                    : AMBIENT_MIC_MIN_VOICE_HITS;
             while (this.ambientMode && generation == this.ambientGeneration
                     && !this.voiceRecording && !this.geminiRequestActive
                     && !this.ambientRequestActive
@@ -6366,7 +6381,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 pcm.write(buffer, 0, read);
                 int level = averageAbs16(buffer, read);
                 maxLevel = Math.max(maxLevel, level);
-                if (level > AMBIENT_MIC_LEVEL_THRESHOLD) {
+                if (level > voiceThreshold) {
                     heardVoice = true;
                     voiceHits++;
                     lastVoiceAt = now;
@@ -6386,8 +6401,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 recorder.stop();
             } catch (Exception ignored) {
             }
-            if (!heardVoice || voiceHits < AMBIENT_MIC_MIN_VOICE_HITS
-                    || maxLevel <= AMBIENT_MIC_LEVEL_THRESHOLD) {
+            if (!heardVoice || voiceHits < minimumVoiceHits
+                    || maxLevel <= voiceThreshold) {
                 this.ambientMicLowSignalStreak++;
                 boolean keepConfirmedSource = this.ambientMicSourceConfirmed
                         && selectedIndex == preferredIndex
@@ -6403,12 +6418,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         + audioSourceLabel(selectedSource) + " level=" + maxLevel
                         + " hits=" + voiceHits + " next="
                         + audioSourceLabel(sources[this.ambientMicSourceIndex])
-                        + " confirmed=" + keepConfirmedSource);
+                        + " confirmed=" + keepConfirmedSource
+                        + " threshold=" + voiceThreshold);
                 return null;
             }
             this.ambientMicSourceIndex = selectedIndex;
             this.ambientMicSourceConfirmed = true;
             this.ambientMicLowSignalStreak = 0;
+            getPreferences().edit()
+                    .putInt(KEY_AMBIENT_MIC_SOURCE_INDEX, selectedIndex)
+                    .putBoolean(KEY_AMBIENT_MIC_SOURCE_CONFIRMED, true)
+                    .apply();
             byte[] raw = pcm.toByteArray();
             Log.i(TAG, "ambient speech captured bytes=" + raw.length
                     + " source=" + audioSourceLabel(selectedSource)
