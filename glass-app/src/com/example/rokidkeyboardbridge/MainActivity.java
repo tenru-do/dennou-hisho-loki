@@ -1723,8 +1723,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (this.hudRoot == null) {
             return;
         }
-        if (!visible && this.ambientMode && this.conversationActive) {
-            keepAmbientHudVisible(true);
+        if (!visible && (this.conversationActive || this.geminiRequestActive
+                || this.voiceRecording || this.morningPlaybackActive
+                || this.mascotMode == 2)) {
+            Log.i(TAG, "HUD hide rejected while user content is active"
+                    + " conversation=" + this.conversationActive
+                    + " gemini=" + this.geminiRequestActive
+                    + " voice=" + this.voiceRecording
+                    + " mascotMode=" + this.mascotMode);
+            if (this.ambientMode) {
+                keepAmbientHudVisible(true);
+            } else {
+                this.glanceHudVisible = true;
+                this.hudRoot.animate().cancel();
+                this.hudRoot.setAlpha(1.0f);
+                this.hudRoot.setVisibility(View.VISIBLE);
+                getWindow().addFlags(128);
+                wakeDisplayForGlance();
+            }
             return;
         }
         if (this.glanceHudVisible == visible) {
@@ -4453,6 +4469,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         long now = System.currentTimeMillis();
         boolean explicit = value.contains("謎かけ") || value.contains("なぞかけ")
                 || value.contains("なぞ掛け");
+        // A previous mode, an awaiting-topic flag, or a short standalone word
+        // must never restart the hidden feature. The current utterance itself
+        // has to contain an unmistakable request to perform a riddle.
+        getPreferences().edit().remove(KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL).apply();
         if (explicit) {
             if (hasExplicitNazokakeExecutionCommand(value)
                     && !isNazokakeDiscussionText(value)) {
@@ -4462,6 +4482,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             return false;
         }
+        return false;
+        /* Legacy context-follow-up logic intentionally disabled.
         long awaitingUntil = getPreferences().getLong(
                 KEY_NAZOKAKE_AWAITING_TOPIC_UNTIL, 0L);
         if (awaitingUntil > 0L) {
@@ -4488,6 +4510,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     KEY_LAST_HIDDEN_NAZOKAKE_AT, now).apply();
         }
         return followUp;
+        */
     }
 
     private boolean hasExplicitNazokakeExecutionCommand(String text) {
