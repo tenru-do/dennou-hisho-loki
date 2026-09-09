@@ -10538,6 +10538,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 "\u66b4\u529b");
     }
 
+    private boolean isIntenseAssaultMascotScene(String text) {
+        String value = text == null ? "" : text.toLowerCase(Locale.JAPAN);
+        return isCoerciveMascotSpeech(value) || containsAny(value,
+                "\u6fc0\u3057\u3044\u7a81\u304d\u4e0a\u3052", "\u6fc0\u3057\u3055\u3092\u5897\u3057\u305f\u7a81\u304d\u4e0a\u3052",
+                "\u4e0b\u304b\u3089\u7a81\u304d\u4e0a\u3052", "\u7a81\u304d\u4e0a\u3052\u3089\u308c",
+                "\u6fc0\u3057\u304f\u72af\u3055", "\u6fc0\u3057\u304f\u8cac\u3081", "\u4e71\u66b4\u306b\u8cac\u3081",
+                "\u5236\u5fa1\u4e0d\u80fd\u306a\u75d9\u6523", "\u58ca\u308c\u3066\u3057\u307e\u3044\u305d\u3046",
+                "\u62b5\u6297\u3057\u3066\u3082", "\u9003\u308c\u3089\u308c\u306a\u3044", "\u7121\u7406\u3084\u308a");
+    }
+
     private boolean isSadMascotSpeech(String text) {
         String value = text == null ? "" : text.toLowerCase(Locale.JAPAN);
         return containsAny(value,
@@ -10590,10 +10600,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         MascotEmotionState state = new MascotEmotionState();
         String context = ((prompt == null ? "" : prompt) + "\n"
                 + (answer == null ? "" : answer)).toLowerCase(Locale.JAPAN);
-        if (isCoerciveMascotSpeech(context)) {
+        if (isIntenseAssaultMascotScene(context)) {
             state.family = MASCOT_FAMILY_COERCIVE;
             state.coerciveLocked = true;
-            state.intensity = 2;
+            state.intensity = 3;
+            state.targetIntensity = 3;
         } else if (isIntimateMascotSpeech(context)) {
             state.family = MASCOT_FAMILY_INTIMATE;
             state.intensity = 1;
@@ -11379,7 +11390,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             mascotExpressions[beatIndex] = MainActivity.this.chooseMascotExpressionForSpeechBeat(
                                     mascotEmotionState, mascotBeats[beatIndex], (chunkIndex * 8) + beatIndex);
                             boolean narration = MainActivity.this.isMascotNarrationBeat(mascotBeats[beatIndex]);
-                            mascotMouthAnimations[beatIndex] = !narration;
+                            // High-intensity/distress portraits already contain the intended
+                            // breathing expression.  Replacing them with a generic talking
+                            // mouth makes the scene jump back to an unrelated face.
+                            mascotMouthAnimations[beatIndex] = !narration
+                                    && !mascotEmotionState.coerciveLocked
+                                    && !MainActivity.this.isMascotEmotionV11Expression(
+                                            mascotExpressions[beatIndex]);
                             mascotActionStyles[beatIndex] = MainActivity.this.chooseMascotActionStyle(
                                     mascotBeats[beatIndex], mascotExpressions[beatIndex], narration);
                             beatCharacters += Math.max(1, mascotBeats[beatIndex].length());
@@ -11457,7 +11474,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     // The Rokid service does not report an utterance-complete callback.
                     // Keep the HUD on briefly after the conservative speech estimate so
                     // the display never disappears during the last spoken phrase.
-                    Thread.sleep(8000L);
+                    Thread.sleep(30000L);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     return;
