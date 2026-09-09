@@ -100,7 +100,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final String ASSIST_PACKAGE = "com.rokid.os.sprite.assistserver";
     private static final String ASSIST_SERVICE = "com.rokid.os.sprite.assist.MasterAssistService";
     private static final long GEMINI_LOCAL_PACING_MS = 75000;
-    private static final long AMBIENT_MIN_REQUEST_GAP_MS = 12000L;
+    private static final long AMBIENT_MIN_REQUEST_GAP_MS = 9000L;
     private static final long AMBIENT_ERROR_BACKOFF_MS = 60000L;
     private static final long AMBIENT_RESULT_VISIBLE_MS = 45000L;
     private static final float AMBIENT_RESULT_BRIGHTNESS = 0.16f;
@@ -109,9 +109,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long IDLE_BRIGHTNESS_DELAY_MS = 3500L;
     private static final float HUD_BUTTON_TEXT_SIZE_SP = 9.0f;
     private static final long AMBIENT_CAPTURE_MAX_MS = 8000L;
-    private static final long AMBIENT_NO_SPEECH_MS = 1800L;
-    private static final long AMBIENT_SILENCE_STOP_MS = 700L;
-    private static final long AMBIENT_DUPLICATE_WINDOW_MS = 8000L;
+    private static final long AMBIENT_NO_SPEECH_MS = 2400L;
+    private static final long AMBIENT_SILENCE_STOP_MS = 1050L;
+    private static final long AMBIENT_MIN_CAPTURE_MS = 2200L;
+    private static final long AMBIENT_DUPLICATE_WINDOW_MS = 6000L;
     private static final long AMBIENT_QUEUE_STALE_MS = 50000L;
     private static final int AMBIENT_MIC_LEVEL_THRESHOLD = 18;
     private static final int AMBIENT_MIC_MIN_VOICE_HITS = 2;
@@ -126,8 +127,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long AMBIENT_RELAY_BATCH_WINDOW_MS = 2800L;
     private static final long AMBIENT_RELAY_MERGE_LOOKBACK_MS = 6000L;
     private static final int AMBIENT_RELAY_TARGET_CHUNKS = 2;
-    private static final long AMBIENT_MIC_BATCH_WINDOW_MS = 1500L;
-    private static final int AMBIENT_MIC_TARGET_CHUNKS = 1;
+    private static final long AMBIENT_MIC_BATCH_WINDOW_MS = 3000L;
+    private static final int AMBIENT_MIC_TARGET_CHUNKS = 2;
     private static final int AMBIENT_MIC_MAX_PCM_BYTES = 16000 * 2 * 14;
     private static final long MAP_NAVIGATION_WAKE_MS = 12000L;
     private static final long MAP_NAVIGATION_FRESH_MS = 6L * 60L * 60L * 1000L;
@@ -5810,7 +5811,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             playback ? "Bluetooth" : "周囲",
                             System.currentTimeMillis()));
                 }
-                Thread.sleep(playback ? 300L : 500L);
+                // AudioRecord is recreated for each phrase. Keep the reopen gap
+                // short so the first words of a follow-up sentence are not lost.
+                Thread.sleep(playback ? 250L : 150L);
             } catch (InterruptedException interrupted) {
                 if (!this.ambientMode || generation != this.ambientGeneration) {
                     break;
@@ -5998,10 +6001,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         if (isDuplicateAmbientTranscript(normalized, recognizedAt)) {
                             Log.i(TAG, "ambient Gemini audio context ignored reason=duplicate"
                                     + " chars=" + transcript.length());
-                            continue;
+                            // Do not throw the complete response away. The
+                            // transcript can be identical while the same clip
+                            // contains a new person, fact check or environmental
+                            // sound. formatAmbientExplanation() still removes
+                            // recently displayed individual items.
+                        } else {
+                            this.lastAmbientTranscript = normalized;
+                            this.lastAmbientTranscriptAt = recognizedAt;
                         }
-                        this.lastAmbientTranscript = normalized;
-                        this.lastAmbientTranscriptAt = recognizedAt;
                         Log.i(TAG, "ambient Gemini audio context chars="
                                 + transcript.length());
                     } else {
@@ -6566,7 +6574,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if (!heardVoice && now - started >= AMBIENT_NO_SPEECH_MS) {
                     break;
                 }
-                if (heardVoice && now - started >= 1600L
+                if (heardVoice && now - started >= AMBIENT_MIN_CAPTURE_MS
                         && now - lastVoiceAt >= AMBIENT_SILENCE_STOP_MS) {
                     break;
                 }
@@ -6728,7 +6736,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if (!heardVoice && now - started >= AMBIENT_NO_SPEECH_MS) {
                     break;
                 }
-                if (heardVoice && now - started >= 1600L
+                if (heardVoice && now - started >= AMBIENT_MIN_CAPTURE_MS
                         && now - lastVoiceAt >= AMBIENT_SILENCE_STOP_MS) {
                     break;
                 }
@@ -6823,7 +6831,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if (!heardVoice && now - started >= AMBIENT_NO_SPEECH_MS) {
                     break;
                 }
-                if (heardVoice && now - started >= 1600L
+                if (heardVoice && now - started >= AMBIENT_MIN_CAPTURE_MS
                         && now - lastVoiceAt >= AMBIENT_SILENCE_STOP_MS) {
                     break;
                 }
