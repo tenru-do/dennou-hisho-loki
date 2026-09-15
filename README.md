@@ -10,16 +10,16 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 ## APKのダウンロード
 
 1. 次のAPKをダウンロードします。
-   - [DennouHishoLoki-phone-v0.9.48-alpha.apk](apk/DennouHishoLoki-phone-v0.9.48-alpha.apk?raw=1)：Androidスマホ側
-   - [DennouHishoLoki-glass-v0.9.97-alpha.apk](apk/DennouHishoLoki-glass-v0.9.97-alpha.apk?raw=1)：Rokidグラス側
+   - [DennouHishoLoki-phone-v0.9.53-alpha.apk](apk/DennouHishoLoki-phone-v0.9.53-alpha.apk?raw=1)：Androidスマホ側
+   - [DennouHishoLoki-glass-v0.9.149-alpha.apk](apk/DennouHishoLoki-glass-v0.9.149-alpha.apk?raw=1)：Rokidグラス側
    - [DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk](apk/DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk?raw=1)：Bluetooth再生音をAMBへ渡す端末だけに入れる任意アプリ
-   - [SHA-256チェックサム](apk/SHA256SUMS-v0.9.9-alpha.txt)：ダウンロード後の整合性確認用
+   - [SHA-256チェックサム](apk/SHA256SUMS-v0.9.10-alpha.txt)：ダウンロード後の整合性確認用
 2. スマホ版はスマホでAPKを開いてインストールします。
 3. グラス版は開発者ケーブルとADBを使用してインストールします。
 
 ```powershell
 adb devices
-adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.97-alpha.apk
+adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.149-alpha.apk
 ```
 
 Androidが警告を表示した場合は、内容を確認したうえで、このAPKを開いたアプリに限って「不明なアプリのインストール」を許可してください。APKはアルファ版用のテスト署名です。導入手順の詳細は [docs/INSTALL.md](docs/INSTALL.md) を参照してください。

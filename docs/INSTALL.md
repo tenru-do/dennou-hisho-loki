@@ -6,8 +6,8 @@
 
 [GitHub Releases](https://github.com/tenru-do/dennou-hisho-loki/releases/latest) を開き、`Assets` から次の2ファイルをダウンロードします。
 
-- `DennouHishoLoki-phone-v0.9.48-alpha.apk`
-- `DennouHishoLoki-glass-v0.9.97-alpha.apk`
+- `DennouHishoLoki-phone-v0.9.53-alpha.apk`
+- `DennouHishoLoki-glass-v0.9.149-alpha.apk`
 
 `AMB` で別端末のBluetooth再生音も解析したい場合だけ、再生元のAndroid端末へ `DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk` も導入します。
 
@@ -15,7 +15,7 @@
 
 ## 2. スマホ版
 
-1. スマホで `DennouHishoLoki-phone-v0.9.48-alpha.apk` を開きます。
+1. スマホで `DennouHishoLoki-phone-v0.9.53-alpha.apk` を開きます。
 2. Androidが確認を求めた場合、このAPKを開いたファイル管理アプリまたはブラウザに限って「不明なアプリのインストール」を許可します。
 3. インストール後にアプリを起動します。
 4. 使用する機能に応じて、カレンダー、マイク、通知アクセス、Gmail未読件数、Health Connect、概算位置情報を許可します。
@@ -28,7 +28,7 @@ Rokidグラスを開発者ケーブルでPCへ接続し、USBデバッグを許�
 
 ```powershell
 adb devices
-adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.97-alpha.apk
+adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.149-alpha.apk
 ```
 
 `Success` と表示されたら、グラスのアプリ一覧から「電脳秘書ロキ」を起動します。

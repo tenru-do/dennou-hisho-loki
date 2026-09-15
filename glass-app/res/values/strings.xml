@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rokid_ai_accessibility_description">RokidAIの表示内容に合わせてロキの表情だけを変更します。会話内容は保存しません。</string>
+</resources>

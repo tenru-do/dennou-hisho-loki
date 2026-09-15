@@ -105,10 +105,10 @@ public final class MainActivity extends Activity {
     private static final String MEMORY_FILE_NAME = "conversation_memory.jsonl";
     private static final String MEMORY_ARCHIVE_FILE_NAME = "conversation_memory_archive.jsonl";
     private static final Object MEMORY_LOCK = new Object();
-    // A 9-second 16 kHz mono PCM window is about 288 KB before Base64.
-    // Keep a bounded 512 KB ceiling so ambient STT fits without making the
-    // local bridge accept arbitrarily large request bodies.
-    private static final int MAX_REQUEST_BODY_CHARS = 524288;
+    // A 16-second 16 kHz mono PCM turn is about 512 KB before Base64 and
+    // roughly 683 KB inside JSON. Keep a bounded 1 MB ceiling so longer VOICE
+    // turns fit without allowing arbitrarily large local bridge requests.
+    private static final int MAX_REQUEST_BODY_CHARS = 1048576;
     private static final int MAX_COMMAND_CHARS = 3000;
     private static final int MAX_PENDING_COMMANDS = 32;
     private static final int MAX_CUSTOM_CHARS = 2400;
@@ -141,6 +141,7 @@ public final class MainActivity extends Activity {
     private static final String KEY_AMBIENT_RELAY_SOURCE = "ambient_relay_source";
     private static final String KEY_AMBIENT_RELAY_ID = "ambient_relay_id";
     private static final String KEY_AMBIENT_RELAY_AT = "ambient_relay_at";
+    private static final String KEY_AMBIENT_RELAY_QUEUE = "ambient_relay_queue";
     private static final String KEY_AMBIENT_SOURCE_ACTIVE = "ambient_source_active";
     private static final String KEY_AMBIENT_SOURCE_SEEN_AT = "ambient_source_seen_at";
     private static final String KEY_AMBIENT_CONSUMER_SEEN_AT = "ambient_consumer_seen_at";
@@ -159,11 +160,20 @@ public final class MainActivity extends Activity {
     private static final String KEY_MAP_CURRENT_ROAD_LONGITUDE = "map_current_road_longitude";
     private static final String KEY_NAVIGATION_HUD_SUPPRESSED = "navigation_hud_suppressed";
     private static final long MAP_ROUTE_CACHE_MS = 12L * 60L * 60L * 1000L;
+    private static final long MAP_ROUTE_PERIODIC_REFRESH_MS = 8L * 60L * 1000L;
+    private static final long MAP_ROUTE_REROUTE_COOLDOWN_MS = 60000L;
+    private static final long MAP_ROUTE_FAST_REROUTE_COOLDOWN_MS = 120000L;
+    private static final long MAP_ROUTE_DEVIATION_CONFIRM_MS = 10000L;
+    private static final long MAP_ROUTE_FAST_DEVIATION_CONFIRM_MS = 20000L;
     private static final long MAP_ROAD_REFRESH_MS = 60L * 1000L;
     private static final long MAP_ROAD_CACHE_MS = 10L * 60L * 1000L;
     private static final float MAP_ROAD_CACHE_RADIUS_METERS = 180.0f;
     private static final int MAP_ROUTE_MAX_POINTS = 220;
     private static final long AMBIENT_CONSUMER_TIMEOUT_MS = 30000L;
+    private static final long AMBIENT_RELAY_RETENTION_MS = 180000L;
+    private static final int AMBIENT_RELAY_QUEUE_LIMIT = 8;
+    private static final int AMBIENT_RELAY_BATCH_CHARS = 2800;
+    private static final Object AMBIENT_RELAY_LOCK = new Object();
     private static final List<String> LOGS = new ArrayList<String>();
     private static MainActivity activeActivity;
     private static String pendingCommand = "";
@@ -206,6 +216,8 @@ public final class MainActivity extends Activity {
     private volatile boolean navigationRoadLookupInFlight;
     private volatile long navigationRouteRetryAfterMs;
     private volatile int navigationRouteFailureCount;
+    private volatile long navigationRouteDeviationSinceMs;
+    private volatile long navigationRouteLastRerouteAtMs;
     private final Runnable healthRefresh = new Runnable() {
         @Override public void run() {
             refreshHealthConnectSteps();
@@ -1585,37 +1597,77 @@ public final class MainActivity extends Activity {
         long seenAt = preferences.getLong(KEY_AMBIENT_SOURCE_SEEN_AT, 0L);
         boolean active = preferences.getBoolean(KEY_AMBIENT_SOURCE_ACTIVE, false)
                 && now - seenAt < 35000L;
-        long id = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
-        long at = preferences.getLong(KEY_AMBIENT_RELAY_AT, 0L);
-        String transcript = preferences.getString(KEY_AMBIENT_RELAY_TRANSCRIPT, "");
-        if (now - at > 120000L) {
-            transcript = "";
-            id = 0L;
-        }
         JSONObject root = new JSONObject();
         root.put("ok", true);
         root.put("active", active);
-        root.put("id", id);
-        root.put("at", at);
-        root.put("source", preferences.getString(KEY_AMBIENT_RELAY_SOURCE, "Bluetooth"));
-        root.put("transcript", transcript == null ? "" : transcript);
+        synchronized (AMBIENT_RELAY_LOCK) {
+            String storedQueue = preferences.getString(KEY_AMBIENT_RELAY_QUEUE, "");
+            int storedCount = 0;
+            if (storedQueue != null && storedQueue.trim().length() > 0) {
+                try {
+                    storedCount = new JSONArray(storedQueue).length();
+                } catch (Exception ignored) {
+                    storedCount = -1;
+                }
+            }
+            ArrayList<JSONObject> queue = loadAmbientRelayQueue(preferences, now);
+            if (storedCount != queue.size()) {
+                // This is also the expiry cleanup. Recognized speech remains a
+                // short-lived delivery queue, not a permanent transcript log.
+                saveAmbientRelayQueue(preferences, queue);
+            }
+            long id = 0L;
+            long at = 0L;
+            String source = "Bluetooth";
+            for (int i = 0; i < queue.size(); i++) {
+                JSONObject entry = queue.get(i);
+                id = Math.max(id, entry.optLong("id", 0L));
+                if (entry.optLong("at", 0L) >= at) {
+                    at = entry.optLong("at", 0L);
+                    source = entry.optString("source", "Bluetooth");
+                }
+            }
+            String transcript = mergeAmbientRelayTranscripts(queue);
+            root.put("id", id);
+            root.put("at", at);
+            root.put("source", source.length() == 0 ? "Bluetooth" : source);
+            root.put("transcript", transcript);
+            root.put("count", queue.size());
+        }
         return root;
     }
 
     private JSONObject buildAckAmbientPlaybackJson(long id) throws Exception {
         SharedPreferences preferences = getPreferences();
-        long currentId = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
-        if (id > 0L && id == currentId) {
-            preferences.edit()
-                    .remove(KEY_AMBIENT_RELAY_TRANSCRIPT)
-                    .remove(KEY_AMBIENT_RELAY_SOURCE)
-                    .remove(KEY_AMBIENT_RELAY_ID)
-                    .remove(KEY_AMBIENT_RELAY_AT)
-                    .apply();
+        boolean acked = false;
+        synchronized (AMBIENT_RELAY_LOCK) {
+            ArrayList<JSONObject> queue = loadAmbientRelayQueue(
+                    preferences, System.currentTimeMillis());
+            ArrayList<JSONObject> remaining = new ArrayList<JSONObject>();
+            for (int i = 0; i < queue.size(); i++) {
+                JSONObject entry = queue.get(i);
+                long entryId = entry.optLong("id", 0L);
+                if (id > 0L && entryId > 0L && entryId <= id) {
+                    acked = true;
+                } else {
+                    remaining.add(entry);
+                }
+            }
+            saveAmbientRelayQueue(preferences, remaining);
+            long currentId = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
+            if (id > 0L && currentId > 0L && currentId <= id) {
+                preferences.edit()
+                        .remove(KEY_AMBIENT_RELAY_TRANSCRIPT)
+                        .remove(KEY_AMBIENT_RELAY_SOURCE)
+                        .remove(KEY_AMBIENT_RELAY_ID)
+                        .remove(KEY_AMBIENT_RELAY_AT)
+                        .apply();
+                acked = true;
+            }
         }
         JSONObject root = new JSONObject();
         root.put("ok", true);
-        root.put("acked", id > 0L && id == currentId);
+        root.put("acked", acked);
         return root;
     }
 
@@ -1649,16 +1701,188 @@ public final class MainActivity extends Activity {
             return;
         }
         long now = System.currentTimeMillis();
-        getPreferences().edit()
-                .putString(KEY_AMBIENT_RELAY_TRANSCRIPT, transcript)
-                .putString(KEY_AMBIENT_RELAY_SOURCE,
-                        source == null || source.trim().length() == 0 ? "Bluetooth" : source.trim())
-                .putLong(KEY_AMBIENT_RELAY_ID, now)
-                .putLong(KEY_AMBIENT_RELAY_AT, now)
-                .putBoolean(KEY_AMBIENT_SOURCE_ACTIVE, true)
-                .putLong(KEY_AMBIENT_SOURCE_SEEN_AT, now)
-                .apply();
-        Log.i(TAG, "ambient relay transcript published chars=" + transcript.length());
+        String relaySource = source == null || source.trim().length() == 0
+                ? "Bluetooth" : source.trim();
+        int pendingCount;
+        synchronized (AMBIENT_RELAY_LOCK) {
+            SharedPreferences preferences = getPreferences();
+            ArrayList<JSONObject> queue = loadAmbientRelayQueue(preferences, now);
+            long latestId = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
+            for (int i = 0; i < queue.size(); i++) {
+                latestId = Math.max(latestId, queue.get(i).optLong("id", 0L));
+            }
+            long id = Math.max(now, latestId + 1L);
+            JSONObject entry = new JSONObject();
+            try {
+                entry.put("id", id);
+                entry.put("at", now);
+                entry.put("source", relaySource);
+                entry.put("transcript", transcript);
+            } catch (Exception error) {
+                Log.w(TAG, "cannot queue ambient relay transcript", error);
+                return;
+            }
+            queue.add(entry);
+            while (queue.size() > AMBIENT_RELAY_QUEUE_LIMIT) {
+                queue.remove(0);
+            }
+            saveAmbientRelayQueue(preferences, queue);
+            // Keep the legacy single-item fields for compatibility with an
+            // older glasses build. The queue is authoritative for this build.
+            preferences.edit()
+                    .putString(KEY_AMBIENT_RELAY_TRANSCRIPT, transcript)
+                    .putString(KEY_AMBIENT_RELAY_SOURCE, relaySource)
+                    .putLong(KEY_AMBIENT_RELAY_ID, id)
+                    .putLong(KEY_AMBIENT_RELAY_AT, now)
+                    .putBoolean(KEY_AMBIENT_SOURCE_ACTIVE, true)
+                    .putLong(KEY_AMBIENT_SOURCE_SEEN_AT, now)
+                    .apply();
+            pendingCount = queue.size();
+        }
+        Log.i(TAG, "ambient relay transcript queued chars=" + transcript.length()
+                + " pending=" + pendingCount);
+    }
+
+    private ArrayList<JSONObject> loadAmbientRelayQueue(
+            SharedPreferences preferences, long now) {
+        ArrayList<JSONObject> result = new ArrayList<JSONObject>();
+        String stored = preferences.getString(KEY_AMBIENT_RELAY_QUEUE, "");
+        if (stored != null && stored.trim().length() > 0) {
+            try {
+                JSONArray array = new JSONArray(stored);
+                for (int i = 0; i < array.length(); i++) {
+                    JSONObject entry = array.optJSONObject(i);
+                    if (entry == null) continue;
+                    long id = entry.optLong("id", 0L);
+                    long at = entry.optLong("at", 0L);
+                    String transcript = entry.optString("transcript", "").trim();
+                    if (id > 0L && transcript.length() > 0
+                            && now - at <= AMBIENT_RELAY_RETENTION_MS) {
+                        result.add(entry);
+                    }
+                }
+            } catch (Exception error) {
+                Log.w(TAG, "ambient relay queue was invalid; rebuilding", error);
+            }
+        }
+        long legacyId = preferences.getLong(KEY_AMBIENT_RELAY_ID, 0L);
+        long legacyAt = preferences.getLong(KEY_AMBIENT_RELAY_AT, 0L);
+        String legacyTranscript = preferences.getString(
+                KEY_AMBIENT_RELAY_TRANSCRIPT, "");
+        boolean alreadyQueued = false;
+        for (int i = 0; i < result.size(); i++) {
+            if (result.get(i).optLong("id", 0L) == legacyId) {
+                alreadyQueued = true;
+                break;
+            }
+        }
+        if (!alreadyQueued && legacyId > 0L && legacyTranscript != null
+                && legacyTranscript.trim().length() > 0
+                && now - legacyAt <= AMBIENT_RELAY_RETENTION_MS) {
+            JSONObject legacy = new JSONObject();
+            try {
+                legacy.put("id", legacyId);
+                legacy.put("at", legacyAt);
+                legacy.put("source", preferences.getString(
+                        KEY_AMBIENT_RELAY_SOURCE, "Bluetooth"));
+                legacy.put("transcript", legacyTranscript.trim());
+                result.add(legacy);
+            } catch (Exception error) {
+                Log.w(TAG, "cannot migrate legacy ambient relay item", error);
+            }
+        } else if (legacyId > 0L
+                && now - legacyAt > AMBIENT_RELAY_RETENTION_MS) {
+            preferences.edit()
+                    .remove(KEY_AMBIENT_RELAY_TRANSCRIPT)
+                    .remove(KEY_AMBIENT_RELAY_SOURCE)
+                    .remove(KEY_AMBIENT_RELAY_ID)
+                    .remove(KEY_AMBIENT_RELAY_AT)
+                    .apply();
+        }
+        while (result.size() > AMBIENT_RELAY_QUEUE_LIMIT) {
+            result.remove(0);
+        }
+        return result;
+    }
+
+    private void saveAmbientRelayQueue(SharedPreferences preferences,
+            ArrayList<JSONObject> queue) {
+        JSONArray array = new JSONArray();
+        if (queue != null) {
+            for (int i = 0; i < queue.size(); i++) {
+                array.put(queue.get(i));
+            }
+        }
+        if (array.length() == 0) {
+            preferences.edit().remove(KEY_AMBIENT_RELAY_QUEUE).apply();
+        } else {
+            preferences.edit().putString(
+                    KEY_AMBIENT_RELAY_QUEUE, array.toString()).apply();
+        }
+    }
+
+    private String mergeAmbientRelayTranscripts(ArrayList<JSONObject> queue) {
+        ArrayList<String> segments = new ArrayList<String>();
+        if (queue != null) {
+            for (int i = 0; i < queue.size(); i++) {
+                String candidate = queue.get(i).optString(
+                        "transcript", "").trim();
+                if (candidate.length() == 0) continue;
+                if (segments.isEmpty()) {
+                    segments.add(candidate);
+                    continue;
+                }
+                int lastIndex = segments.size() - 1;
+                String previous = segments.get(lastIndex);
+                String previousKey = normalizeAmbientRelayMergeKey(previous);
+                String candidateKey = normalizeAmbientRelayMergeKey(candidate);
+                if (candidateKey.length() == 0 || candidateKey.equals(previousKey)
+                        || previousKey.contains(candidateKey)) {
+                    continue;
+                }
+                if (candidateKey.contains(previousKey)) {
+                    segments.set(lastIndex, candidate);
+                } else {
+                    segments.add(candidate);
+                }
+            }
+        }
+        while (segments.size() > 1
+                && ambientRelaySegmentChars(segments) > AMBIENT_RELAY_BATCH_CHARS) {
+            segments.remove(0);
+        }
+        StringBuilder merged = new StringBuilder();
+        for (int i = 0; i < segments.size(); i++) {
+            String segment = segments.get(i);
+            if (merged.length() > 0 && !endsWithRelaySentenceMark(merged)) {
+                merged.append('。');
+            }
+            merged.append(segment);
+        }
+        if (merged.length() > AMBIENT_RELAY_BATCH_CHARS) {
+            return merged.substring(merged.length() - AMBIENT_RELAY_BATCH_CHARS);
+        }
+        return merged.toString();
+    }
+
+    private int ambientRelaySegmentChars(ArrayList<String> segments) {
+        int chars = 0;
+        for (int i = 0; i < segments.size(); i++) {
+            chars += segments.get(i).length() + 1;
+        }
+        return chars;
+    }
+
+    private String normalizeAmbientRelayMergeKey(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.JAPAN)
+                .replaceAll("[\\s　、。,.!！?？…〜～]+", "");
+    }
+
+    private boolean endsWithRelaySentenceMark(CharSequence value) {
+        if (value == null || value.length() == 0) return true;
+        char last = value.charAt(value.length() - 1);
+        return last == '。' || last == '！' || last == '？'
+                || last == '!' || last == '?' || last == '、' || last == ',';
     }
 
     private String transcribePcmWithSpeechRecognizer(final byte[] pcm, final int sampleRate,
@@ -3104,6 +3328,9 @@ public final class MainActivity extends Activity {
         result.put("routeDestination", routeDestination);
         result.put("route", routeFresh ? new JSONArray(routeText) : new JSONArray());
         result.put("routeError", preferences.getString(KEY_MAP_ROUTE_ERROR, ""));
+        maybeRefreshNavigationRoute(navigationActive, location, routeText,
+                routeDestination, routeTime, result);
+        result.put("routeRefreshing", navigationRouteFetchInFlight);
         if (navigationActive && routeFresh
                 && location != null && maneuverText.length() > 2) {
             JSONObject routeMetrics = buildRouteHudMetrics(location, routeText, maneuverText,
@@ -3135,7 +3362,7 @@ public final class MainActivity extends Activity {
             }
         }
         if (navigationActive
-                && (maneuverText.length() <= 2 || routeDataVersion < 3
+                && (!routeFresh || maneuverText.length() <= 2 || routeDataVersion < 3
                 || routeDistanceMeters <= 0.0f || routeDurationSeconds <= 0.0f)
                 && routeDestination.length() > 0
                 && !navigationRouteFetchInFlight
@@ -3161,6 +3388,120 @@ public final class MainActivity extends Activity {
         return result;
     }
 
+    private void maybeRefreshNavigationRoute(boolean navigationActive, Location current,
+                                             String routeText, String destination,
+                                             long routeTime, JSONObject navigation) {
+        if (!navigationActive || current == null || destination == null
+                || destination.trim().length() == 0) {
+            navigationRouteDeviationSinceMs = 0L;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        String combined = safe(navigation.optString("instruction", "")) + " "
+                + safe(navigation.optString("detail", "")) + " "
+                + safe(navigation.optString("compact", ""));
+        boolean explicitReroute = containsRouteRecalculationSignal(combined);
+        float nearestRouteDistance = nearestDistanceToNavigationRoute(current, routeText);
+        boolean fastTravel = current.hasSpeed() && current.getSpeed() >= 12.0f;
+        float baseThreshold = "walking".equals(navigationMode()) ? 90.0f
+                : "bicycling".equals(navigationMode()) ? 140.0f : 220.0f;
+        if (current.hasAccuracy() && current.getAccuracy() > 0.0f) {
+            baseThreshold = Math.max(baseThreshold, current.getAccuracy() * 3.0f);
+        }
+        if (fastTravel) baseThreshold = Math.max(baseThreshold, 800.0f);
+        boolean outsideRoute = nearestRouteDistance < Float.MAX_VALUE
+                && nearestRouteDistance > baseThreshold;
+        if (outsideRoute) {
+            if (navigationRouteDeviationSinceMs <= 0L) {
+                navigationRouteDeviationSinceMs = now;
+            }
+        } else {
+            navigationRouteDeviationSinceMs = 0L;
+        }
+        long confirmation = fastTravel ? MAP_ROUTE_FAST_DEVIATION_CONFIRM_MS
+                : MAP_ROUTE_DEVIATION_CONFIRM_MS;
+        boolean confirmedDeviation = navigationRouteDeviationSinceMs > 0L
+                && now - navigationRouteDeviationSinceMs >= confirmation;
+        boolean periodicRefresh = routeTime <= 0L
+                || now - routeTime >= MAP_ROUTE_PERIODIC_REFRESH_MS;
+        if (!explicitReroute && !confirmedDeviation && !periodicRefresh) return;
+        if (navigationRouteFetchInFlight || now < navigationRouteRetryAfterMs) return;
+        long cooldown = fastTravel ? MAP_ROUTE_FAST_REROUTE_COOLDOWN_MS
+                : MAP_ROUTE_REROUTE_COOLDOWN_MS;
+        if (navigationRouteLastRerouteAtMs > 0L
+                && now - navigationRouteLastRerouteAtMs < cooldown) return;
+        navigationRouteLastRerouteAtMs = now;
+        navigationRouteDeviationSinceMs = 0L;
+        Log.i(TAG, "navigation reroute requested reason="
+                + (explicitReroute ? "maps" : confirmedDeviation ? "deviation" : "periodic")
+                + " deviation="
+                + (nearestRouteDistance == Float.MAX_VALUE
+                        ? "unknown" : Math.round(nearestRouteDistance)));
+        // Do not clear the stored geometry here. The glasses keep drawing the
+        // last complete route while the replacement is fetched, and the new
+        // route is swapped in only after a successful response.
+        prepareNavigationRouteAsync(destination.trim(), navigationMode(), false);
+    }
+
+    private boolean containsRouteRecalculationSignal(String value) {
+        String text = safe(value).toLowerCase(Locale.US)
+                .replaceAll("[\\s　]", "");
+        return text.contains("再検索") || text.contains("再探索")
+                || text.contains("経路を検索") || text.contains("ルートを検索")
+                || text.contains("rerouting") || text.contains("recalculating");
+    }
+
+    private float nearestDistanceToNavigationRoute(Location current, String routeText) {
+        if (current == null || routeText == null || routeText.length() <= 2) {
+            return Float.MAX_VALUE;
+        }
+        try {
+            JSONArray route = new JSONArray(routeText);
+            float nearest = Float.MAX_VALUE;
+            double[] previous = null;
+            for (int index = 0; index < route.length(); index++) {
+                JSONArray point = route.optJSONArray(index);
+                if (point == null || point.length() < 2) continue;
+                double latitude = point.optDouble(0, Double.NaN);
+                double longitude = point.optDouble(1, Double.NaN);
+                if (Double.isNaN(latitude) || Double.isNaN(longitude)) continue;
+                nearest = Math.min(nearest, coordinateDistance(
+                        current.getLatitude(), current.getLongitude(), latitude, longitude));
+                if (previous != null) {
+                    nearest = Math.min(nearest, distanceToRouteSegmentMeters(
+                            current.getLatitude(), current.getLongitude(),
+                            previous[0], previous[1], latitude, longitude));
+                }
+                previous = new double[]{latitude, longitude};
+            }
+            return nearest;
+        } catch (Exception error) {
+            Log.w(TAG, "route deviation check failed", error);
+            return Float.MAX_VALUE;
+        }
+    }
+
+    private float distanceToRouteSegmentMeters(double latitude, double longitude,
+                                               double fromLatitude, double fromLongitude,
+                                               double toLatitude, double toLongitude) {
+        double longitudeScale = 111320.0d * Math.cos(Math.toRadians(latitude));
+        double fromX = (fromLongitude - longitude) * longitudeScale;
+        double fromY = (fromLatitude - latitude) * 110540.0d;
+        double toX = (toLongitude - longitude) * longitudeScale;
+        double toY = (toLatitude - latitude) * 110540.0d;
+        double deltaX = toX - fromX;
+        double deltaY = toY - fromY;
+        double lengthSquared = deltaX * deltaX + deltaY * deltaY;
+        if (lengthSquared <= 0.001d) {
+            return (float) Math.sqrt(fromX * fromX + fromY * fromY);
+        }
+        double progress = -(fromX * deltaX + fromY * deltaY) / lengthSquared;
+        progress = Math.max(0.0d, Math.min(1.0d, progress));
+        double nearestX = fromX + progress * deltaX;
+        double nearestY = fromY + progress * deltaY;
+        return (float) Math.sqrt(nearestX * nearestX + nearestY * nearestY);
+    }
+
     private String remainingDurationFromNavigationArrival(String value, long now) {
         String text = safe(value).trim();
         if (text.length() == 0 || (!text.contains("着") && !text.contains("到着"))) {
@@ -3184,17 +3525,18 @@ public final class MainActivity extends Activity {
             arrival.set(Calendar.MINUTE, minute);
             arrival.set(Calendar.SECOND, 0);
             arrival.set(Calendar.MILLISECOND, 0);
-            // Around midnight, a destination clock can belong to tomorrow.
+            // Only treat an earlier clock as tomorrow during a real midnight
+            // crossing.  Previously any clock more than six hours behind was
+            // advanced by one day, producing impossible 12+ hour journeys from
+            // stale Maps notifications.
             if (arrival.getTimeInMillis() < now - 2L * 60L * 1000L) {
-                long pastBy = now - arrival.getTimeInMillis();
-                // A clock shortly before now is a stale notification, not an
-                // arrival tomorrow. A large negative offset is the normal
-                // midnight rollover (for example 23:50 -> 00:03).
-                if (pastBy < 6L * 60L * 60L * 1000L) return "";
+                Calendar current = Calendar.getInstance();
+                current.setTimeInMillis(now);
+                if (current.get(Calendar.HOUR_OF_DAY) < 18 || hour > 6) return "";
                 arrival.add(Calendar.DAY_OF_MONTH, 1);
             }
             long remainingMs = arrival.getTimeInMillis() - now;
-            if (remainingMs <= 0L || remainingMs > 36L * 60L * 60L * 1000L) {
+            if (remainingMs <= 0L || remainingMs > 8L * 60L * 60L * 1000L) {
                 return "";
             }
             double roundedUpSeconds = Math.ceil(remainingMs / 60000.0) * 60.0;
