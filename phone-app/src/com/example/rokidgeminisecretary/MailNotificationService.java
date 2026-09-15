@@ -100,6 +100,10 @@ public final class MailNotificationService extends NotificationListenerService {
         String infoText = text(notification.extras.getCharSequence(Notification.EXTRA_INFO_TEXT));
         String body = bigText.length() > text.length() ? bigText : text;
         if (isGoogleMapsPackage(status.getPackageName())) {
+            String expanded = expandedNavigationText(notification.extras);
+            if (expanded.length() > 0 && !body.contains(expanded)) {
+                body = body.length() == 0 ? expanded : body + " " + expanded;
+            }
             collectTransit(status.getPackageName(), title, body, subText, infoText,
                     status.isOngoing(), notification.category, notification.extras);
             return;
@@ -131,6 +135,29 @@ public final class MailNotificationService extends NotificationListenerService {
             }
         }
         saveMailCache();
+    }
+
+    private static String expandedNavigationText(Bundle extras) {
+        if (extras == null) return "";
+        StringBuilder result = new StringBuilder();
+        CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+        if (lines != null) {
+            for (CharSequence line : lines) {
+                appendUniqueNavigationText(result, text(line));
+            }
+        }
+        appendUniqueNavigationText(result,
+                text(extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)));
+        appendUniqueNavigationText(result,
+                text(extras.getCharSequence(Notification.EXTRA_TITLE_BIG)));
+        return result.toString();
+    }
+
+    private static void appendUniqueNavigationText(StringBuilder target, String value) {
+        String clean = cleanTransitText(value);
+        if (clean.length() == 0 || target.toString().contains(clean)) return;
+        if (target.length() > 0) target.append(' ');
+        target.append(clean);
     }
 
     private void loadMailCache() {

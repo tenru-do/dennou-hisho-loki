@@ -19,6 +19,7 @@
 - 現在地・天気・交通・ナビ: `ACCESS_COARSE_LOCATION` または `ACCESS_FINE_LOCATION` を許可した場合。ナビ中は座標、進行方向、速度、経路、道路名を扱います
 - AMB周辺音声: グラスまたはスマホで `RECORD_AUDIO` を許可し、利用者が `AMB` を明示的にオンにした場合
 - AMB再生音: Audio Relayで利用者がAndroidのメディア投影を明示的に開始した場合
+- RokidAI表示文字: 任意の「RokidAI表示連携」アクセシビリティサービスを利用者がAndroid設定で明示的にオンにした場合。対象はRokidAI関連パッケージだけで、取得文字は一時的なHUD連動に使用し、会話ログへの保存や外部送信は行いません
 
 ## 外部送信
 
