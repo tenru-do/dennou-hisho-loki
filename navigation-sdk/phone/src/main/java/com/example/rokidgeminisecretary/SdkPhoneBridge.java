@@ -43,7 +43,15 @@ public final class SdkPhoneBridge {
             return new JSONObject().put("source", "navigation_sdk").put("navigationActive", false)
                     .put("ok", true).put("sdkSessionId", sessionId).put("time", System.currentTimeMillis());
         }
-        return new JSONObject(value);
+        JSONObject payload = new JSONObject(value);
+        long ttl = Math.max(0, payload.optLong("sdkLaneTtlMs", 0)
+                - (SystemClock.elapsedRealtime() - publishedAt));
+        payload.put("sdkLaneTtlMs", ttl);
+        if (ttl == 0) payload.put("sdkLaneText", "");
+        android.util.Log.d("LokiLaneTx", "tx seq=" + payload.optLong("sdkLaneSequence", 0)
+                + " active=" + payload.optBoolean("navigationActive")
+                + " chars=" + payload.optString("sdkLaneText").length() + " ttl=" + ttl);
+        return payload;
     }
 
     public static void show(final Activity activity, String initial) {
@@ -67,7 +75,7 @@ public final class SdkPhoneBridge {
         final Runnable refresh = new Runnable() {
             @Override public void run() {
                 if (!controls.isShowing()) return;
-                diagnostics.setText("状態: " + status + "\n" + laneStatus()
+                diagnostics.setText("状態: " + status + "\n" + laneStatus() + "\n" + laneText()
                         + "\n経路点数: " + route.length()
                         + "\nGoogle Mapsの施設検索：地域名＋店名などで検索。検索は1日10回まで。");
                 MAIN.postDelayed(this, 1000);
@@ -292,6 +300,7 @@ public final class SdkPhoneBridge {
                         .put("totalRemainingDistance", enroute ? distance(info.getDistanceToFinalDestinationMeters()) : "")
                         .put("totalRemainingDuration", enroute ? duration(info.getTimeToFinalDestinationSeconds()) : "")
                         .put("sdkLaneText", enroute ? lane : "")
+                        .put("sdkLaneSequence", LaneFeedService.sequence())
                         .put("sdkLaneStatus", laneStatus())
                         .put("sdkLaneTtlMs", LaneFeedService.current() == null ? 0 : Math.max(0,
                                 5000 - (SystemClock.elapsedRealtime() - LaneFeedService.current().receivedElapsedMs)));

@@ -24,6 +24,8 @@ public final class LaneFeedService extends Service {
     private static volatile boolean accepting;
     private static volatile NavInfo raw;
     private static volatile long rawAt;
+    private static volatile long sequence;
+    public static long sequence() { return sequence; }
 
     public static NavInfo navInfo() {
         return accepting && SystemClock.elapsedRealtime() - rawAt <= LaneSnapshot.MAX_AGE_MS ? raw : null;
@@ -36,6 +38,7 @@ public final class LaneFeedService extends Service {
         accepting = true;
         try {
             boolean registered = navigator.registerServiceForNavUpdates(packageName, LaneFeedService.class.getName(), 1);
+            android.util.Log.d("LokiLaneFeed", "attach registered=" + registered);
             if (!registered) accepting = false;
             return registered;
         } catch (RuntimeException failure) {
@@ -45,6 +48,7 @@ public final class LaneFeedService extends Service {
     }
 
     public static void detach(Navigator navigator) {
+        android.util.Log.d("LokiLaneFeed", "detach");
         accepting = false;
         raw = null;
         try { navigator.unregisterServiceForNavUpdates(); }
@@ -67,7 +71,17 @@ public final class LaneFeedService extends Service {
                     raw = manager.readNavInfoFromBundle(message.getData());
                     rawAt = SystemClock.elapsedRealtime();
                     latest = convert(raw);
-                } catch (RuntimeException invalidFeed) { latest = null; raw = null; }
+                    sequence++;
+                    StepInfo step = raw == null ? null : raw.getCurrentStep();
+                    android.util.Log.d("LokiLaneFeed", "rx seq=" + sequence
+                            + " state=" + (raw == null ? -1 : raw.getNavState())
+                            + " step=" + (step != null)
+                            + " lanes=" + (step == null || step.getLanes() == null ? 0 : step.getLanes().size())
+                            + " recommended=" + (latest != null && latest.displayable(rawAt)));
+                } catch (RuntimeException invalidFeed) {
+                    latest = null; raw = null;
+                    android.util.Log.d("LokiLaneFeed", "rx invalid=" + invalidFeed.getClass().getSimpleName());
+                }
             }
         });
     }
@@ -91,7 +105,7 @@ public final class LaneFeedService extends Service {
         return new LaneSnapshot(state, SystemClock.elapsedRealtime(), info.getDistanceToCurrentStepMeters(), lanes);
     }
 
-    @Override public IBinder onBind(Intent intent) { return messenger.getBinder(); }
-    @Override public boolean onUnbind(Intent intent) { latest = null; raw = null; return false; }
+    @Override public IBinder onBind(Intent intent) { android.util.Log.d("LokiLaneFeed", "bind"); return messenger.getBinder(); }
+    @Override public boolean onUnbind(Intent intent) { android.util.Log.d("LokiLaneFeed", "unbind"); latest = null; raw = null; return false; }
     @Override public void onDestroy() { latest = null; raw = null; super.onDestroy(); }
 }

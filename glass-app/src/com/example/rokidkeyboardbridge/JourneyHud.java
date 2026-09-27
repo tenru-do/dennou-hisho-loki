@@ -12,6 +12,8 @@ final class JourneyHud {
         if ("navigation_sdk".equals(input.optString("source")) || journey == null
                 || journey.optInt("version") != 1 || journey.optString("id").isEmpty()) return input;
         JSONObject out = new JSONObject(input.toString());
+        String fallbackNote = journey.optBoolean("walkingFallback")
+                ? "徒歩経路で代替・自転車通行可否は未確認。押し歩きを含みます。 " : "";
         JSONObject leg = journey.optJSONObject("currentLeg");
         JSONArray selected = overview ? journey.optJSONArray("wholeRoute")
                 : leg == null ? null : leg.optJSONArray("route");
@@ -24,7 +26,7 @@ final class JourneyHud {
                 "totalRemainingDistance", "totalRemainingDuration"}) out.put(key, "");
         out.put("routeMode", "transit");
         if (leg == null || !journey.optBoolean("positionConfirmed")) {
-            out.put("instruction", "現在区間を確認中").put("detail", "GPSによる区間推定を待っています");
+            out.put("instruction", "現在区間を確認中").put("detail", fallbackNote + "GPSによる区間推定を待っています");
             return out;
         }
         if ("TRANSIT".equals(leg.optString("travelMode"))) {
@@ -42,8 +44,10 @@ final class JourneyHud {
             if (instruction.isEmpty()) instruction = "bicycling".equals(mode) ? "自転車区間" : "徒歩区間";
             out.put("routeMode", mode).put("instruction", instruction);
             String kind = leg.optString("kind");
-            out.put("detail", "TRANSFER".equals(kind) ? "乗換の徒歩区間"
-                    : "EGRESS".equals(kind) ? "目的地までの徒歩区間" : "駅・停留所までの区間");
+            out.put("detail", fallbackNote + ("TRANSFER".equals(kind) ? "乗換の徒歩区間"
+                    : "EGRESS".equals(kind) ? "目的地までの徒歩区間"
+                    : "ACCESS".equals(kind) ? "駅・停留所までの区間"
+                    : "bicycling".equals(mode) ? "目的地までの自転車区間" : "目的地までの徒歩区間"));
         }
         return out;
     }

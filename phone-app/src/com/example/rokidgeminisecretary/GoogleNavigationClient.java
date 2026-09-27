@@ -116,7 +116,8 @@ final class GoogleNavigationClient {
                 .put("destination", new JSONObject().put("address", destination)).put("travelMode", travel)
                 .put("languageCode", "ja-JP").put("units", "METRIC");
         String fields = "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline,routes.legs.steps.startLocation,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.navigationInstruction";
-        if ("TRANSIT".equals(travel)) fields += ",routes.legs.steps.travelMode,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.endLocation,routes.legs.steps.transitDetails";
+        if (!"DRIVE".equals(travel)) fields += ",routes.legs.steps.travelMode,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.endLocation";
+        if ("TRANSIT".equals(travel)) fields += ",routes.legs.steps.transitDetails";
         Response response = request(c, "https://routes.googleapis.com/directions/v2:computeRoutes", body, fields);
         JSONObject root = new JSONObject(new String(response.bytes, StandardCharsets.UTF_8));
         JSONArray routes = root.optJSONArray("routes");

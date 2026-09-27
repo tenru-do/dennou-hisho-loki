@@ -225,11 +225,13 @@ public final class MainActivity extends Activity {
     private static final class GoogleRouteCache {
         final NavigationRouteData data;
         final String destination, mode;
+        final String effectiveMode;
         final TransitJourney journey;
         final JourneyProgress progress;
         final long time = System.currentTimeMillis();
-        GoogleRouteCache(NavigationRouteData data, String destination, String mode, TransitJourney journey) {
+        GoogleRouteCache(NavigationRouteData data, String destination, String mode, String effectiveMode, TransitJourney journey) {
             this.data = data; this.destination = destination; this.mode = mode;
+            this.effectiveMode = effectiveMode;
             this.journey = journey;
             this.progress = journey == null ? null : new JourneyProgress(journey);
         }
@@ -1067,6 +1069,12 @@ public final class MainActivity extends Activity {
         setNavigationHudSuppressed(false);
         final String mode = navigationMode();
         prepareNavigationRouteAsync(destination, mode);
+        // Preparing a different destination clears the old cache and its shared identity.
+        // Restore this explicit UI selection AFTER that reset, not before it.
+        confirmedSharedDestination = destination;
+        confirmedSharedUntil = System.currentTimeMillis() + 2L * 60L * 60L * 1000L;
+        confirmedSharedNavigationSeen = false;
+        Log.d("LokiGoogleNav", "map_start mode=" + mode);
         Intent intent;
         if (destination.length() == 0) {
             intent = getPackageManager().getLaunchIntentForPackage(
@@ -1078,6 +1086,7 @@ public final class MainActivity extends Activity {
         } else {
             Uri directions = Uri.parse("https://www.google.com/maps/dir/?api=1"
                     + "&destination=" + Uri.encode(destination)
+                    + "&travelmode=" + Uri.encode(mode)
                     );
             intent = new Intent(Intent.ACTION_VIEW, directions);
             intent.setPackage("com.google.android.apps.maps");
@@ -1215,7 +1224,7 @@ public final class MainActivity extends Activity {
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    Location origin = getBestAvailableLocation();
+                    final Location origin = getBestAvailableLocation();
                     if (origin == null) {
                         throw new IllegalStateException("current_location_unavailable");
                     }
@@ -1355,9 +1364,16 @@ public final class MainActivity extends Activity {
                     Location origin = getBestAvailableLocation();
                     if (origin == null || System.currentTimeMillis() - origin.getTime() > 180000)
                         throw new Exception("google_current_location_unavailable");
-                    JSONObject route = GoogleNavigationClient.route(MainActivity.this,
-                            origin.getLatitude(), origin.getLongitude(), destination, mode);
-                    TransitJourney journey = "transit".equals(mode)
+                    WalkingFallback.Result<JSONObject> fetched = WalkingFallback.fetch(mode,
+                            new WalkingFallback.Request<JSONObject>() {
+                                @Override public JSONObject fetch(String requestedMode) throws Exception {
+                                    Log.d("LokiGoogleNav", "route_request mode=" + requestedMode);
+                                    return GoogleNavigationClient.route(MainActivity.this,
+                                            origin.getLatitude(), origin.getLongitude(), destination, requestedMode);
+                                }
+                            });
+                    JSONObject route = fetched.value;
+                    TransitJourney journey = !"driving".equals(mode)
                             ? TransitJourney.parse(destination, route, System.currentTimeMillis()) : null;
                     double[][] points = GooglePolyline.decode(route.getJSONObject("polyline").getString("encodedPolyline"));
                     if (points.length < 2) throw new Exception("google_route_parse_error");
@@ -1390,11 +1406,11 @@ public final class MainActivity extends Activity {
                     }
                     if (!destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, "")) || !mode.equals(desiredGoogleRouteMode)) return;
                     googleRouteCache = new GoogleRouteCache(new NavigationRouteData(retained, maneuvers,
-                            route.optDouble("distanceMeters", -1), googleDuration(route.getString("duration"))), destination, mode, journey);
+                            route.optDouble("distanceMeters", -1), googleDuration(route.getString("duration"))), destination, mode, fetched.mode, journey);
                     noRouteUntil = 0;
                     getPreferences().edit().remove(KEY_MAP_ROUTE_ERROR).apply();
                     navigationRouteRetryAfterMs = 0;
-                    Log.i("LokiGoogleNav", "route ready points=" + retained.length() + " mode=" + mode);
+                    Log.i("LokiGoogleNav", "route ready points=" + retained.length() + " mode=" + mode + " effective=" + fetched.mode);
                 } catch (Exception error) {
                     if (!destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""))
                             || !mode.equals(desiredGoogleRouteMode)) return;
@@ -3945,6 +3961,10 @@ public final class MainActivity extends Activity {
                     if (active) sdk.put("trafficSignals", SignalLocations.snapshot(location.getLatitude(), location.getLongitude()));
                 }
                 sdk.put("mapShare", new JSONObject().put("active", false));
+                Log.d("LokiLaneTx", "bridge seq=" + sdk.optLong("sdkLaneSequence", 0)
+                        + " active=" + active + " suppressed=" + suppressed
+                        + " chars=" + sdk.optString("sdkLaneText").length()
+                        + " ttl=" + sdk.optLong("sdkLaneTtlMs", 0));
                 return sdk;
             }
         } catch (ClassNotFoundException manualBuild) { }
@@ -3965,6 +3985,15 @@ public final class MainActivity extends Activity {
             }
         }
         boolean navigationActive = result.optBoolean("navigationActive", false);
+        // An explicit in-app start must not wait for Maps to publish its first notification.
+        boolean localStart = !navigationActive && !confirmedSharedNavigationSeen
+                && confirmedSharedDestination.length() > 0 && System.currentTimeMillis() < confirmedSharedUntil
+                && !isNavigationHudSuppressed();
+        if (localStart) {
+            navigationActive = true;
+            result.put("navigationActive", true).put("ok", true).put("time", System.currentTimeMillis());
+            result.put("destination", confirmedSharedDestination).put("instruction", "経路を確認中");
+        }
         // Ordinary rail estimation can stay in a low-power GPS mode. An active
         // Maps navigation session needs fresh samples so the remaining distance
         // and duration do not stay frozen at the route's initial values.
@@ -4005,7 +4034,7 @@ public final class MainActivity extends Activity {
             confirmedSharedNavigationSeen = false;
         }
         if (navigationActive && confirmedSharedDestination.length() > 0) {
-            confirmedSharedNavigationSeen = true;
+            if (!localStart) confirmedSharedNavigationSeen = true;
             if (mapsDestination.length() == 0) {
                 mapsDestination = confirmedSharedDestination;
                 result.put("destination", mapsDestination);
@@ -4045,6 +4074,8 @@ public final class MainActivity extends Activity {
         result.put("routeTargetKind", accessLeg ? "transit_access" : "destination");
         String reportedMode = accessLeg ? result.optString("accessMode", "walking") : result.optString("travelMode", "");
         final String routeMode = keepTransitJourney ? "transit"
+                : mapsDestination.equals(confirmedSharedDestination) && System.currentTimeMillis() < confirmedSharedUntil
+                    && ("walking".equals(navigationMode()) || "bicycling".equals(navigationMode())) ? navigationMode()
                 : reportedMode.length() > 0 ? reportedMode
                 : googleCached != null && mapsDestination.equals(googleCached.destination) ? googleCached.mode : navigationMode();
         desiredGoogleRouteMode = routeMode;
@@ -4084,11 +4115,14 @@ public final class MainActivity extends Activity {
                 && routeText.length() > 2;
         result.put("routeReady", routeFresh);
         if (routeFresh && googleCached != null && googleCached.progress != null) {
-            result.put("journey", googleCached.progress.snapshot(
+            JSONObject journeyPayload = googleCached.progress.snapshot(
                     location == null ? Double.NaN : location.getLatitude(),
                     location == null ? Double.NaN : location.getLongitude(),
                     location == null || !location.hasAccuracy() ? -1 : location.getAccuracy(),
-                    location == null ? 0 : location.getTime(), System.currentTimeMillis(), googleCached.data.route));
+                    location == null ? 0 : location.getTime(), System.currentTimeMillis(), googleCached.data.route);
+            journeyPayload.put("requestedMode", googleCached.mode).put("effectiveMode", googleCached.effectiveMode)
+                    .put("walkingFallback", !googleCached.mode.equals(googleCached.effectiveMode));
+            result.put("journey", journeyPayload);
         }
         result.put("routeTime", routeFresh ? routeTime : 0L);
         // Cached route identity is not evidence of Google Maps' current target.

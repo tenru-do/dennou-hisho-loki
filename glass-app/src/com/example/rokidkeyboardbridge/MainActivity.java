@@ -226,6 +226,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private TextView answer;
     private TextView navigationHud;
     private TextView navigationLanes;
+    private LinearLayout navigationGuidanceColumn;
     private String sdkNavigationSession = "";
     private int laneDisplayGeneration;
     private MiniMapView navigationMap;
@@ -1551,7 +1552,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.navigationLanes.setTextSize(12);
         this.navigationLanes.setMaxLines(2);
         this.navigationLanes.setVisibility(View.GONE);
-        linearLayout.addView(this.navigationLanes, new LinearLayout.LayoutParams(-1, -2));
         this.navigationPanel.setOrientation(LinearLayout.HORIZONTAL);
         this.navigationPanel.setVisibility(View.GONE);
         this.navigationHud = new TextView(this);
@@ -1564,9 +1564,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.navigationHud.setLineSpacing(0.0f, 0.94f);
         this.navigationHud.setBackgroundColor(Color.TRANSPARENT);
         this.navigationHud.setVisibility(View.GONE);
-        this.navigationPanel.addView(this.navigationHud,
-                new LinearLayout.LayoutParams(0,
-                        LinearLayout.LayoutParams.MATCH_PARENT, 1.0f));
+        this.navigationGuidanceColumn = new LinearLayout(this);
+        this.navigationGuidanceColumn.setOrientation(LinearLayout.VERTICAL);
+        this.navigationGuidanceColumn.addView(this.navigationLanes, new LinearLayout.LayoutParams(-1, -2));
+        this.navigationGuidanceColumn.addView(this.navigationHud, new LinearLayout.LayoutParams(-1, 0, 1f));
+        this.navigationPanel.addView(this.navigationGuidanceColumn,
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f));
         this.navigationMap = new MiniMapView(this);
         this.navigationMap.setVisibility(View.GONE);
         this.navigationPanel.addView(this.navigationMap,
@@ -3093,6 +3096,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     final String sdkSession = sdkSource ? json.optString("sdkSessionId", "") : "";
                     final String sdkLanes = sdkSource ? json.optString("sdkLaneText", "") : "";
                     final long sdkLaneTtl = Math.max(0, Math.min(5000, json.optLong("sdkLaneTtlMs", 0)));
+                    final long sdkLaneSequence = json.optLong("sdkLaneSequence", 0);
+                    final long laneReceivedAt = android.os.SystemClock.elapsedRealtime();
+                    if (sdkSource) Log.d("LokiLaneHud", "rx seq=" + sdkLaneSequence + " chars=" + sdkLanes.length() + " ttl=" + sdkLaneTtl);
                     final boolean navigationActive = json.optBoolean("navigationActive", false);
                     String topCompact = json.optString("topCompact", "").trim();
                     long topTime = json.optLong("topTime", 0L);
@@ -3155,18 +3161,34 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             MainActivity.this.sdkNavigationSession = sdkSession;
                             final int laneTicket = ++MainActivity.this.laneDisplayGeneration;
                             if (MainActivity.this.navigationLanes != null) {
-                                boolean showLanes = navigationActive && !navigationSuppressed && sdkLaneTtl > 0
+                                long remainingLaneTtl = Math.max(0, sdkLaneTtl - (android.os.SystemClock.elapsedRealtime() - laneReceivedAt));
+                                boolean showLanes = navigationActive && !navigationSuppressed && remainingLaneTtl > 0
                                         && sdkSession.length() > 0 && sdkLanes.length() > 0 && sdkLanes.length() <= 100;
+                                if (sdkSource) Log.d("LokiLaneHud", "render seq=" + sdkLaneSequence + " show=" + showLanes
+                                        + " active=" + navigationActive + " suppressed=" + navigationSuppressed
+                                        + " session=" + !sdkSession.isEmpty() + " ttl=" + remainingLaneTtl);
                                 MainActivity.this.navigationLanes.setText(showLanes ? sdkLanes : "");
                                 MainActivity.this.navigationLanes.setVisibility(showLanes ? View.VISIBLE : View.GONE);
+                                if (showLanes) MainActivity.this.navigationLanes.post(new Runnable() {
+                                    @Override public void run() {
+                                        if (laneTicket != MainActivity.this.laneDisplayGeneration) return;
+                                        android.graphics.Rect visible = new android.graphics.Rect();
+                                        boolean onScreen = MainActivity.this.navigationLanes.getGlobalVisibleRect(visible);
+                                        Log.d("LokiLaneHud", "layout seq=" + sdkLaneSequence
+                                                + " shown=" + MainActivity.this.navigationLanes.isShown()
+                                                + " visible=" + onScreen
+                                                + " size=" + visible.width() + "x" + visible.height());
+                                    }
+                                });
                                 if (showLanes) MainActivity.this.handler.postDelayed(new Runnable() {
                                     @Override public void run() {
                                         if (laneTicket == MainActivity.this.laneDisplayGeneration && MainActivity.this.navigationLanes != null) {
                                             MainActivity.this.navigationLanes.setText("");
                                             MainActivity.this.navigationLanes.setVisibility(View.GONE);
+                                            Log.d("LokiLaneHud", "expire seq=" + sdkLaneSequence);
                                         }
                                     }
-                                }, sdkLaneTtl);
+                                }, remainingLaneTtl);
                             }
                             if (MainActivity.this.navigationMap != null) {
                                 MainActivity.this.navigationMap.setGoogleProvider(googleMap);
@@ -3603,7 +3625,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.navigationMap.setLayoutParams(mapParams);
         }
         android.view.ViewGroup.LayoutParams guidanceParams = this.navigationHud.getLayoutParams();
-        int guidanceHeight = navigationMain ? LinearLayout.LayoutParams.MATCH_PARENT : LinearLayout.LayoutParams.WRAP_CONTENT;
+        int guidanceHeight = navigationMain ? 0 : LinearLayout.LayoutParams.WRAP_CONTENT;
+        if (guidanceParams instanceof LinearLayout.LayoutParams) ((LinearLayout.LayoutParams)guidanceParams).weight = navigationMain ? 1f : 0f;
+        if (this.navigationGuidanceColumn != null) {
+            android.view.ViewGroup.LayoutParams columnParams = this.navigationGuidanceColumn.getLayoutParams();
+            columnParams.height = navigationMain ? LinearLayout.LayoutParams.MATCH_PARENT : LinearLayout.LayoutParams.WRAP_CONTENT;
+            this.navigationGuidanceColumn.setLayoutParams(columnParams);
+        }
         if (guidanceParams != null && guidanceParams.height != guidanceHeight) {
             guidanceParams.height = guidanceHeight;
             this.navigationHud.setLayoutParams(guidanceParams);
