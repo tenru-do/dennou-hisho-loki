@@ -27,6 +27,7 @@ public final class MailNotificationService extends NotificationListenerService {
     private static final List<MailItem> MAILS = new ArrayList<MailItem>();
     private static HealthItem latestHealth;
     private static TransitItem latestTransit;
+    private static volatile Notification latestMapsNotification;
 
     @Override
     public void onCreate() {
@@ -55,6 +56,7 @@ public final class MailNotificationService extends NotificationListenerService {
         }
         synchronized (MAILS) {
             latestTransit = null;
+            latestMapsNotification = null;
         }
         StatusBarNotification[] notifications = getActiveNotifications();
         if (notifications == null) return;
@@ -100,6 +102,7 @@ public final class MailNotificationService extends NotificationListenerService {
         String infoText = text(notification.extras.getCharSequence(Notification.EXTRA_INFO_TEXT));
         String body = bigText.length() > text.length() ? bigText : text;
         if (isGoogleMapsPackage(status.getPackageName())) {
+            latestMapsNotification = notification;
             String expanded = expandedNavigationText(notification.extras);
             if (expanded.length() > 0 && !body.contains(expanded)) {
                 body = body.length() == 0 ? expanded : body + " " + expanded;
@@ -263,6 +266,11 @@ public final class MailNotificationService extends NotificationListenerService {
             root.put("detail", fresh ? latestTransit.detail : "");
             root.put("nextDistance", fresh ? latestTransit.nextDistance : "");
             root.put("arrival", fresh ? latestTransit.arrival : "");
+            root.put("destination", fresh ? latestTransit.destination : "");
+            root.put("travelMode", fresh ? NavigationLabels.mode(latestTransit.compact) : "");
+            root.put("accessStation", fresh ? NavigationLabels.transitAccessStation(
+                    latestTransit.instruction, latestTransit.detail) : "");
+            root.put("accessMode", fresh ? NavigationLabels.accessMode(latestTransit.instruction) : "");
         }
         return root;
     }
@@ -271,6 +279,19 @@ public final class MailNotificationService extends NotificationListenerService {
         synchronized (MAILS) {
             latestTransit = null;
         }
+    }
+
+    static boolean stopMapsNavigation() {
+        Notification current = latestMapsNotification;
+        if (current == null || current.actions == null) return false;
+        for (Notification.Action action : current.actions) {
+            String title = action.title == null ? "" : action.title.toString();
+            if (title.matches(".*(ナビを終了|ナビゲーションを終了|終了|Exit navigation|Stop navigation).*")) {
+                try { action.actionIntent.send(); clearTransit(); return true; }
+                catch (Exception ignored) { return false; }
+            }
+        }
+        return false;
     }
 
     private static boolean looksLikeHealth(String title, String body, String subText) {
@@ -306,6 +327,8 @@ public final class MailNotificationService extends NotificationListenerService {
                     packageName == null ? "" : packageName, compact,
                     navigation.instruction, navigation.detail,
                     navigation.nextDistance, navigation.arrival,
+                    NavigationLabels.destination(title, body, subText, infoText,
+                            navigation.instruction, navigation.detail, navigation.arrival),
                     navigation.navigationActive);
         }
     }
@@ -483,7 +506,7 @@ public final class MailNotificationService extends NotificationListenerService {
     }
 
     private static String cleanTransitText(String value) {
-        return (value == null ? "" : value)
+        return NavigationLabels.clean(value)
                 .replace("Google マップ", "")
                 .replace("Google Maps", "")
                 .replace('\n', ' ')
@@ -593,10 +616,11 @@ public final class MailNotificationService extends NotificationListenerService {
         final String detail;
         final String nextDistance;
         final String arrival;
+        final String destination;
         final boolean navigationActive;
 
         TransitItem(long time, String packageName, String compact,
-                    String instruction, String detail, String nextDistance, String arrival,
+                    String instruction, String detail, String nextDistance, String arrival, String destination,
                     boolean navigationActive) {
             this.time = time;
             this.packageName = packageName;
@@ -605,6 +629,7 @@ public final class MailNotificationService extends NotificationListenerService {
             this.detail = detail;
             this.nextDistance = nextDistance;
             this.arrival = arrival;
+            this.destination = destination;
             this.navigationActive = navigationActive;
         }
     }

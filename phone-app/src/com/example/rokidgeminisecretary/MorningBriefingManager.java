@@ -52,6 +52,7 @@ final class MorningBriefingManager {
     private static final String KEY_DATE = "morning_briefing_date";
     private static final String KEY_TIME = "morning_briefing_time";
     private static final String KEY_SLOT = "topic_briefing_slot";
+    private static final String KEY_NEWS_CACHE = "topic_scheduled_news_cache";
     private static final String KEY_ENABLED = "morning_briefing_enabled";
     private static final String KEY_FORMAT_VERSION = "morning_briefing_format_version";
     private static final String KEY_CUSTOM = "custom_instructions";
@@ -86,7 +87,9 @@ final class MorningBriefingManager {
     static boolean shouldBuildToday(Context context) {
         if (!isCollectionEnabled(context)) return false;
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
-        int slot = currentTopicSlot();
+        java.util.Calendar clock = java.util.Calendar.getInstance();
+        int slot = TopicSchedule.dueSlot(clock.get(java.util.Calendar.HOUR_OF_DAY),
+                clock.get(java.util.Calendar.MINUTE));
         if (slot < 0) return false;
         String currentSlotKey = topicSlotKey(today, slot);
         String savedSlotKey = preferences(context).getString(KEY_SLOT, "");
@@ -116,15 +119,14 @@ final class MorningBriefingManager {
 
     static void ensureFreshAsync(final Context context, final boolean force) {
         if (!isCollectionEnabled(context)
-                || building || (!force && !shouldBuildToday(context))) return;
+                || building || !shouldBuildToday(context)) return;
         building = true;
         final Context app = context.getApplicationContext();
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    JSONObject result = buildAndStore(app);
-                    Log.i(TAG, "topic briefing ready chars="
-                            + result.optString("script", "").length());
+                    collectScheduledNews(app);
+                    Log.i(TAG, "scheduled topic news updated");
                 } catch (Exception error) {
                     Log.w(TAG, "morning briefing build failed", error);
                 } finally {
@@ -156,7 +158,8 @@ final class MorningBriefingManager {
     }
 
     static JSONObject readStoredForPlayback(Context context) throws Exception {
-        JSONObject stored = readStored(context);
+        // Never replay old personal information or trigger RSS requests here.
+        JSONObject stored = buildAndStore(context);
         if (stored.optBoolean("ok", false)) {
             try {
                 markStoredItemsAsAnnounced(context, stored);
@@ -165,6 +168,28 @@ final class MorningBriefingManager {
             }
         }
         return stored;
+    }
+
+    private static void collectScheduledNews(Context context) throws Exception {
+        SharedPreferences prefs = preferences(context);
+        LocalDate date = LocalDate.now(ZoneId.systemDefault());
+        int slot = currentTopicSlot();
+        String region = clean(prefs.getString(KEY_WEATHER_LOCATION, ""));
+        if (region.length() == 0 || "取得済".equals(region)) region = "立川・多摩地域";
+        JSONObject cache = new JSONObject();
+        cache.put("date", date.toString());
+        cache.put("collectedAt", System.currentTimeMillis());
+        cache.put("topNews", fetchNews("", 10));
+        cache.put("localNews", fetchNews(region + " ニュース", 7));
+        cache.put("localEvents", fetchNews(region + " イベント 開催 今日 今週末", 30));
+        prefs.edit().putString(KEY_NEWS_CACHE, cache.toString())
+                .putString(KEY_SLOT, topicSlotKey(date, slot))
+                .putInt(KEY_FORMAT_VERSION, FORMAT_VERSION).apply();
+    }
+
+    private static JSONArray cachedSection(JSONObject cache, String name) {
+        JSONArray items = cache.optJSONArray(name);
+        return items == null ? new JSONArray() : items;
     }
 
     private static void markStoredItemsAsAnnounced(Context context, JSONObject stored)
@@ -260,10 +285,13 @@ final class MorningBriefingManager {
             }
 
             JSONArray eventWeather = buildEventWeather(context, events, homeHourly, region);
-            JSONArray rawTopNews = fetchNews("", 10);
-            JSONArray rawLocalNews = fetchNews(region + " ニュース", 7);
+            JSONObject newsCache = new JSONObject(prefs.getString(KEY_NEWS_CACHE, "{}"));
+            // Do not pass yesterday's headlines off as today's updates.
+            if (!date.toString().equals(newsCache.optString("date", ""))) newsCache = new JSONObject();
+            JSONArray rawTopNews = cachedSection(newsCache, "topNews");
+            JSONArray rawLocalNews = cachedSection(newsCache, "localNews");
             JSONArray rawLocalEvents = filterUpcomingEvents(
-                    fetchNews(region + " イベント 開催 今日 今週末", 30),
+                    cachedSection(newsCache, "localEvents"),
                     date, 7, 7);
             JSONObject deduped = deduplicateBriefingItems(context, date, generatedAt,
                     rawTopNews, rawLocalNews, rawLocalEvents);
@@ -296,6 +324,8 @@ final class MorningBriefingManager {
             root.put("slot", slot);
             root.put("slotLabel", slotLabel);
             root.put("generatedAt", generatedAt);
+            root.put("personalDataRefreshedAt", generatedAt);
+            root.put("newsCollectedAt", newsCache.optLong("collectedAt", 0L));
             root.put("region", region);
             root.put("script", script);
             root.put("summary", summary);
@@ -317,9 +347,8 @@ final class MorningBriefingManager {
             root.put("trivia", trivia);
             writeAtomically(context, root.toString());
             prefs.edit().putString(KEY_DATE, date.toString())
-                    .putString(KEY_SLOT, topicSlotKey(date, slot))
                     .putLong(KEY_TIME, generatedAt)
-                    .putInt(KEY_FORMAT_VERSION, FORMAT_VERSION).apply();
+                    .apply();
             MainActivity.rememberMorningBriefing(context, summary);
             return root;
         }

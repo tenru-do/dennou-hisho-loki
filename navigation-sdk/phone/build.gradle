@@ -1,0 +1,67 @@
+plugins { id 'com.android.application' }
+
+def legacyPhone = file('../../phone-app')
+def generatedManifest = layout.buildDirectory.file('generated/loki/AndroidManifest.xml')
+def prepareManifest = tasks.register('prepareLegacyManifest') {
+    inputs.file(new File(legacyPhone, 'AndroidManifest.xml'))
+    outputs.file(generatedManifest)
+    doLast {
+        def output = generatedManifest.get().asFile
+        output.parentFile.mkdirs()
+        // AGP requires namespace in Gradle; the manual APK build still needs package.
+        output.setText(new File(legacyPhone, 'AndroidManifest.xml').getText('UTF-8')
+                .replace('package="com.example.rokidgeminisecretary"', ''), 'UTF-8')
+    }
+}
+
+android {
+    namespace 'com.example.rokidgeminisecretary'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.example.rokidgeminisecretary'
+        minSdk 26
+        targetSdk 36
+        versionCode 115
+        versionName '0.9.67-sdk-staging'
+        buildConfigField 'boolean', 'NAVIGATION_SDK_ENABLED', providers.gradleProperty('enableNavigationSdk').getOrElse('false') == 'true' ? 'true' : 'false'
+    }
+    signingConfigs {
+        debug {
+            // Match the existing manual APK signing key; never replace device app data.
+            storeFile file(System.getenv('LOKI_DEBUG_KEYSTORE') ?: "${System.getenv('USERPROFILE')}/.android/debug.keystore")
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    sourceSets {
+        main {
+            manifest.srcFile generatedManifest.get().asFile
+            java.srcDirs = [new File(legacyPhone, 'src'), file('src/main/java')]
+            res.srcDirs = [new File(legacyPhone, 'res')]
+            assets.srcDirs = [new File(legacyPhone, 'assets')]
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+    buildFeatures { buildConfig true }
+}
+
+tasks.named('preBuild').configure { dependsOn prepareManifest }
+tasks.withType(JavaCompile).configureEach {
+    options.incremental = false
+    options.encoding = 'UTF-8'
+    options.fork = true
+    options.forkOptions.executable = new File(System.getProperty('java.home'),
+            System.getProperty('os.name').startsWith('Windows') ? 'bin/javac.exe' : 'bin/javac').path
+}
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    implementation project(':')
+    implementation 'com.google.android.libraries.navigation:navigation:7.9.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
+}
