@@ -226,6 +226,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private TextView answer;
     private TextView navigationHud;
     private TextView navigationLanes;
+    private TextView navigationClock;
+    private String handledCompletionId = "";
     private LinearLayout navigationGuidanceColumn;
     private String sdkNavigationSession = "";
     private int laneDisplayGeneration;
@@ -269,6 +271,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private volatile long navigationUpdatedAt;
     private volatile boolean transitPollInFlight;
     private volatile boolean mapNavigationActive;
+    private boolean navigationKeepScreenOn;
     private volatile boolean navigationHudSuppressed;
     private volatile String mapNavigationInstruction = "";
     private volatile String mapNavigationDetail = "";
@@ -536,6 +539,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private final Runnable dimIdleHudRunnable = new Runnable() {
         @Override
         public void run() {
+            if (MainActivity.this.isActiveFollowNavigation()) return;
             if (MainActivity.this.glanceHudVisible
                     && !MainActivity.this.conversationActive
                     && !MainActivity.this.geminiRequestActive
@@ -592,6 +596,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private final Runnable hideGlanceHudRunnable = new Runnable() {
         @Override
         public void run() {
+            if (MainActivity.this.isActiveFollowNavigation()) return;
             if (MainActivity.this.ambientMode || MainActivity.this.headTiltActive
                     || MainActivity.this.conversationActive
                     || MainActivity.this.geminiRequestActive || MainActivity.this.voiceRecording
@@ -763,6 +768,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         } else {
             setGlanceHudVisible(false);
         }
+        updateNavigationScreenPolicy();
     }
 
     @Override
@@ -1560,7 +1566,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.navigationHud.setTextSize(13.5f);
         this.navigationHud.setGravity(19);
         this.navigationHud.setPadding(4, 1, 4, 1);
-        this.navigationHud.setMaxLines(8);
+        this.navigationHud.setMaxLines(14);
         this.navigationHud.setLineSpacing(0.0f, 0.94f);
         this.navigationHud.setBackgroundColor(Color.TRANSPARENT);
         this.navigationHud.setVisibility(View.GONE);
@@ -1683,6 +1689,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
         statusLayout.leftMargin = dp(96);
         statusLayout.topMargin = dp(52);
         frameLayout.addView(this.status, statusLayout);
+        this.navigationClock = new TextView(this);
+        this.navigationClock.setTextColor(Color.rgb(150, 255, 175));
+        this.navigationClock.setTextSize(17);
+        this.navigationClock.setGravity(android.view.Gravity.RIGHT);
+        this.navigationClock.setVisibility(View.GONE);
+        FrameLayout.LayoutParams clockLayout = new FrameLayout.LayoutParams(dp(92), dp(28),
+                android.view.Gravity.TOP | android.view.Gravity.RIGHT);
+        clockLayout.rightMargin = dp(8);
+        frameLayout.addView(this.navigationClock, clockLayout);
         final FrameLayout displayArea = new FrameLayout(this);
         displayArea.setBackgroundColor(Color.BLACK);
         displayArea.addView(frameLayout, new FrameLayout.LayoutParams(-1, -1, android.view.Gravity.BOTTOM));
@@ -1731,10 +1746,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (hudRoot.getParent() instanceof View) {
             int height = ((View)hudRoot.getParent()).getHeight();
             FrameLayout.LayoutParams area = (FrameLayout.LayoutParams) hudRoot.getLayoutParams();
-            int target = lower && height > 0 ? height / 2 : -1;
-            if (area.height != target) {
+            boolean upper = getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("upper_half", false);
+            int target = (lower || upper) && height > 0 ? height / 2 : -1;
+            int gravity = upper ? android.view.Gravity.TOP : android.view.Gravity.BOTTOM;
+            if (area.height != target || area.gravity != gravity) {
                 area.height = target;
-                area.gravity = android.view.Gravity.BOTTOM;
+                area.gravity = gravity;
                 hudRoot.setLayoutParams(area);
             }
         }
@@ -1743,12 +1760,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void showDisplaySettings() {
         new AlertDialog.Builder(this).setTitle("設定")
-                .setItems(new String[]{"表示範囲：全画面", "表示範囲：下半分", "APIキー・カスタム指示"},
+                .setItems(new String[]{"表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示"},
                     new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface dialog, int which) {
-                            if (which == 2) { showApiKeyDialog(); return; }
+                            if (which == 3) { showApiKeyDialog(); return; }
                             getSharedPreferences("navigation_display", MODE_PRIVATE).edit()
-                                    .putBoolean("lower_half", which == 1).apply();
+                                    .putBoolean("lower_half", which == 1).putBoolean("upper_half", which == 2).apply();
                             applyDisplayArea();
                         }
                     }).setNegativeButton("閉じる", null).show();
@@ -2025,6 +2042,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void setGlanceHudVisible(boolean visible) {
         if (this.hudRoot == null) {
+            return;
+        }
+        if (!visible && isActiveFollowNavigation()) {
+            this.glanceHudVisible = true;
+            this.hudRoot.animate().cancel();
+            this.hudRoot.setAlpha(1.0f);
+            this.hudRoot.setVisibility(View.VISIBLE);
+            updateNavigationScreenPolicy();
             return;
         }
         if (!visible && (this.conversationActive || this.geminiRequestActive
@@ -2643,6 +2668,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             } catch (Exception e) {
             }
         }
+        updateNavigationScreenPolicy();
     }
 
     private void setControlAlpha(float f) {
@@ -2711,6 +2737,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         setMascotMode(0);
         resetHeadPoseCalibration();
         scheduleIdleHudCleanup();
+        updateNavigationScreenPolicy();
     }
 
     private void resetHeadPoseCalibration() {
@@ -2944,6 +2971,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             spannableString.setSpan(new RelativeSizeSpan(1.00f), locationStart, locationStart + locationLine.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         this.info.setText(spannableString);
+        if (this.navigationClock != null) this.navigationClock.setText(str3);
     }
 
     private String compactLocationInfoLine() {
@@ -3100,6 +3128,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     final long laneReceivedAt = android.os.SystemClock.elapsedRealtime();
                     if (sdkSource) Log.d("LokiLaneHud", "rx seq=" + sdkLaneSequence + " chars=" + sdkLanes.length() + " ttl=" + sdkLaneTtl);
                     final boolean navigationActive = json.optBoolean("navigationActive", false);
+                    final boolean navigationComplete = json.optBoolean("navigationComplete", false);
+                    final String completionId = json.optString("completionId", "");
                     String topCompact = json.optString("topCompact", "").trim();
                     long topTime = json.optLong("topTime", 0L);
                     if (topCompact.length() == 0 && !navigationActive) {
@@ -3153,6 +3183,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         @Override
                         public void run() {
                             MainActivity.this.navigationHudSuppressed = navigationSuppressed;
+                            if (navigationComplete && !completionId.isEmpty()) {
+                                if (!completionId.equals(MainActivity.this.handledCompletionId))
+                                    MainActivity.this.showNavigationCompletion(completionId);
+                                return;
+                            }
+                            if (navigationActive && !MainActivity.this.handledCompletionId.isEmpty())
+                                MainActivity.this.handledCompletionId = "";
                             if (!sdkSession.equals(MainActivity.this.sdkNavigationSession) || (sdkSource && !navigationActive)) {
                                 MainActivity.this.lastValidMapNavigationSignalAt = 0;
                                 MainActivity.this.mapNavigationActive = false;
@@ -3163,7 +3200,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             if (MainActivity.this.navigationLanes != null) {
                                 long remainingLaneTtl = Math.max(0, sdkLaneTtl - (android.os.SystemClock.elapsedRealtime() - laneReceivedAt));
                                 boolean showLanes = navigationActive && !navigationSuppressed && remainingLaneTtl > 0
-                                        && sdkSession.length() > 0 && sdkLanes.length() > 0 && sdkLanes.length() <= 100;
+                                        && sdkSession.length() > 0 && sdkLanes.length() > 0 && sdkLanes.length() <= 240;
                                 if (sdkSource) Log.d("LokiLaneHud", "render seq=" + sdkLaneSequence + " show=" + showLanes
                                         + " active=" + navigationActive + " suppressed=" + navigationSuppressed
                                         + " session=" + !sdkSession.isEmpty() + " ttl=" + remainingLaneTtl);
@@ -3219,6 +3256,33 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             }
         }, "PhoneTransitPoll").start();
+    }
+
+    private void showNavigationCompletion(final String id) {
+        handledCompletionId = id;
+        mapNavigationActive = false;
+        hudHoldUntil = Math.max(hudHoldUntil, System.currentTimeMillis() + 6000L);
+        lastValidMapNavigationSignalAt = 0;
+        laneDisplayGeneration++;
+        if (navigationLanes != null) { navigationLanes.setText(""); navigationLanes.setVisibility(View.GONE); }
+        if (navigationMap != null) { navigationMap.setRoute("[]"); navigationMap.setVisibility(View.GONE); }
+        if (navigationHud != null) {
+            navigationHud.setText("目的地に到着しました");
+            navigationHud.setVisibility(View.VISIBLE);
+        }
+        if (navigationPanel != null) navigationPanel.setVisibility(View.VISIBLE);
+        setGlanceHudVisible(true);
+        updateNavigationCommentLayout();
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (!id.equals(handledCompletionId)) return;
+                if (navigationHud != null) { navigationHud.setText(""); navigationHud.setVisibility(View.GONE); }
+                if (navigationPanel != null) navigationPanel.setVisibility(View.GONE);
+                if (navigationMap != null) navigationMap.setRoute("[]");
+                updateNavigationCommentLayout();
+                Log.i(TAG, "navigation completion HUD retired");
+            }
+        }, 5000L);
     }
 
     private void applyMapNavigationGuidance(boolean active, String instruction, String detail,
@@ -3295,9 +3359,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
             finalArrival = this.mapNavigationArrival;
         }
 
-        primary = limitText(primary, 42);
+        primary = limitText(primary, 80);
         if (secondary.equals(primary)) secondary = "";
-        secondary = limitText(secondary, 42);
+        secondary = limitText(secondary, 80);
         actionDistance = limitText(actionDistance, 20);
         finalArrival = limitText(finalArrival, 40);
         followingInstruction = limitText(followingInstruction, 32);
@@ -3342,7 +3406,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             guidanceLine = "現 " + limitText(activeRoad, 10)
                     + (heading.length() > 0 ? "｜" + limitText(heading, 7) : "");
         }
-        guidanceLine = limitText(guidanceLine, 22);
+        guidanceLine = limitText(guidanceLine, 52);
         String display = firstLine + (guidanceLine.length() > 0 ? "\n" + guidanceLine : "");
         if (followingInstruction.length() > 0 || followingDistance.length() > 0
                 || followingDuration.length() > 0) {
@@ -3364,7 +3428,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         String destinationName = routeDestination == null ? "" : routeDestination.trim();
         if (this.navigationMap != null && this.navigationMap.transitAccessLeg) destinationName = "";
         if (destinationName.length() > 0) {
-            destination = limitText(destinationName, 14);
+            destination = limitText(destinationName, 64);
         }
         if (remainingDuration.length() > 0) {
             destination += (destination.length() > 0 ? " " : "") + remainingDuration;
@@ -3564,19 +3628,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
             updateAmbientButtonLabel();
             Log.i(TAG, "navigation ambientPaused=" + navigationMain);
         }
-        int mapHeight = dp(HudMapPresentation.sizeDp(navigationMain));
-        int panelHeight = navigationMain ? mapHeight : LinearLayout.LayoutParams.WRAP_CONTENT;
+        boolean overviewLayout = navigationMain && getSharedPreferences("navigation_display", MODE_PRIVATE)
+                .getBoolean("overview", false);
+        int mapHeight = dp(overviewLayout ? 148 : HudMapPresentation.sizeDp(navigationMain));
+        int panelHeight = navigationMain ? dp(overviewLayout ? 228 : 220)
+                : LinearLayout.LayoutParams.WRAP_CONTENT;
+        if (this.navigationPanel.getOrientation() != (overviewLayout ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL))
+            this.navigationPanel.setOrientation(overviewLayout ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         // Navigation owns the header space only while it is actually visible.
         // Keep the control row available so users can always leave this mode.
         if (this.hudContent != null) {
-            this.hudContent.setPadding(6, dp(navigationMain ? 0 : 92), 6,
-                    navigationMain ? mapHeight + dp(26) : 2);
+            this.hudContent.setPadding(6, dp(navigationMain ? 20 : 92), 6,
+                    navigationMain ? panelHeight + dp(26) : 2);
             // A weighted spacer disappears when the conversation is GONE.
             // Anchor to the root instead so the map stays at the screen bottom.
             if (navigationMain && this.hudRoot != null
                     && this.navigationPanel.getParent() == this.hudContent) {
                 this.hudContent.removeView(this.navigationPanel);
-                FrameLayout.LayoutParams anchored = new FrameLayout.LayoutParams(-1, mapHeight, android.view.Gravity.BOTTOM);
+                FrameLayout.LayoutParams anchored = new FrameLayout.LayoutParams(-1, panelHeight, android.view.Gravity.BOTTOM);
                 anchored.leftMargin = 6;
                 anchored.rightMargin = 6;
                 anchored.bottomMargin = dp(24);
@@ -3590,6 +3659,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             if (navigationMain && this.navigationPanel.getLayoutParams() instanceof FrameLayout.LayoutParams) {
                 FrameLayout.LayoutParams anchored = (FrameLayout.LayoutParams)this.navigationPanel.getLayoutParams();
+                anchored.height = panelHeight;
                 anchored.bottomMargin = dp(24);
                 this.navigationPanel.setLayoutParams(anchored);
             }
@@ -3597,6 +3667,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (this.mascotView != null) this.mascotView.setVisibility(navigationMain ? View.GONE : View.VISIBLE);
         if (this.info != null) this.info.setVisibility(navigationMain ? View.GONE : View.VISIBLE);
         if (this.status != null) this.status.setVisibility(navigationMain ? View.GONE : View.VISIBLE);
+        if (this.navigationClock != null) {
+            this.navigationClock.setVisibility(navigationMain ? View.VISIBLE : View.GONE);
+            FrameLayout.LayoutParams clock = (FrameLayout.LayoutParams)this.navigationClock.getLayoutParams();
+            clock.topMargin = dp(navigationMain ? 20 : 0);
+            this.navigationClock.setLayoutParams(clock);
+            if (navigationMain) this.navigationClock.bringToFront();
+        }
         if (this.buttonPanel != null) {
             FrameLayout.LayoutParams controls = (FrameLayout.LayoutParams) this.buttonPanel.getLayoutParams();
             if (controls != null) {
@@ -3608,29 +3685,34 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
         }
         this.navigationHud.setTextSize(largeMap ? 13.5f : 11.0f);
-        this.navigationHud.setGravity(navigationMain ? android.view.Gravity.CENTER_VERTICAL : android.view.Gravity.TOP);
+        this.navigationHud.setGravity(android.view.Gravity.TOP);
         this.navigationMap.invalidate();
         android.view.ViewGroup.LayoutParams panelParams = this.navigationPanel.getLayoutParams();
         if (panelParams != null && panelParams.height != panelHeight) {
             panelParams.height = panelHeight;
             this.navigationPanel.setLayoutParams(panelParams);
         }
+        int mapWidth = overviewLayout ? LinearLayout.LayoutParams.MATCH_PARENT : mapHeight;
         android.view.ViewGroup.LayoutParams mapParams = this.navigationMap.getLayoutParams();
-        if (mapParams != null && (mapParams.height != mapHeight
-                || mapParams.width != mapHeight)) {
-            mapParams.height = mapHeight;
-            mapParams.width = mapHeight;
-            if (mapParams instanceof LinearLayout.LayoutParams)
-                ((LinearLayout.LayoutParams)mapParams).gravity = android.view.Gravity.TOP;
-            this.navigationMap.setLayoutParams(mapParams);
+        if (mapParams == null || mapParams.height != mapHeight || mapParams.width != mapWidth) {
+            LinearLayout.LayoutParams updated = new LinearLayout.LayoutParams(mapWidth, mapHeight);
+            updated.gravity = android.view.Gravity.TOP;
+            this.navigationMap.setLayoutParams(updated);
         }
         android.view.ViewGroup.LayoutParams guidanceParams = this.navigationHud.getLayoutParams();
         int guidanceHeight = navigationMain ? 0 : LinearLayout.LayoutParams.WRAP_CONTENT;
         if (guidanceParams instanceof LinearLayout.LayoutParams) ((LinearLayout.LayoutParams)guidanceParams).weight = navigationMain ? 1f : 0f;
         if (this.navigationGuidanceColumn != null) {
             android.view.ViewGroup.LayoutParams columnParams = this.navigationGuidanceColumn.getLayoutParams();
-            columnParams.height = navigationMain ? LinearLayout.LayoutParams.MATCH_PARENT : LinearLayout.LayoutParams.WRAP_CONTENT;
-            this.navigationGuidanceColumn.setLayoutParams(columnParams);
+            int columnWidth = overviewLayout ? LinearLayout.LayoutParams.MATCH_PARENT : 0;
+            int columnHeight = overviewLayout ? panelHeight - mapHeight
+                    : navigationMain ? LinearLayout.LayoutParams.MATCH_PARENT : LinearLayout.LayoutParams.WRAP_CONTENT;
+            float columnWeight = overviewLayout ? 0f : 1f;
+            if (!(columnParams instanceof LinearLayout.LayoutParams)
+                    || columnParams.width != columnWidth || columnParams.height != columnHeight
+                    || ((LinearLayout.LayoutParams)columnParams).weight != columnWeight)
+                this.navigationGuidanceColumn.setLayoutParams(new LinearLayout.LayoutParams(
+                        columnWidth, columnHeight, columnWeight));
         }
         if (guidanceParams != null && guidanceParams.height != guidanceHeight) {
             guidanceParams.height = guidanceHeight;
@@ -3639,6 +3721,87 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (commentActive && this.answerScroll != null) {
             this.answerScroll.setVisibility(View.VISIBLE);
             this.answerScroll.requestLayout();
+        }
+        applyLowerHalfStack(navigationMain);
+        updateNavigationScreenPolicy();
+    }
+
+    private boolean isActiveFollowNavigation() {
+        return activityForeground && mapNavigationActive && !navigationHudSuppressed
+                && navigationPanel != null && navigationPanel.getVisibility() == View.VISIBLE
+                && getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("large_map", false)
+                && !getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("overview", false);
+    }
+
+    private void updateNavigationScreenPolicy() {
+        if (isActiveFollowNavigation()) {
+            handler.removeCallbacks(hideGlanceHudRunnable);
+            handler.removeCallbacks(dimIdleHudRunnable);
+            if (!glanceHudVisible) setGlanceHudVisible(true);
+            navigationKeepScreenOn = true;
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else if (navigationKeepScreenOn) {
+            navigationKeepScreenOn = false;
+            // Hand control back to the ordinary glance timeout. Its own hide
+            // path clears the window flag when the HUD is no longer needed.
+            if (!conversationActive && !geminiRequestActive && !voiceRecording
+                    && !morningPlaybackActive && !ambientMode) {
+                handler.removeCallbacks(hideGlanceHudRunnable);
+                handler.postDelayed(hideGlanceHudRunnable, 1000L);
+                if (!glanceHudVisible)
+                    getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            }
+        }
+    }
+
+    private void applyLowerHalfStack(boolean navigationMain) {
+        boolean lower = getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("lower_half", false);
+        // Small-map controls retain the bottom information band. Both large-map
+        // presentations (follow and overview) keep their map-first layout.
+        lower = lower && !navigationMain;
+        if (answerScroll != null && (answer == null || answer.getText().toString().trim().isEmpty()))
+            answerScroll.setVisibility(View.GONE);
+        View[] footer = new View[]{mascotView, info, status};
+        int[] originalTop = new int[]{0, 0, 52};
+        int[] bottom = new int[]{0, 24, 32};
+        for (int i = 0; i < footer.length; i++) {
+            View view = footer[i];
+            if (view == null) continue;
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)view.getLayoutParams();
+            params.gravity = android.view.Gravity.LEFT | (lower ? android.view.Gravity.BOTTOM : android.view.Gravity.TOP);
+            params.topMargin = lower ? 0 : dp(originalTop[i]);
+            params.bottomMargin = lower ? dp(bottom[i]) : 0;
+            view.setLayoutParams(params);
+            if (lower) view.setVisibility(View.VISIBLE);
+        }
+        boolean upper = getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("upper_half", false);
+        if (upper && !navigationMain) {
+            // Mirror the lower-half stack, preserving native header and text sizes.
+            if (buttonPanel != null) {
+                FrameLayout.LayoutParams controls = (FrameLayout.LayoutParams)buttonPanel.getLayoutParams();
+                controls.gravity = android.view.Gravity.TOP | android.view.Gravity.LEFT;
+                controls.topMargin = dp(96);
+                controls.bottomMargin = 0;
+                buttonPanel.setLayoutParams(controls);
+            }
+            if (hudContent != null) hudContent.setPadding(6, dp(118), 6, 2);
+        }
+        if (!lower) return;
+        // Keep native text/mascot sizes; reserve a bottom information band and
+        // controls above it. Only the available comment line count is reduced.
+        if (buttonPanel != null) {
+            FrameLayout.LayoutParams controls = (FrameLayout.LayoutParams)buttonPanel.getLayoutParams();
+            controls.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.LEFT;
+            controls.topMargin = 0;
+            controls.bottomMargin = dp(96);
+            buttonPanel.setLayoutParams(controls);
+        }
+        if (hudContent != null) hudContent.setPadding(6, 0, 6,
+                dp(118) + (navigationMain ? dp(HudMapPresentation.sizeDp(true)) : 0));
+        if (navigationMain && navigationPanel.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams map = (FrameLayout.LayoutParams)navigationPanel.getLayoutParams();
+            map.bottomMargin = dp(118);
+            navigationPanel.setLayoutParams(map);
         }
     }
 
@@ -10176,6 +10339,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
             try {
                 Log.i(MainActivity.TAG, "pollPhoneCommand start");
                 JSONObject customJson = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("custom"));
+                String phoneGeminiKey = customJson.optString("geminiApiKey", "").trim();
+                if (!phoneGeminiKey.isEmpty() && !phoneGeminiKey.equals(
+                        getPreferences().getString(KEY_API_KEY, ""))) {
+                    if (!getPreferences().edit().putString(KEY_API_KEY, phoneGeminiKey).commit()) {
+                        throw new java.io.IOException("Geminiキーの保存に失敗しました");
+                    }
+                    handler.post(new Runnable() { public void run() {
+                        setStatus("スマホからGeminiキーを更新しました", Color.rgb(90, 220, 120));
+                    }});
+                }
                 if (!MainActivity.this.getPreferences().getBoolean("custom_merge_v2", false)) {
                     String glassCopy = MainActivity.this.getPreferences().getString(KEY_CUSTOM_INSTRUCTIONS, "");
                     String phoneCopy = customJson.optString("current", "");
@@ -11435,6 +11608,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private String requestGemini(String str, String str2, String str3) throws Exception {
+        str = getPreferences().getString(KEY_API_KEY, str).trim();
+        if (str == null || str.trim().isEmpty()) {
+            throw new IllegalArgumentException("Gemini APIキーが空です。");
+        }
+        if (str2 == null || str2.trim().isEmpty()) {
+            throw new IllegalArgumentException("音声入力のテキストが空です。もう一度話してください。");
+        }
+        str = str.trim();
         HttpURLConnection httpURLConnection = (HttpURLConnection) new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str3 + ":generateContent").openConnection();
         this.activeGeminiConnection = httpURLConnection;
         httpURLConnection.setRequestMethod("POST");
@@ -11474,17 +11655,26 @@ public final class MainActivity extends Activity implements SensorEventListener 
         jSONObject4.put("temperature", 0.4d);
         jSONObject3.put("generationConfig", jSONObject4);
         byte[] bytes = jSONObject3.toString().getBytes(StandardCharsets.UTF_8);
-        OutputStream outputStream = httpURLConnection.getOutputStream();
-        outputStream.write(bytes);
-        outputStream.close();
-        int responseCode = httpURLConnection.getResponseCode();
-        String all = readAll((responseCode < 200 || responseCode >= 300) ? httpURLConnection.getErrorStream() : httpURLConnection.getInputStream());
-        httpURLConnection.disconnect();
-        if (this.activeGeminiConnection == httpURLConnection) {
-            this.activeGeminiConnection = null;
+        int responseCode;
+        String all;
+        try {
+            try (OutputStream outputStream = httpURLConnection.getOutputStream()) {
+                outputStream.write(bytes);
+            }
+            responseCode = httpURLConnection.getResponseCode();
+            all = readAll((responseCode < 200 || responseCode >= 300)
+                    ? httpURLConnection.getErrorStream() : httpURLConnection.getInputStream());
+        } finally {
+            httpURLConnection.disconnect();
+            if (this.activeGeminiConnection == httpURLConnection) {
+                this.activeGeminiConnection = null;
+            }
         }
         if (responseCode < 200 || responseCode >= 300) {
-            throw new GeminiHttpException(responseCode, str3, extractError(all), extractRetryDelayMs(all));
+            String errorDetail = extractError(all).replace(str, "[REDACTED]");
+            Log.w(TAG, "Gemini HTTP " + responseCode + " model=" + str3
+                    + " search=" + groundedSearchRequested + " detail=" + errorDetail);
+            throw new GeminiHttpException(responseCode, str3, errorDetail, extractRetryDelayMs(all));
         }
         JSONObject responseRoot = new JSONObject(all);
         JSONArray jSONArrayOptJSONArray = responseRoot.optJSONArray("candidates");
@@ -11559,6 +11749,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private VoiceResult requestGeminiAudio(String str, byte[] bArr, String str2) throws Exception {
+        str = getPreferences().getString(KEY_API_KEY, str).trim();
         String strBuildTodayScheduleText;
         String strBuildRecentMailText;
         HttpURLConnection httpURLConnection = (HttpURLConnection) new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str2 + ":generateContent").openConnection();
@@ -13658,7 +13849,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             JSONObject leg = journey.optJSONObject("currentLeg");
             JSONArray part = leg == null ? null : leg.optJSONArray("route");
             journeyWholeRoute = whole == null ? "[]" : whole.toString();
-            journeyLegRoute = part == null ? "[]" : part.toString();
+            journeyLegRoute = JourneyHud.routeFor(journey, false).toString();
         }
         void setOverview(boolean value) {
             overview=value;
@@ -13837,6 +14028,31 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 canvas.drawLine(x,y,x+u,y+u*2,markerPaint);
             }
             labelPaint.setTextSize(savedSize);
+        }
+
+        private void drawOverviewLocation(Canvas canvas, float x, float y, boolean fresh) {
+            if (x < 0 || y < 0 || x > getWidth() || y > getHeight()) return;
+            int color = fresh ? Color.rgb(125, 255, 175) : Color.rgb(255, 205, 90);
+            markerPaint.setStyle(Paint.Style.FILL);
+            markerPaint.setColor(Color.BLACK);
+            canvas.drawCircle(x, y, dp(13), markerPaint);
+            markerPaint.setColor(Color.WHITE);
+            canvas.drawCircle(x, y, dp(10), markerPaint);
+            markerPaint.setColor(color);
+            canvas.drawCircle(x, y, dp(7), markerPaint);
+            markerPaint.setColor(Color.BLACK);
+            canvas.drawCircle(x, y, dp(2), markerPaint);
+            String label = fresh ? "現在地" : "最終位置";
+            float oldSize = labelPaint.getTextSize();
+            labelPaint.setTextSize(dp(11));
+            float labelWidth = labelPaint.measureText(label);
+            labelPaint.setTextSize(oldSize);
+            float labelX = x + dp(15) + labelWidth < getWidth()
+                    ? x + dp(15) : Math.max(dp(3), x - dp(15) - labelWidth);
+            float baseline = y < dp(25) ? y + dp(26) : y - dp(15);
+            drawMapBadge(canvas, label, labelX, baseline, dp(11));
+            markerPaint.setColor(Color.rgb(125, 255, 175));
+            markerPaint.setStyle(Paint.Style.STROKE);
         }
 
         boolean hasLocation() {
@@ -14105,11 +14321,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 centerX+=(float)(worldPixelX(longitude)-centerWorldX);
                 centerY+=(float)(worldPixelY(latitude)-centerWorldY);
             }
+            boolean freshLocation = this.locationSampleTime > 0L
+                    && System.currentTimeMillis() - this.locationSampleTime <= 30000L;
             canvas.drawCircle(centerX, centerY, dp(8), this.mapBadgePaint);
             if (this.travelMode.length() == 0) {
                 canvas.drawCircle(centerX, centerY, dp(3), this.markerPaint);
             }
             drawNavigationOverlay(canvas, centerX, centerY);
+            if (overview) drawOverviewLocation(canvas, centerX, centerY, freshLocation);
             if (!overview && mapHeading >= 0.0f) {
                 float length = dp(9);
                 canvas.drawLine(centerX, centerY,
@@ -14118,8 +14337,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         this.markerPaint);
             }
             this.markerPaint.setStyle(Paint.Style.STROKE);
-            boolean freshLocation = this.locationSampleTime > 0L
-                    && System.currentTimeMillis() - this.locationSampleTime <= 30000L;
             // Compact mode reserves the map area for roads, route and markers.
             // Attribution remains visible in both modes below.
             if (getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("large_map", false)
@@ -14129,10 +14346,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             drawMapBadge(canvas, !freshLocation ? "GPS更新待ち"
                     : hasRoute() ? (overview ? (transitAccessLeg ? "駅までの区間・北↑" : "取得経路全体・北↑") : (googleProvider ? "API計算経路" : "推定経路"))
+                    : "local_limit".equals(routeStatus) ? "経路取得上限（アプリ内制限）"
                     : overview ? "全体不可・周辺広域"
                     : "destination_missing".equals(routeStatus) ? "目的地を通知から取得不可"
                     : "fetching".equals(routeStatus) ? "経路取得中"
-                    : "request_failed".equals(routeStatus) ? "経路APIエラー" : "経路未取得", dp(3), dp(12), dp(10));
+                    : "no_route".equals(routeStatus) ? "API経路線未取得"
+                    : "request_failed".equals(routeStatus) ? "経路APIエラー" : "経路未取得", dp(3), dp(overview ? 12 : 28), dp(10));
             String signalLabel=zoom<14 ? "信号: 広域では省略" : "available".equals(signalState)
                     ? (signals.length == 0 ? "周辺の信号登録なし" : "周辺信号: OSM登録分")
                     : "loading".equals(signalState) ? "周辺信号取得中" : "周辺信号未取得";

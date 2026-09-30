@@ -21,11 +21,18 @@ public class JourneyHudTest {
         check(fallback.getString("detail").contains("自転車通行可否は未確認"),"fallback safety label");
         check(fallback.getString("instruction").equals("徒歩区間"),"nonempty walk instruction");
         j.put("positionConfirmed",false);
-        check(JourneyHud.apply(input,false).getString("instruction").contains("確認中"),"uncertain GPS");
+        check(JourneyHud.apply(input,false).getString("instruction").equals("右折"),"preserve guidance with uncertain GPS");
         input.put("source","navigation_sdk");
         check(JourneyHud.apply(input,true)==input,"SDK untouched");
         check(JourneyHud.apply(new JSONObject().put("instruction","legacy"),false).getString("instruction").equals("legacy"),"legacy untouched");
-        System.out.println("JourneyHud: 9 checks passed");
+        input.remove("source"); j.remove("currentLeg");
+        for (String mode : new String[]{"walking","bicycling","WALK","BICYCLE","transit","TRANSIT"}) {
+            j.put("requestedMode",mode).put("effectiveMode","walking");
+            JSONObject waiting=JourneyHud.apply(input,false);
+            check(waiting.getBoolean("routeReady") && waiting.getJSONArray("route").length()==3,"GPS waiting geometry " + mode);
+            check(JourneyHud.routeFor(j,false).length()==3,"mode switch geometry " + mode);
+        }
+        System.out.println("JourneyHud: 21 checks passed");
     }
     private static void check(boolean value,String label) { if(!value)throw new AssertionError(label); }
 }

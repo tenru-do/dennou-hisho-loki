@@ -192,7 +192,6 @@ public final class MainActivity extends Activity {
     private TextView customInfo;
     private EditText commandInput;
     private EditText navigationDestinationInput;
-    private Button navigationModeButton;
     private Button navigationHudButton;
     private EditText customInput;
     private EditText bridgeTokenInput;
@@ -217,6 +216,11 @@ public final class MainActivity extends Activity {
     private volatile boolean weatherRefreshInFlight;
     private volatile boolean navigationRouteFetchInFlight;
     private volatile GoogleRouteCache googleRouteCache;
+    private volatile TransitAccess transitAccess;
+    private volatile long googleRouteGeneration;
+    private volatile long navigationCompletedUntil;
+    private volatile String navigationCompletedDestination = "";
+    private volatile long arrivalCandidateSince;
     private volatile String transitJourneyTarget = "";
     private volatile long transitJourneyTargetUntil;
     private static volatile String confirmedSharedDestination = "";
@@ -226,13 +230,17 @@ public final class MainActivity extends Activity {
         final NavigationRouteData data;
         final String destination, mode;
         final String effectiveMode;
+        final long generation;
+        String scheduledDeparture = "";
         final TransitJourney journey;
         final JourneyProgress progress;
         final long time = System.currentTimeMillis();
-        GoogleRouteCache(NavigationRouteData data, String destination, String mode, String effectiveMode, TransitJourney journey) {
+        GoogleRouteCache(NavigationRouteData data, String destination, String mode, String effectiveMode,
+                         TransitJourney journey, long generation) {
             this.data = data; this.destination = destination; this.mode = mode;
             this.effectiveMode = effectiveMode;
             this.journey = journey;
+            this.generation = generation;
             this.progress = journey == null ? null : new JourneyProgress(journey);
         }
     }
@@ -606,6 +614,12 @@ public final class MainActivity extends Activity {
         actionRow.addView(toolsButton, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(actionRow);
+        Button geminiSettings = new Button(this);
+        geminiSettings.setText("Gemini APIキー設定");
+        geminiSettings.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showGeminiKeySettings(); }
+        });
+        root.addView(geminiSettings);
 
         toolsPanel = new LinearLayout(this);
         toolsPanel.setOrientation(LinearLayout.VERTICAL);
@@ -781,28 +795,63 @@ public final class MainActivity extends Activity {
         navigationDestinationInput.setPadding(8, 2, 8, 2);
         navigationDestinationInput.setText(
                 getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""));
-        toolsPanel.addView(navigationDestinationInput,
-                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT));
+        navigationDestinationInput.setSelectAllOnFocus(true);
+        LinearLayout destinationRow = new LinearLayout(this);
+        destinationRow.setOrientation(LinearLayout.HORIZONTAL);
+        destinationRow.addView(navigationDestinationInput,
+                new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        Button clearDestination = new Button(this);
+        clearDestination.setText("×");
+        clearDestination.setContentDescription("目的地を全消去");
+        clearDestination.setMinWidth(0); clearDestination.setMinHeight(0);
+        clearDestination.setOnClickListener(view -> {
+            navigationDestinationInput.setText("");
+            navigationDestinationInput.requestFocus();
+        });
+        destinationRow.addView(clearDestination, new LinearLayout.LayoutParams(
+                (int)(48 * getResources().getDisplayMetrics().density), LinearLayout.LayoutParams.WRAP_CONTENT));
+        toolsPanel.addView(destinationRow);
+        LinearLayout presetRow = new LinearLayout(this);
+        for (String kind : new String[]{"home", "work"}) {
+            Button preset = new Button(this);
+            preset.setText("home".equals(kind) ? "自宅" : "勤務先");
+            preset.setOnClickListener(view -> useDestinationPreset(kind));
+            preset.setOnLongClickListener(view -> { showDestinationPresetRegistration(kind); return true; });
+            presetRow.addView(preset, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        }
+        Button registerPreset = new Button(this);
+        registerPreset.setText("地点を登録");
+        registerPreset.setOnClickListener(view -> new AlertDialog.Builder(this).setTitle("登録先")
+                .setItems(new String[]{"自宅", "勤務先"}, (dialog, which) ->
+                        showDestinationPresetRegistration(which == 0 ? "home" : "work")).show());
+        presetRow.addView(registerPreset, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        toolsPanel.addView(presetRow);
 
         LinearLayout navigationRow = new LinearLayout(this);
         navigationRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        navigationModeButton = new Button(this);
-        navigationModeButton.setText(navigationModeLabel(navigationMode()));
-        navigationModeButton.setTextSize(12);
-        navigationModeButton.setMinHeight(0);
-        navigationModeButton.setPadding(4, 0, 4, 0);
-        navigationModeButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View view) {
-                cycleNavigationMode();
-            }
+        android.widget.RadioGroup modes = new android.widget.RadioGroup(this);
+        modes.setOrientation(LinearLayout.HORIZONTAL);
+        for (String mode : new String[]{"driving", "walking", "bicycling", "transit"}) {
+            android.widget.RadioButton choice = new android.widget.RadioButton(this);
+            choice.setId(View.generateViewId());
+            choice.setText(navigationModeLabel(mode));
+            choice.setTag(mode);
+            choice.setTextSize(12);
+            modes.addView(choice, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            choice.setChecked(mode.equals(navigationMode()));
+        }
+        modes.setOnCheckedChangeListener((group, id) -> {
+            View selected = group.findViewById(id);
+            if (selected == null) return;
+            String mode = (String) selected.getTag();
+            getPreferences().edit().putString(KEY_MAP_ROUTE_MODE, mode).apply();
+            Log.d("LokiGoogleNav", "mode_selected=" + mode);
         });
-        navigationRow.addView(navigationModeButton, new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.8f));
+        toolsPanel.addView(modes);
 
         Button startNavigation = new Button(this);
-        startNavigation.setText("MAPナビ");
+        startNavigation.setText("MAPナビ開始");
         startNavigation.setTextSize(12);
         startNavigation.setMinHeight(0);
         startNavigation.setPadding(4, 0, 4, 0);
@@ -835,12 +884,6 @@ public final class MainActivity extends Activity {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         toolsPanel.addView(navigationRow);
-        Button transitAccess = new Button(this);
-        transitAccess.setText("公共交通：駅までの徒歩・自転車区間");
-        transitAccess.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View view) { showTransitAccessDialog(); }
-        });
-        toolsPanel.addView(transitAccess);
         try {
             Class.forName("com.example.rokidgeminisecretary.SdkPhoneBridge");
             Button sdkNavigation = new Button(this);
@@ -857,7 +900,7 @@ public final class MainActivity extends Activity {
             toolsPanel.addView(sdkNavigation);
         } catch (ClassNotFoundException manualBuild) { /* Existing SDK-free build remains supported. */ }
         TextView mapHint = new TextView(this);
-        mapHint.setText("地図はグラスで描画します。ナビ開始後はスマホで別のアプリを使用できます。画面共有は不要です。\n線はOSM推定経路です。Googleマップの通知案内を優先してください。");
+        mapHint.setText("地図はグラスで描画します。車線案内は『車ナビ・車線案内』でSDK案内中、対象地点の車線データがある場合に表示します。MAPナビのGoogle計算経路はマップアプリの選択経路と異なる場合があります。");
         mapHint.setTextSize(12);
         toolsPanel.addView(mapHint);
         Button mapsSetup = new Button(this);
@@ -1030,9 +1073,115 @@ public final class MainActivity extends Activity {
                 });
     }
 
+    private void useDestinationPreset(String kind) {
+        DestinationPresets.Place place = DestinationPresets.read(this, kind);
+        if (place == null) { showDestinationPresetRegistration(kind); return; }
+        GoogleNavigationClient.rememberDestination(place.label, place.address());
+        navigationDestinationInput.setText(place.label);
+        launchSelectedGoogleMapsNavigation();
+    }
+
+    private void showDestinationPresetRegistration(String kind) {
+        String title = "home".equals(kind) ? "自宅に登録" : "勤務先に登録";
+        String label = navigationDestinationInput.getText().toString().trim();
+        String coordinate = GoogleNavigationClient.selectedDestinationCoordinates(label);
+        DestinationPresets.Place selected = null;
+        if (!coordinate.isEmpty()) {
+            String[] parts = coordinate.split(",", 2);
+            selected = new DestinationPresets.Place(label, Double.parseDouble(parts[0]),
+                    Double.parseDouble(parts[1]), GoogleNavigationClient.selectedDestinationPlaceId(label));
+        }
+        DestinationPresets.Place here = null;
+        try {
+            Location location = getBestAvailableLocation();
+            if (location != null && System.currentTimeMillis() - location.getTime() <= 180000)
+                here = new DestinationPresets.Place("home".equals(kind) ? "自宅（登録地点）" : "勤務先（登録地点）",
+                        location.getLatitude(), location.getLongitude(), "");
+        } catch (Exception ignored) { }
+        final DestinationPresets.Place selectedPlace = selected, currentPlace = here;
+        java.util.List<String> names = new java.util.ArrayList<>();
+        java.util.List<DestinationPresets.Place> options = new java.util.ArrayList<>();
+        if (selectedPlace != null) { names.add("選択済みの検索結果：" + selectedPlace.label); options.add(selectedPlace); }
+        if (currentPlace != null) { names.add("現在地を登録"); options.add(currentPlace); }
+        if (options.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle(title)
+                    .setMessage("先に目的地を検索して候補を選ぶか、GPSを取得してください。")
+                    .setPositiveButton("OK", null).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle(title)
+                .setItems(names.toArray(new String[0]), (dialog, which) -> {
+                    DestinationPresets.Place place = options.get(which);
+                    if (DestinationPresets.save(this, kind, place)) {
+                        GoogleNavigationClient.rememberDestination(place.label, place.address());
+                        navigationDestinationInput.setText(place.label);
+                        updateStatus(title, "保存しました。自宅・勤務先ボタンから案内を開始できます");
+                    } else updateStatus(title, "保存できませんでした");
+                }).setNegativeButton("キャンセル", null).show();
+    }
+
     private void launchGoogleMapsNavigation() {
-        manualAccessTarget = ""; manualAccessUntil = 0;
+        Log.d("LokiGoogleNav", "map_start_clicked mode=" + navigationMode());
+        final String query = normalizeNavigationDestination(navigationDestinationInput == null ? ""
+                : navigationDestinationInput.getText().toString());
+        if (query.isEmpty() || !GoogleNavigationClient.enabled(this)
+                || !GoogleNavigationClient.selectedDestinationCoordinates(query).isEmpty()) {
+            launchSelectedGoogleMapsNavigation();
+            return;
+        }
+        updateStatus("目的地検索", "候補の住所・座標を確認しています");
+        new Thread(() -> {
+            try {
+                final List<Address> choices = GoogleNavigationClient.searchPlaces(this, query);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (choices.isEmpty()) {
+                        new AlertDialog.Builder(this).setTitle("目的地検索")
+                                .setMessage("候補がありません。地域名を追加して再検索してください。")
+                                .setPositiveButton("OK", null).show();
+                        return;
+                    }
+                    String[] labels = new String[choices.size()];
+                    for (int i = 0; i < labels.length; i++) labels[i] = choices.get(i).getAddressLine(0).replace('\n', ' ');
+                    new android.app.AlertDialog.Builder(this).setTitle("目的地を選択")
+                            .setItems(labels, (dialog, which) -> {
+                                GoogleNavigationClient.rememberDestination(labels[which], choices.get(which));
+                                navigationDestinationInput.setText(labels[which]);
+                                launchSelectedGoogleMapsNavigation();
+                            }).setNegativeButton("キャンセル", null).show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    String reason = "google_places_local_limit".equals(error.getMessage())
+                            ? "施設検索のアプリ内上限に達しました。時間をおいて再試行してください。"
+                            : "候補取得に失敗しました。通信・API設定を確認して再試行してください。";
+                    new AlertDialog.Builder(this).setTitle("目的地検索を開始できません")
+                            .setMessage(reason).setPositiveButton("OK", null).show();
+                });
+            }
+        }, "MapDestinationLookup").start();
+    }
+
+    private void launchSelectedGoogleMapsNavigation() {
+        if ("transit".equals(navigationMode())) {
+            new AlertDialog.Builder(this).setTitle("最寄り駅候補までの移動")
+                    .setItems(new String[]{"徒歩", "自転車（経路なし時は徒歩）"}, (dialog, which) -> {
+                        getPreferences().edit().putString("transit_access_mode", which == 1 ? "bicycling" : "walking").apply();
+                        startSelectedGoogleMapsNavigation();
+                    }).setNegativeButton("キャンセル", null).show();
+            return;
+        }
+        startSelectedGoogleMapsNavigation();
+    }
+
+    private void startSelectedGoogleMapsNavigation() {
+        navigationCompletedUntil = 0;
+        navigationCompletedDestination = "";
+        arrivalCandidateSince = 0;
+        clearStoredNavigationRoute();
         noRouteTarget = ""; noRouteMode = "";
+        navigationRouteRetryAfterMs = 0;
         try {
             Class.forName("com.example.rokidgeminisecretary.SdkPhoneBridge").getMethod("stopAndRelease").invoke(null);
         } catch (ClassNotFoundException manualBuild) { }
@@ -1085,7 +1234,10 @@ public final class MainActivity extends Activity {
             }
         } else {
             Uri directions = Uri.parse("https://www.google.com/maps/dir/?api=1"
-                    + "&destination=" + Uri.encode(destination)
+                    + "&destination=" + Uri.encode(GoogleNavigationClient.selectedDestinationCoordinates(destination).isEmpty()
+                            ? destination : GoogleNavigationClient.selectedDestinationCoordinates(destination))
+                    + (GoogleNavigationClient.selectedDestinationPlaceId(destination).isEmpty() ? ""
+                            : "&destination_place_id=" + Uri.encode(GoogleNavigationClient.selectedDestinationPlaceId(destination)))
                     + "&travelmode=" + Uri.encode(mode)
                     );
             intent = new Intent(Intent.ACTION_VIEW, directions);
@@ -1131,22 +1283,16 @@ public final class MainActivity extends Activity {
     }
 
     private String navigationModeLabel(String mode) {
+        if ("transit".equals(mode)) return "公共交通";
         if ("driving".equals(mode)) return "車";
         if ("bicycling".equals(mode)) return "自転車";
         return "徒歩";
     }
 
-    private void cycleNavigationMode() {
-        String current = navigationMode();
-        String next = "walking".equals(current) ? "driving"
-                : "driving".equals(current) ? "bicycling" : "walking";
-        getPreferences().edit().putString(KEY_MAP_ROUTE_MODE, next).apply();
-        if (navigationModeButton != null) {
-            navigationModeButton.setText(navigationModeLabel(next));
-        }
-    }
 
-    private void clearStoredNavigationRoute() {
+    private synchronized void clearStoredNavigationRoute() {
+        googleRouteGeneration++;
+        transitAccess = null;
         confirmedSharedDestination = "";
         confirmedSharedUntil = 0L;
         confirmedSharedNavigationSeen = false;
@@ -1169,6 +1315,7 @@ public final class MainActivity extends Activity {
     }
 
     private void setNavigationHudSuppressed(boolean suppressed) {
+        if (suppressed && transitAccess != null) clearStoredNavigationRoute();
         getPreferences().edit().putBoolean(KEY_NAVIGATION_HUD_SUPPRESSED, suppressed).apply();
         if (Looper.myLooper() == Looper.getMainLooper()) {
             updateNavigationHudButton();
@@ -1291,56 +1438,10 @@ public final class MainActivity extends Activity {
         }, "NavigationRouteFetch").start();
     }
 
-    private volatile String manualAccessTarget = "", manualAccessMode = "";
-    private volatile long manualAccessUntil;
     private volatile String noRouteTarget = "", noRouteMode = "";
     private volatile long noRouteUntil;
     private volatile String desiredGoogleRouteMode = "";
 
-    private void showTransitAccessDialog() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        TextView note = new TextView(this);
-        note.setText("通知に駅名がない場合、今向かう駅・バス停の正式名や住所を指定してください。最終目的地とは別の区間です。駅に着いたら解除してください。経路はGoogleマップの選択経路と異なる場合があります。");
-        box.addView(note);
-        final EditText target = new EditText(this);
-        target.setHint("現在向かう駅・バス停（職場などの個人ラベルは不可）");
-        target.setText(manualAccessTarget);
-        box.addView(target);
-        final android.widget.Spinner mode = new android.widget.Spinner(this);
-        mode.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"徒歩", "自転車"}));
-        mode.setSelection("bicycling".equals(manualAccessMode) ? 1 : 0);
-        box.addView(mode);
-        final AlertDialog dialog = new AlertDialog.Builder(this).setTitle("公共交通：駅までの区間")
-                .setView(box).setPositiveButton("この区間を表示", null)
-                .setNeutralButton("区間指定を解除", new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int which) {
-                        manualAccessTarget = ""; manualAccessUntil = 0;
-                        clearStoredNavigationRoute();
-                    }
-                }).setNegativeButton("閉じる", null).create();
-        dialog.setOnShowListener(new DialogInterface.OnShowListener() {
-            @Override public void onShow(DialogInterface d) {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) {
-                        String value = target.getText().toString().trim();
-                        if (value.isEmpty() || value.length() > 200 || value.matches("職場|自宅|家") || value.contains("://")) {
-                            target.setError("駅・バス停の正式名または住所を入力してください"); return;
-                        }
-                        manualAccessMode = mode.getSelectedItemPosition() == 1 ? "bicycling" : "walking";
-                        manualAccessTarget = value;
-                        manualAccessUntil = System.currentTimeMillis() + 2L * 60 * 60 * 1000;
-                        noRouteTarget = ""; noRouteMode = ""; navigationRouteRetryAfterMs = 0;
-                        setNavigationHudSuppressed(false);
-                        prepareNavigationRouteAsync(value, manualAccessMode, true);
-                        dialog.dismiss();
-                    }
-                });
-            }
-        });
-        dialog.show();
-    }
 
     private synchronized void prepareGoogleNavigationRoute(final String destination, final String mode, boolean clear) {
         desiredGoogleRouteMode = mode;
@@ -1356,7 +1457,28 @@ public final class MainActivity extends Activity {
             transitJourneyTargetUntil = System.currentTimeMillis() + MAP_ROUTE_CACHE_MS;
         }
         else if (clear) transitJourneyTarget = "";
-        if (navigationRouteFetchInFlight || System.currentTimeMillis() < navigationRouteRetryAfterMs) return;
+        if ("transit".equals(mode) && transitAccess == null) {
+            transitAccess = new TransitAccess(destination, GoogleNavigationClient.selectedDestinationCoordinates(destination),
+                    getPreferences().getString("transit_access_mode", "walking"));
+        }
+        final TransitAccess access = "transit".equals(mode) ? transitAccess : null;
+        final long generation = googleRouteGeneration;
+        if (navigationRouteFetchInFlight) {
+            // A new selection waits for the old worker, whose generation can no longer publish.
+            healthHandler.postDelayed(() -> {
+                if (generation == googleRouteGeneration && !isNavigationHudSuppressed())
+                    prepareGoogleNavigationRoute(destination, mode, false);
+            }, 500);
+            return;
+        }
+        if (System.currentTimeMillis() < navigationRouteRetryAfterMs) return;
+        // A recalculation starts a new route identity. The old geometry and its
+        // maneuvers may not be combined with the replacement response.
+        if (!clear && googleRouteCache != null) {
+            googleRouteGeneration++;
+            googleRouteCache = null;
+        }
+        final long requestGeneration = googleRouteGeneration;
         navigationRouteFetchInFlight = true;
         new Thread(new Runnable() {
             @Override public void run() {
@@ -1364,17 +1486,36 @@ public final class MainActivity extends Activity {
                     Location origin = getBestAvailableLocation();
                     if (origin == null || System.currentTimeMillis() - origin.getTime() > 180000)
                         throw new Exception("google_current_location_unavailable");
-                    WalkingFallback.Result<JSONObject> fetched = WalkingFallback.fetch(mode,
+                    String legDestination = destination;
+                    if (access != null) {
+                        if (access.stationCoordinates.isEmpty()) {
+                            android.location.Address station = GoogleNavigationClient.nearestStation(MainActivity.this,
+                                    origin.getLatitude(), origin.getLongitude());
+                            access.station = station.getFeatureName();
+                            access.stationCoordinates = station.getLatitude() + "," + station.getLongitude();
+                            GoogleNavigationClient.rememberDestination(access.stationCoordinates, station);
+                            Log.i("LokiGoogleNav", "transit_station_resolved");
+                        }
+                        legDestination = access.stationCoordinates;
+                    }
+                    if (requestGeneration != googleRouteGeneration) return;
+                    final String routeTarget = legDestination;
+                    WalkingFallback.Result<JSONObject> fetched = WalkingFallback.fetch(access == null ? mode : access.mode,
                             new WalkingFallback.Request<JSONObject>() {
                                 @Override public JSONObject fetch(String requestedMode) throws Exception {
                                     Log.d("LokiGoogleNav", "route_request mode=" + requestedMode);
                                     return GoogleNavigationClient.route(MainActivity.this,
-                                            origin.getLatitude(), origin.getLongitude(), destination, requestedMode);
+                                            origin.getLatitude(), origin.getLongitude(), routeTarget, requestedMode);
                                 }
                             });
                     JSONObject route = fetched.value;
-                    TransitJourney journey = !"driving".equals(mode)
-                            ? TransitJourney.parse(destination, route, System.currentTimeMillis()) : null;
+                    TransitJourney journey = null;
+                    if (access == null && !"driving".equals(mode)) {
+                        try { journey = TransitJourney.parse(destination, route, System.currentTimeMillis()); }
+                        catch (Exception stepError) {
+                            Log.w("LokiGoogleNav", "journey_steps_unavailable_use_whole_route");
+                        }
+                    }
                     double[][] points = GooglePolyline.decode(route.getJSONObject("polyline").getString("encodedPolyline"));
                     if (points.length < 2) throw new Exception("google_route_parse_error");
                     JSONArray retained = new JSONArray();
@@ -1383,12 +1524,16 @@ public final class MainActivity extends Activity {
                     JSONArray maneuvers = new JSONArray();
                     JSONArray legs = route.optJSONArray("legs");
                     if (legs != null) for (int i = 0; i < legs.length(); i++) {
-                        JSONArray steps = legs.getJSONObject(i).optJSONArray("steps");
+                        JSONObject routeLeg = legs.optJSONObject(i);
+                        JSONArray steps = routeLeg == null ? null : routeLeg.optJSONArray("steps");
                         if (steps == null) continue;
                         for (int j = 0; j < steps.length(); j++) {
-                            JSONObject step = steps.getJSONObject(j);
-                            JSONObject point = step.getJSONObject("startLocation").getJSONObject("latLng");
-                            double lat = point.getDouble("latitude"), lng = point.getDouble("longitude");
+                            JSONObject step = steps.optJSONObject(j);
+                            JSONObject start = step == null ? null : step.optJSONObject("startLocation");
+                            JSONObject point = start == null ? null : start.optJSONObject("latLng");
+                            if (point == null) continue;
+                            double lat = point.optDouble("latitude", Double.NaN), lng = point.optDouble("longitude", Double.NaN);
+                            if (!Double.isFinite(lat) || !Double.isFinite(lng)) continue;
                             int nearest = 0; double best = Double.MAX_VALUE;
                             for (int k = 0; k < retained.length(); k++) {
                                 JSONArray p = retained.getJSONArray(k);
@@ -1404,15 +1549,21 @@ public final class MainActivity extends Activity {
                                     .put("duration", googleDuration(step.optString("staticDuration", "0s"))));
                         }
                     }
-                    if (!destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, "")) || !mode.equals(desiredGoogleRouteMode)) return;
-                    googleRouteCache = new GoogleRouteCache(new NavigationRouteData(retained, maneuvers,
-                            route.optDouble("distanceMeters", -1), googleDuration(route.getString("duration"))), destination, mode, fetched.mode, journey);
+                    if (requestGeneration != googleRouteGeneration || !destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, "")) || !mode.equals(desiredGoogleRouteMode)) return;
+                    GoogleRouteCache readyCache = new GoogleRouteCache(new NavigationRouteData(retained, maneuvers,
+                            route.optDouble("distanceMeters", -1), googleDuration(route.optString("duration", ""))), destination, mode, fetched.mode, journey, requestGeneration);
+                    readyCache.scheduledDeparture = route.optString("lokiScheduledDeparture", "");
+                    synchronized (MainActivity.this) {
+                        if (requestGeneration != googleRouteGeneration) return;
+                        googleRouteCache = readyCache;
+                        if (access != null) { access.error = ""; access.fetching = false; }
+                    }
                     noRouteUntil = 0;
                     getPreferences().edit().remove(KEY_MAP_ROUTE_ERROR).apply();
                     navigationRouteRetryAfterMs = 0;
                     Log.i("LokiGoogleNav", "route ready points=" + retained.length() + " mode=" + mode + " effective=" + fetched.mode);
                 } catch (Exception error) {
-                    if (!destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""))
+                    if (requestGeneration != googleRouteGeneration || !destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""))
                             || !mode.equals(desiredGoogleRouteMode)) return;
                     navigationRouteRetryAfterMs = System.currentTimeMillis() + 60000;
                     String reason = error.getMessage();
@@ -1421,6 +1572,7 @@ public final class MainActivity extends Activity {
                         noRouteTarget = destination; noRouteMode = mode;
                         noRouteUntil = System.currentTimeMillis() + 5L * 60L * 1000L;
                     }
+                    if (access != null) { access.error = reason; access.fetching = false; }
                     getPreferences().edit().putString(KEY_MAP_ROUTE_ERROR, reason).apply();
                     Log.w("LokiGoogleNav", reason);
                 } finally { navigationRouteFetchInFlight = false; }
@@ -3825,6 +3977,42 @@ public final class MainActivity extends Activity {
         return "";
     }
 
+    private void showGeminiKeySettings() {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        input.setHint("APIキーを貼り付け（保存済みの値は表示しません）");
+        input.setSaveEnabled(false);
+        final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("Gemini APIキー設定")
+                .setMessage("スマホに保存し、接続中のグラスへ自動同期します。空欄では変更しません。")
+                .setView(input).setNegativeButton("閉じる", null)
+                .setPositiveButton("保存して同期", null).create();
+        dialog.setOnShowListener(new android.content.DialogInterface.OnShowListener() {
+          public void onShow(android.content.DialogInterface ignored) {
+           dialog.getButton(-1).setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+            String key = MapsKeyInput.normalize(input.getText().toString());
+            if (!MapsKeyInput.canSend(key)) {
+                input.setError("キーのみを貼り付けてください（空欄・途中の空白は不可）");
+                return;
+            }
+            try {
+                GeminiCredentialStore.save(MainActivity.this, key);
+                input.setText("");
+                updateStatus("Geminiキー保存済み", "グラスへの同期は接続後に自動実行されます");
+                dialog.dismiss();
+            } catch (Exception error) {
+                input.setError("保存できませんでした。もう一度お試しください。");
+            }
+            }
+           });
+          }
+        });
+        dialog.show();
+    }
+
     private JSONObject buildCustomJson() throws Exception {
         JSONObject root = new JSONObject();
         String custom;
@@ -3848,6 +4036,13 @@ public final class MainActivity extends Activity {
         root.put("hasUpdate", hasUpdate);
         root.put("requestState", requestState);
         root.put("current", getPreferences().getString(KEY_CUSTOM, ""));
+        // This response is behind the existing paired bridge-token check.
+        try {
+            String key = GeminiCredentialStore.read(this);
+            if (!key.isEmpty()) root.put("geminiApiKey", key);
+        } catch (Exception unavailable) {
+            // A keystore failure must not disable the rest of the bridge.
+        }
         return root;
     }
 
@@ -3985,6 +4180,14 @@ public final class MainActivity extends Activity {
             }
         }
         boolean navigationActive = result.optBoolean("navigationActive", false);
+        String reportedDestination = result.optString("destination", "").trim();
+        if (!navigationCompletedDestination.isEmpty()
+                && (reportedDestination.isEmpty() || navigationCompletedDestination.equals(reportedDestination))) {
+            result.put("navigationActive", false).put("routeReady", false).put("route", new JSONArray());
+            if (System.currentTimeMillis() < navigationCompletedUntil)
+                result.put("navigationComplete", true).put("completionId", "maps-" + googleRouteGeneration);
+            return result;
+        }
         // An explicit in-app start must not wait for Maps to publish its first notification.
         boolean localStart = !navigationActive && !confirmedSharedNavigationSeen
                 && confirmedSharedDestination.length() > 0 && System.currentTimeMillis() < confirmedSharedUntil
@@ -4020,12 +4223,32 @@ public final class MainActivity extends Activity {
         SharedPreferences preferences = getPreferences();
         boolean googleMap = GoogleNavigationClient.enabled(this);
         GoogleRouteCache googleCached = googleRouteCache;
+        if (googleCached != null && googleCached.generation != googleRouteGeneration) googleCached = null;
+        TransitAccess access = transitAccess;
+        if (access != null && !isNavigationHudSuppressed()) {
+            boolean ready = googleCached != null && googleCached.destination.equals(access.destination)
+                    && "transit".equals(googleCached.mode);
+            access.apply(result, ready ? googleCached.data.route : null,
+                    ready ? googleCached.effectiveMode : access.mode, ready ? googleCached.data.durationSeconds : -1);
+            TransitLocationTracker.setNavigationActive(true);
+            result.put("suppressed", false);
+            return result;
+        }
         long routeTime = preferences.getLong(KEY_MAP_ROUTE_TIME, 0L);
         String routeText = preferences.getString(KEY_MAP_ROUTE_POINTS, "");
         String maneuverText = preferences.getString(KEY_MAP_ROUTE_MANEUVERS, "");
         String routeDestination = cleanNavigationLabel(
                 preferences.getString(KEY_MAP_ROUTE_DESTINATION, ""));
         String mapsDestination = result.optString("destination", "").trim();
+        // The explicitly selected final destination owns the Transit journey.
+        // Access-leg notifications may name a station or report cycling; neither
+        // may replace the full TRANSIT request (whose access/egress is walking).
+        boolean explicitTransit = "transit".equals(navigationMode())
+                && !confirmedSharedDestination.isEmpty() && System.currentTimeMillis() < confirmedSharedUntil;
+        if (explicitTransit && navigationActive) {
+            mapsDestination = confirmedSharedDestination;
+            result.put("destination", mapsDestination).put("accessMode", "walking");
+        }
         if (System.currentTimeMillis() > confirmedSharedUntil
                 || (!navigationActive && confirmedSharedNavigationSeen)
                 || (mapsDestination.length() > 0 && !mapsDestination.equals(confirmedSharedDestination))) {
@@ -4058,24 +4281,11 @@ public final class MainActivity extends Activity {
                 && System.currentTimeMillis() - googleCached.time <= MAP_ROUTE_CACHE_MS) {
             mapsDestination = googleCached.destination;
         }
-        String accessStation = result.optString("accessStation", "").trim();
-        if (System.currentTimeMillis() > manualAccessUntil
-                || "transit".equals(result.optString("travelMode", ""))
-                || !navigationActive) {
-            manualAccessTarget = ""; manualAccessUntil = 0;
-        }
-        if (manualAccessTarget.length() > 0) {
-            accessStation = manualAccessTarget;
-            result.put("accessMode", manualAccessMode);
-            result.put("routeSegmentSource", "user_confirmed_access");
-        }
-        boolean accessLeg = googleMap && !keepTransitJourney && accessStation.length() > 0;
-        if (accessLeg) mapsDestination = accessStation;
-        result.put("routeTargetKind", accessLeg ? "transit_access" : "destination");
-        String reportedMode = accessLeg ? result.optString("accessMode", "walking") : result.optString("travelMode", "");
+        result.put("routeTargetKind", "destination");
+        String reportedMode = result.optString("travelMode", "");
         final String routeMode = keepTransitJourney ? "transit"
                 : mapsDestination.equals(confirmedSharedDestination) && System.currentTimeMillis() < confirmedSharedUntil
-                    && ("walking".equals(navigationMode()) || "bicycling".equals(navigationMode())) ? navigationMode()
+                    && ("walking".equals(navigationMode()) || "bicycling".equals(navigationMode()) || "transit".equals(navigationMode())) ? navigationMode()
                 : reportedMode.length() > 0 ? reportedMode
                 : googleCached != null && mapsDestination.equals(googleCached.destination) ? googleCached.mode : navigationMode();
         desiredGoogleRouteMode = routeMode;
@@ -4110,10 +4320,51 @@ public final class MainActivity extends Activity {
         }
         boolean routeFresh = mapsDestination.length() > 0 && mapsDestination.equals(routeDestination)
                 && (googleMap || !"transit".equals(routeMode))
+                && (!googleMap || (googleCached != null && googleCached.generation == googleRouteGeneration))
                 && routeMode.equals(googleMap ? (googleCached == null ? "" : googleCached.mode) : preferences.getString("map_cached_mode", "")) && routeTime > 0L
                 && System.currentTimeMillis() - routeTime <= MAP_ROUTE_CACHE_MS
                 && routeText.length() > 2;
+        if (navigationActive && routeFresh && googleMap && !"transit".equals(routeMode)
+                && googleCached != null && location != null) {
+            String finalPoint = GoogleNavigationClient.selectedDestinationCoordinates(mapsDestination);
+            boolean near = false;
+            if (!finalPoint.isEmpty()) {
+                try {
+                    String[] pair = finalPoint.split(",", 2);
+                    Location target = new Location("route-final");
+                    target.setLatitude(Double.parseDouble(pair[0]));
+                    target.setLongitude(Double.parseDouble(pair[1]));
+                    near = NavigationArrivalPolicy.nearFinalPoint(System.currentTimeMillis(), location.getTime(),
+                            location.hasAccuracy() ? location.getAccuracy() : -1,
+                            location.hasSpeed() ? location.getSpeed() : -1,
+                            googleCached.time, location.distanceTo(target));
+                } catch (Exception ignored) { }
+            }
+            if (!near) arrivalCandidateSince = 0;
+            else if (arrivalCandidateSince == 0) arrivalCandidateSince = System.currentTimeMillis();
+            if (near && System.currentTimeMillis() - arrivalCandidateSince >= 6000) {
+                clearStoredNavigationRoute();
+                navigationCompletedDestination = mapsDestination;
+                navigationCompletedUntil = System.currentTimeMillis() + 8000;
+                result.put("navigationActive", false).put("navigationComplete", true)
+                        .put("completionId", "maps-" + googleRouteGeneration)
+                        .put("routeReady", false).put("route", new JSONArray());
+                Log.i("LokiGoogleNav", "destination_arrived");
+                return result;
+            }
+        } else arrivalCandidateSince = 0;
         result.put("routeReady", routeFresh);
+        result.put("routeGeneration", routeFresh && googleCached != null ? googleCached.generation : 0L);
+        if (routeFresh && googleCached != null && !googleCached.scheduledDeparture.isEmpty()) {
+            String when = java.time.Instant.parse(googleCached.scheduledDeparture).atZone(java.time.ZoneId.of("Asia/Tokyo"))
+                    .format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"));
+            result.put("route", new JSONArray(routeText)).put("routeStatus", "ready").put("routeMode", "transit")
+                    .put("instruction", when + "出発の参考経路（現在の案内ではありません）")
+                    .put("detail", "現在時刻の経路は取得できませんでした。Googleマップ側の出発日時も確認してください。")
+                    .put("routeDestination", googleCached.destination);
+            for (String key : new String[]{"nextDistance", "arrival", "routeArrival", "totalRemainingDuration", "totalRemainingDistance", "afterNextInstruction"}) result.put(key, "");
+            return result;
+        }
         if (routeFresh && googleCached != null && googleCached.progress != null) {
             JSONObject journeyPayload = googleCached.progress.snapshot(
                     location == null ? Double.NaN : location.getLatitude(),
@@ -4133,6 +4384,8 @@ public final class MainActivity extends Activity {
         result.put("routeStatus", routeFresh ? "ready"
                 : mapsDestination.length() == 0 ? "destination_missing"
                 : navigationRouteFetchInFlight ? "fetching"
+                : "google_routes_local_limit".equals(preferences.getString(KEY_MAP_ROUTE_ERROR, "")) ? "local_limit"
+                : "google_route_not_found".equals(preferences.getString(KEY_MAP_ROUTE_ERROR, "")) ? "no_route"
                 : preferences.getString(KEY_MAP_ROUTE_ERROR, "").length() > 0 ? "request_failed" : "pending");
         if (mapsDestination.length() > 0) maybeRefreshNavigationRoute(navigationActive, location, routeText,
                 routeDestination, routeTime, result, routeMode);
@@ -4141,6 +4394,14 @@ public final class MainActivity extends Activity {
                 && location != null && maneuverText.length() > 2) {
             JSONObject routeMetrics = buildRouteHudMetrics(location, routeText, maneuverText,
                     routeDistanceMeters, routeDurationSeconds);
+            if (googleMap && googleCached != null) {
+                // API geometry, step guidance and duration come from one response.
+                result.put("instruction", routeMetrics.optString("instruction", "API計算経路を確認中"));
+                result.put("detail", "Google API計算経路（マップアプリの案内と異なる場合あり）");
+                for (String key : new String[]{"nextDistance", "afterNextInstruction", "afterNextDistance",
+                        "afterNextDuration", "totalRemainingDistance", "totalRemainingDuration", "routeArrival", "arrival", "currentRoad"})
+                    result.put(key, "");
+            }
             if (result.optString("nextDistance", "").length() == 0) {
                 String routeDistance = routeMetrics.optString("nextDistance", "");
                 if (routeDistance.length() > 0) result.put("nextDistance", routeDistance);
@@ -4149,13 +4410,12 @@ public final class MainActivity extends Activity {
                     "afterNextDuration", "totalRemainingDistance",
                     "totalRemainingDuration", "routeArrival", "currentRoad"};
             for (String metricName : metricNames) {
-                if (accessLeg && (metricName.startsWith("total") || "routeArrival".equals(metricName))) continue;
                 String metricValue = routeMetrics.optString(metricName, "");
                 if (metricValue.length() > 0 && result.optString(metricName, "").length() == 0) {
                     result.put(metricName, metricValue);
                 }
             }
-            if (!accessLeg && result.optString("arrival", "").length() == 0) {
+            if (result.optString("arrival", "").length() == 0) {
                 String routeArrival = routeMetrics.optString("routeArrival", "");
                 if (routeArrival.length() > 0) result.put("arrival", routeArrival);
             }
@@ -4195,6 +4455,14 @@ public final class MainActivity extends Activity {
             result.put("currentRoad", "");
         }
         // Compatibility with older glasses: explicitly retire image sharing.
+        if (googleMap && googleCached != null && googleCached.generation != googleRouteGeneration) {
+            result.put("routeReady", false).put("route", new JSONArray())
+                    .put("routeStatus", "fetching").put("routeGeneration", 0L)
+                    .put("instruction", "経路更新中");
+            for (String key : new String[]{"nextDistance", "afterNextInstruction", "afterNextDistance",
+                    "afterNextDuration", "totalRemainingDistance", "totalRemainingDuration", "routeArrival", "arrival"})
+                result.put(key, "");
+        }
         result.put("mapShare", new JSONObject().put("active", false));
         return result;
     }
@@ -4473,6 +4741,8 @@ public final class MainActivity extends Activity {
             if (currentRoad.length() > 0) result.put("currentRoad", currentRoad);
             if (!future.isEmpty()) {
                 JSONObject next = future.get(0);
+                String instruction = routeManeuverInstruction(next);
+                if (!instruction.isEmpty()) result.put("instruction", instruction);
                 int nextIndex = routeIndexForProgress(route,
                         next.optDouble("progress", currentProgress));
                 float distance = nearestDistance

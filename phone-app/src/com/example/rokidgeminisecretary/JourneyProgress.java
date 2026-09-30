@@ -44,6 +44,15 @@ final class JourneyProgress {
                 .put("fetchedAt", journey.fetchedAt).put("legCount", journey.legs.size())
                 .put("currentLegIndex", current).put("positionConfirmed", confident)
                 .put("selectionSource", "gps_estimate");
+        JSONArray transitStops = new JSONArray();
+        for (int i = Math.max(0, current); i < journey.legs.size(); i++) {
+            TransitJourney.Leg next = journey.legs.get(i);
+            if ("TRANSIT".equals(next.travelMode)) transitStops.put(new JSONObject()
+                    .put("departureStop", next.departureStop).put("arrivalStop", next.arrivalStop)
+                    .put("departureTime", next.departureTime).put("arrivalTime", next.arrivalTime)
+                    .put("lineName", next.lineName));
+        }
+        out.put("transitStops", transitStops);
         if (current >= 0) {
             TransitJourney.Leg leg = journey.legs.get(current);
             out.put("currentLeg", new JSONObject().put("index", current).put("kind", leg.kind)

@@ -35,6 +35,8 @@ public final class SdkPhoneBridge {
     private static volatile String published;
     private static volatile long publishedAt;
     private static String lastDiagnostic = "";
+    private static long completedUntil;
+    private static Navigator.ArrivalListener arrivalListener;
 
     public static JSONObject snapshot() throws Exception {
         String value = published;
@@ -219,7 +221,20 @@ public final class SdkPhoneBridge {
                     if (ticket != generation) return;
                     preparing = false;
                     if (activity.isFinishing() || activity.isDestroyed()) { status = "停止中"; return; }
+                    if (navigator != null && arrivalListener != null) navigator.removeArrivalListener(arrivalListener);
                     navigator = ready;
+                    arrivalListener = event -> {
+                        // STOPPED can reach the progress feed just before the arrival callback.
+                        // The SDK's final-destination event is authoritative for completion.
+                        if (!event.isFinalDestination() || !owned || session == null
+                                || sessionId.isEmpty() || completedUntil != 0) return;
+                        stop();
+                        completedUntil = SystemClock.elapsedRealtime() + 8000;
+                        MAIN.removeCallbacks(PUBLISH);
+                        PUBLISH.run();
+                        android.util.Log.i("LokiSdkNav", "final_destination_arrived");
+                    };
+                    ready.addArrivalListener(arrivalListener);
                     session = SdkNavigationSession.create(activity, ready,
                             new RoutingOptions().travelMode(RoutingOptions.TravelMode.DRIVING)
                                     .avoidTolls(avoidTolls).locationTimeoutMs(20000),
@@ -231,6 +246,7 @@ public final class SdkPhoneBridge {
                         NavigationSession.StartResult result = session.start(Collections.singletonList(waypoint));
                         if (result != NavigationSession.StartResult.STARTED) { status = "開始不可: " + result; message(activity, status); return; }
                         owned = true; sessionId = UUID.randomUUID().toString(); route = new JSONArray();
+                        completedUntil = 0;
                         MAIN.removeCallbacks(PUBLISH); PUBLISH.run();
                         message(activity, "SDK経路を取得しています");
                     } catch (Exception failure) { stop(); message(activity, "SDKナビを開始できませんでした"); }
@@ -255,6 +271,8 @@ public final class SdkPhoneBridge {
 
     public static void stopAndRelease() {
         stop(); owned = false; published = null; MAIN.removeCallbacks(PUBLISH);
+        if (navigator != null && arrivalListener != null) navigator.removeArrivalListener(arrivalListener);
+        arrivalListener = null;
     }
 
     private static final Runnable PUBLISH = new Runnable() {
@@ -263,6 +281,7 @@ public final class SdkPhoneBridge {
             try {
                 NavigationSession.State state = session.state();
                 NavInfo info = LaneFeedService.navInfo();
+                boolean completed = SystemClock.elapsedRealtime() < completedUntil;
                 if (info != null && info.getNavState() == NavState.STOPPED && state == NavigationSession.State.ACTIVE) {
                     session.stop(); state = session.state();
                 }
@@ -291,6 +310,7 @@ public final class SdkPhoneBridge {
                 }
                 JSONObject data = new JSONObject().put("ok", true).put("source", "navigation_sdk")
                         .put("sdkSessionId", sessionId).put("time", System.currentTimeMillis())
+                        .put("navigationComplete", completed).put("completionId", sessionId)
                         .put("navigationActive", active).put("mapProvider", "google").put("routeMode", "driving")
                         .put("routeDestination", destination).put("destination", destination)
                         .put("routeReady", routeReady).put("route", route)

@@ -13,7 +13,7 @@ foreach($relative in @('platforms/android-36','build-tools/35.0.0','platform-too
 }
 $env:ANDROID_HOME=$mirror
 $env:ANDROID_SDK_ROOT=$mirror
-# Clean this module's generated outputs to avoid stale class discovery in forked javac.
-& $Gradle -p (Join-Path $root 'navigation-sdk') --no-daemon :clean :assembleDebug :testDebugUnitTest :phone:assembleDebug
+# Clean both modules' generated outputs to avoid stale class discovery in forked javac.
+& $Gradle -p (Join-Path $root 'navigation-sdk') --no-daemon :phone:clean :clean :assembleDebug :testDebugUnitTest :phone:assembleDebug :phone:testDebugUnitTest
 if($LASTEXITCODE -ne 0) { throw "Navigation library build failed: $LASTEXITCODE" }
 Write-Output 'Navigation library, staging phone APK and unit tests passed. No APK installed or SDK navigation activated.'
