@@ -466,7 +466,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
             MainActivity.this.ambientRecentContext = "";
             MainActivity.this.ambientRecentContextAt = 0L;
             if (MainActivity.this.answer != null) {
-                MainActivity.this.answer.setText("");
+                String value = MainActivity.this.answer.getText() == null ? ""
+                        : MainActivity.this.answer.getText().toString();
+                if (value.startsWith("AMBIENT ON")
+                        || value.startsWith("【AMB統合")
+                        || value.startsWith("【周辺ワード")
+                        || value.startsWith("【周辺知識")) {
+                    MainActivity.this.answer.setText("");
+                }
             }
             MainActivity.this.setConversationActive(false);
             if (MainActivity.this.ambientMode) {
@@ -10541,6 +10548,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         }
                     });
                     Log.i(MainActivity.TAG, "Codex notification displayed chars=" + codexMessage.length());
+                    return;
+                }
+                if (MainActivity.this.voiceRecording) {
                     return;
                 }
                 if (strTrim3.length() != 0) {
