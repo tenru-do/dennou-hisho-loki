@@ -25,7 +25,7 @@ if(Test-Path "$source/assets") {$link+=@('-A',"$source/assets")}
 & "$bt/aapt2.exe" @link
 Check-Exit
 $ErrorActionPreference='Continue'
-$output=& "$env:JAVA_HOME/bin/javac.exe" '-J-Duser.language=en' -encoding UTF-8 -source 8 -target 8 -bootclasspath $android -d "$build/classes" (Get-ChildItem "$source/src" -Recurse -Filter *.java).FullName 2>&1
+$output=& "$env:JAVA_HOME/bin/javac.exe" '-J-Duser.language=en' -encoding UTF-8 -source 8 -target 8 -classpath $android -d "$build/classes" (Get-ChildItem "$source/src" -Recurse -Filter *.java).FullName 2>&1
 $exitCode=$LASTEXITCODE
 $ErrorActionPreference='Stop'
 $output | Select-Object -First 14

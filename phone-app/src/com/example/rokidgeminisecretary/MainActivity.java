@@ -41,11 +41,13 @@ import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.MotionEvent;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -115,6 +117,7 @@ public final class MainActivity extends Activity {
     private static final String PREFS = "phone_secretary";
     private static final String KEY_CUSTOM = "custom_instructions";
     private static final String KEY_CUSTOM_DIRTY = "custom_instructions_dirty";
+    private static final String KEY_CUSTOM_REPLACE_BASE = "custom_replace_base";
     private static final String KEY_BRIDGE_TOKEN = "bridge_token";
     private static final String KEY_HEALTH_COMPACT = "health_compact";
     private static final String KEY_HEALTH_TIME = "health_time";
@@ -180,6 +183,7 @@ public final class MainActivity extends Activity {
     private static String pendingCustomInstructions = "";
     private static boolean pendingCustomUpdate;
     private static boolean pendingCustomStateRequest;
+    private static String pendingCustomStateRequestId = "";
     private static String pendingControl = "";
     private static String glassRuntimeState = "UNKNOWN";
     private static String glassRuntimeMessage = "";
@@ -197,12 +201,17 @@ public final class MainActivity extends Activity {
     private EditText bridgeTokenInput;
     private LinearLayout customPanel;
     private LinearLayout toolsPanel;
+    private ScrollView toolsScroll;
+    private ScrollView logScroll;
     private Button toggleCustomButton;
     private Button toolsButton;
     private Button morningCollectionButton;
     private AlertDialog customEditorDialog;
     private boolean customEditorDirty;
     private String customEditorBase = "";
+    private String customEditorGlassBase = "";
+    private String customEditorRequestId = "";
+    private boolean customEditorGlassLoaded;
     private boolean customEditorApplyingRemote;
     private boolean customStateWaiting;
     private static volatile boolean running;
@@ -429,19 +438,19 @@ public final class MainActivity extends Activity {
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(24, 20, 24, 20);
+        root.setPadding(16, 8, 16, 8);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
         title.setText("Rokid Secretary Phone");
-        title.setTextSize(20);
+        title.setTextSize(18);
         title.setTextColor(Color.BLACK);
         root.addView(title);
 
         status = new TextView(this);
         status.setTextSize(15);
         status.setTextColor(Color.rgb(30, 120, 30));
-        status.setPadding(0, 14, 0, 6);
+        status.setPadding(0, 4, 0, 2);
         root.addView(status);
 
         details = new TextView(this);
@@ -453,7 +462,7 @@ public final class MainActivity extends Activity {
         glassStateView = new TextView(this);
         glassStateView.setTextSize(14);
         glassStateView.setTextColor(Color.rgb(30, 90, 30));
-        glassStateView.setPadding(0, 4, 0, 6);
+        glassStateView.setPadding(0, 2, 0, 2);
         glassStateView.setText("グラス: 接続待ち");
         root.addView(glassStateView);
 
@@ -472,7 +481,8 @@ public final class MainActivity extends Activity {
         commandInput = new EditText(this);
         commandInput.setSingleLine(false);
         commandInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_COMMAND_CHARS)});
-        commandInput.setMinLines(2);
+        commandInput.setMinLines(1);
+        commandInput.setMaxLines(2);
         commandInput.setHint("スマホからグラスへ質問");
         commandInput.setTextSize(14);
         root.addView(commandInput);
@@ -506,7 +516,8 @@ public final class MainActivity extends Activity {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         toggleCustomButton = new Button(this);
-        toggleCustomButton.setText("指示");
+        toggleCustomButton.setText("カスタム情報");
+        toggleCustomButton.setTextSize(12);
         toggleCustomButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -563,7 +574,8 @@ public final class MainActivity extends Activity {
             }
         });
         customPanel.addView(sendCustom);
-        root.addView(customPanel);
+        // The editor dialog is the single entry point; this legacy inline panel
+        // would otherwise consume space and offer a second, stale copy of the text.
 
         Button clearLogs = new Button(this);
         clearLogs.setText("削除");
@@ -601,10 +613,9 @@ public final class MainActivity extends Activity {
         toolsButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                boolean show = toolsPanel != null && toolsPanel.getVisibility() != View.VISIBLE;
-                if (toolsPanel != null) {
-                    toolsPanel.setVisibility(show ? View.VISIBLE : View.GONE);
-                }
+                boolean show = toolsScroll.getVisibility() != View.VISIBLE;
+                toolsScroll.setVisibility(show ? View.VISIBLE : View.GONE);
+                logScroll.setVisibility(show ? View.GONE : View.VISIBLE);
                 if (customPanel != null && !show) {
                     customPanel.setVisibility(View.GONE);
                 }
@@ -619,11 +630,10 @@ public final class MainActivity extends Activity {
         geminiSettings.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { showGeminiKeySettings(); }
         });
-        root.addView(geminiSettings);
 
         toolsPanel = new LinearLayout(this);
         toolsPanel.setOrientation(LinearLayout.VERTICAL);
-        toolsPanel.setVisibility(View.GONE);
+        toolsPanel.addView(geminiSettings);
 
         LinearLayout miscRow = new LinearLayout(this);
         miscRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -958,14 +968,19 @@ public final class MainActivity extends Activity {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         toolsPanel.addView(launchRow);
-        root.addView(toolsPanel);
+        toolsScroll = new ScrollView(this);
+        toolsScroll.setFillViewport(false);
+        toolsScroll.addView(toolsPanel);
+        toolsScroll.setVisibility(View.GONE);
+        root.addView(toolsScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         logView = new TextView(this);
         logView.setTextSize(13);
         logView.setTextColor(Color.DKGRAY);
         logView.setPadding(0, 8, 0, 0);
         logView.setTextIsSelectable(true);
-        ScrollView logScroll = new ScrollView(this);
+        logScroll = new ScrollView(this);
         logScroll.addView(logView);
         root.addView(logScroll, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -1867,6 +1882,9 @@ public final class MainActivity extends Activity {
         }
         customEditorDirty = false;
         customStateWaiting = true;
+        customEditorGlassLoaded = false;
+        customEditorGlassBase = "";
+        customEditorRequestId = UUID.randomUUID().toString();
 
         LinearLayout editorLayout = new LinearLayout(this);
         editorLayout.setOrientation(LinearLayout.VERTICAL);
@@ -1883,10 +1901,27 @@ public final class MainActivity extends Activity {
         customInput.setSingleLine(false);
         customInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_CUSTOM_CHARS)});
         customInput.setMinLines(8);
-        customInput.setMaxLines(14);
+        customInput.setMaxLines(12);
         customInput.setGravity(Gravity.TOP);
         customInput.setTextSize(16);
-        customInput.setHint("グラスのGeminiへ渡すカスタム指示");
+        customInput.setFocusable(true);
+        customInput.setFocusableInTouchMode(true);
+        customInput.setCursorVisible(true);
+        customInput.setLongClickable(true);
+        customInput.setVerticalScrollBarEnabled(true);
+        customInput.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View view, MotionEvent event) {
+                view.getParent().requestDisallowInterceptTouchEvent(true);
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    view.requestFocus();
+                    InputMethodManager keyboard = (InputMethodManager)
+                            getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (keyboard != null) keyboard.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+                }
+                return false;
+            }
+        });
+        customInput.setHint("グラスとスマホの情報を統合した全文を編集できます");
         customEditorApplyingRemote = true;
         String cached = getPreferences().getString(KEY_CUSTOM, "");
         customEditorBase = cached == null ? "" : cached;
@@ -1903,16 +1938,14 @@ public final class MainActivity extends Activity {
             @Override public void afterTextChanged(Editable editable) {}
         });
 
-        ScrollView editorScroll = new ScrollView(this);
-        editorScroll.addView(customInput);
-        editorLayout.addView(editorScroll, new LinearLayout.LayoutParams(
+        editorLayout.addView(customInput, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         customEditorDialog = new AlertDialog.Builder(this)
-                .setTitle("カスタム指示")
+                .setTitle("カスタム情報（ロキの前提コンテキスト）")
                 .setView(editorLayout)
-                .setPositiveButton("グラスへ反映", null)
+                .setPositiveButton("保存して同期", null)
                 .setNegativeButton("キャンセル", null)
                 .setNeutralButton("再ペアリング", null)
                 .create();
@@ -1921,8 +1954,13 @@ public final class MainActivity extends Activity {
             public void onShow(DialogInterface dialogInterface) {
                 customEditorDialog.getButton(AlertDialog.BUTTON_POSITIVE)
                         .setOnClickListener(new View.OnClickListener() {
-                            @Override
-                            public void onClick(View view) {
+                             @Override
+                             public void onClick(View view) {
+                                if (!customEditorGlassLoaded || customStateWaiting
+                                        || getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false)) {
+                                    customInfo.setText("グラスの最新全文を取得し、前回の同期が完了してから保存できます。");
+                                    return;
+                                }
                                 if (!customEditorBase.equals(getPreferences().getString(KEY_CUSTOM, ""))) {
                                     customInfo.setText("編集中に指示が同期されました。入力をコピーしてから開き直し、統合してください。未保存の入力は残しています。");
                                     return;
@@ -1946,11 +1984,13 @@ public final class MainActivity extends Activity {
                 customEditorDialog = null;
                 customStateWaiting = false;
                 customEditorDirty = false;
+                customEditorGlassLoaded = false;
                 synchronized (MainActivity.class) {
                     pendingCustomStateRequest = false;
+                    pendingCustomStateRequestId = "";
                 }
                 if (toggleCustomButton != null) {
-                    toggleCustomButton.setText("指示");
+                    toggleCustomButton.setText("カスタム情報");
                 }
             }
         });
@@ -1967,6 +2007,7 @@ public final class MainActivity extends Activity {
         }
         synchronized (MainActivity.class) {
             pendingCustomStateRequest = true;
+            pendingCustomStateRequestId = customEditorRequestId;
         }
         toggleCustomButton.setText("編集中");
         updateStatus("指示を取得中", "グラスの現在値を待っています。");
@@ -1997,7 +2038,11 @@ public final class MainActivity extends Activity {
     }
 
     private void saveCustomInstructionsFromPhone(String value) {
-        String text = value == null ? "" : value.trim();
+        String text = value == null ? "" : value;
+        if (text.trim().length() == 0) {
+            if (customInput != null) customInput.setError("空欄では保存できません");
+            return;
+        }
         String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
         if (token.length() < 16) {
             token = createBridgeToken();
@@ -2005,6 +2050,7 @@ public final class MainActivity extends Activity {
         getPreferences().edit()
                 .putString(KEY_CUSTOM, text)
                 .putBoolean(KEY_CUSTOM_DIRTY, true)
+                .putString(KEY_CUSTOM_REPLACE_BASE, customEditorGlassBase)
                 .putString(KEY_BRIDGE_TOKEN, token)
                 .apply();
         synchronized (MainActivity.class) {
@@ -2021,11 +2067,11 @@ public final class MainActivity extends Activity {
                 || customInfo == null || customInput == null) {
             return;
         }
-        customInfo.setText(getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false)
+        customInfo.setText(!customEditorGlassLoaded
+                ? "グラスの最新全文を取得中です。入力はできますが、保存は取得後に行えます。"
+                : getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false)
                 ? "スマホに保存済み・グラスへの同期待ち…（閉じても同期は続きます）"
-                : customStateWaiting
-                ? "グラスから現在の指示を読み込み中…"
-                : "グラスと同期済み。編集後に「グラスへ反映」を押してください。");
+                : "グラスとスマホを統合した全文です。編集・保存するとグラスのマスターを更新します。");
         if (!customEditorDirty) {
             String saved = getPreferences().getString(KEY_CUSTOM, "");
             customEditorBase = saved == null ? "" : saved;
@@ -4018,10 +4064,12 @@ public final class MainActivity extends Activity {
         String custom;
         boolean hasUpdate;
         boolean requestState;
+        String requestId;
         synchronized (MainActivity.class) {
             custom = pendingCustomInstructions;
             hasUpdate = pendingCustomUpdate;
             requestState = pendingCustomStateRequest;
+            requestId = pendingCustomStateRequestId;
             pendingCustomInstructions = "";
             pendingCustomUpdate = false;
         }
@@ -4035,6 +4083,9 @@ public final class MainActivity extends Activity {
         root.put("custom", custom == null ? "" : custom);
         root.put("hasUpdate", hasUpdate);
         root.put("requestState", requestState);
+        root.put("stateRequestId", requestId);
+        root.put("replace", hasUpdate && getPreferences().contains(KEY_CUSTOM_REPLACE_BASE));
+        root.put("replaceBase", getPreferences().getString(KEY_CUSTOM_REPLACE_BASE, ""));
         root.put("current", getPreferences().getString(KEY_CUSTOM, ""));
         // This response is behind the existing paired bridge-token check.
         try {
@@ -4071,7 +4122,8 @@ public final class MainActivity extends Activity {
         }
         final String syncedCustom = custom == null ? "" : custom;
         if ("true".equals(formValue(bodyText == null ? "" : bodyText, "migration"))
-                && !getPreferences().getBoolean("custom_merge_v2", false)) {
+                && !getPreferences().getBoolean("custom_merge_v2", false)
+                && !getPreferences().contains(KEY_CUSTOM_REPLACE_BASE)) {
             getPreferences().edit()
                     .putString("custom_backup_phone_v2", getPreferences().getString(KEY_CUSTOM, ""))
                     .putBoolean("custom_merge_v2", true).remove(KEY_CUSTOM_DIRTY).apply();
@@ -4082,21 +4134,63 @@ public final class MainActivity extends Activity {
         }
         boolean localEditPending = getPreferences().getBoolean(KEY_CUSTOM_DIRTY, false);
         String previousCustom = getPreferences().getString(KEY_CUSTOM, "");
-        final boolean acknowledgedEdit = localEditPending && previousCustom.equals(syncedCustom);
-        if (localEditPending && previousCustom.equals(syncedCustom)) {
-            getPreferences().edit().remove(KEY_CUSTOM_DIRTY).apply();
+        String responseRequestId = formValue(bodyText == null ? "" : bodyText, "requestId");
+        final boolean editorPull = responseRequestId != null && responseRequestId.length() > 0
+                && responseRequestId.equals(customEditorRequestId)
+                && customEditorDialog != null && customEditorDialog.isShowing();
+        final String displayCustom = editorPull
+                ? CustomInformationMerge.merge(syncedCustom, previousCustom, MAX_CUSTOM_CHARS)
+                : syncedCustom;
+        final boolean replacementPending = getPreferences().contains(KEY_CUSTOM_REPLACE_BASE);
+        final boolean acknowledgedEdit = localEditPending
+                && (replacementPending ? previousCustom.equals(syncedCustom)
+                        : containsAllCustomLines(syncedCustom, previousCustom));
+        if (acknowledgedEdit) {
+            getPreferences().edit().remove(KEY_CUSTOM_DIRTY)
+                    .remove(KEY_CUSTOM_REPLACE_BASE).apply();
             localEditPending = false;
         }
         boolean customChanged = !previousCustom.equals(syncedCustom);
         if (!localEditPending) {
-            getPreferences().edit().putString(KEY_CUSTOM, syncedCustom).apply();
+            getPreferences().edit().putString(KEY_CUSTOM,
+                    editorPull && displayCustom != null ? displayCustom : syncedCustom).apply();
             synchronized (MainActivity.class) {
-                pendingCustomStateRequest = false;
+                if (editorPull || customEditorDialog == null || !customEditorDialog.isShowing()) {
+                    pendingCustomStateRequest = false;
+                    pendingCustomStateRequestId = "";
+                }
             }
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    customStateWaiting = false;
+                    if (editorPull && displayCustom != null) {
+                        String shown = displayCustom;
+                        if (customEditorDirty) {
+                            shown = CustomInformationMerge.merge(syncedCustom,
+                                    customInput.getText().toString(), MAX_CUSTOM_CHARS);
+                        }
+                        if (shown == null) {
+                            customInfo.setText("統合結果が12000文字を超えました。入力を保持しています。内容を短くしてください。");
+                            return;
+                        }
+                        getPreferences().edit().putString(KEY_CUSTOM, shown).apply();
+                        customEditorBase = shown;
+                        customEditorApplyingRemote = true;
+                        customInput.setText(shown);
+                        customInput.setSelection(customInput.getText().length());
+                        customEditorApplyingRemote = false;
+                        customEditorDirty = false;
+                        customEditorGlassBase = syncedCustom;
+                        customEditorGlassLoaded = true;
+                        customStateWaiting = false;
+                        customInput.setEnabled(true);
+                        customInput.setFocusable(true);
+                        customInput.setFocusableInTouchMode(true);
+                        customInput.setCursorVisible(true);
+                    } else if (editorPull) {
+                        customInfo.setText("統合結果が12000文字を超えました。保存せず内容を確認してください。");
+                        return;
+                    }
                     refreshCustomInfo();
                     if (acknowledgedEdit) {
                         updateStatus("指示の同期完了", "グラスとスマホの指示が一致しました。");
@@ -4116,6 +4210,17 @@ public final class MainActivity extends Activity {
         root.put("saved", !localEditPending);
         root.put("localEditPending", localEditPending);
         return root;
+    }
+
+    private static boolean containsAllCustomLines(String merged, String submitted) {
+        java.util.HashSet<String> present = new java.util.HashSet<String>();
+        for (String line : (merged == null ? "" : merged).split("\\r?\\n")) {
+            if (!line.trim().isEmpty()) present.add(line.trim());
+        }
+        for (String line : (submitted == null ? "" : submitted).split("\\r?\\n")) {
+            if (!line.trim().isEmpty() && !present.contains(line.trim())) return false;
+        }
+        return true;
     }
 
     private void ensureLocationPermission() {

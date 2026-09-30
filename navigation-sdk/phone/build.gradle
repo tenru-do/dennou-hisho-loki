@@ -21,8 +21,8 @@ android {
         applicationId 'com.example.rokidgeminisecretary'
         minSdk 26
         targetSdk 36
-        versionCode 115
-        versionName '0.9.67-sdk-staging'
+        versionCode 120
+        versionName '0.9.72-custom-editor'
         buildConfigField 'boolean', 'NAVIGATION_SDK_ENABLED', providers.gradleProperty('enableNavigationSdk').getOrElse('false') == 'true' ? 'true' : 'false'
     }
     signingConfigs {

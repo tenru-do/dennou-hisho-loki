@@ -10359,25 +10359,51 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if (!MainActivity.this.getPreferences().getBoolean("custom_merge_v2", false)) {
                     String glassCopy = MainActivity.this.getPreferences().getString(KEY_CUSTOM_INSTRUCTIONS, "");
                     String phoneCopy = customJson.optString("current", "");
-                    String merged = mergeCustomCopies(glassCopy, phoneCopy);
-                    MainActivity.this.getPreferences().edit()
+                    String merged = CustomInstructionsMerge.merge(glassCopy, phoneCopy, MAX_CUSTOM_CHARS);
+                    if (merged == null || !MainActivity.this.getPreferences().edit()
                             .putString("custom_backup_glass_v2", glassCopy)
                             .putString("custom_backup_phone_v2", phoneCopy)
-                            .putString(KEY_CUSTOM_INSTRUCTIONS, merged).apply();
+                            .putString(KEY_CUSTOM_INSTRUCTIONS, merged)
+                            .putBoolean("custom_merge_v2", true).commit()) {
+                        throw new java.io.IOException("カスタム情報の初期統合を安全に保存できませんでした");
+                    }
                     MainActivity.this.postPhoneCustomState(merged, true);
-                    MainActivity.this.getPreferences().edit().putBoolean("custom_merge_v2", true).apply();
                     customJson = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("custom"));
                 }
-                String strTrim = customJson.optString("custom", "").trim();
-                boolean customApplied = false;
+                String phoneCustom = customJson.optString("custom", "");
+                String strTrim = phoneCustom.trim();
                 // `current` is only the phone's cached copy. It appears on
                 // every poll, so only an explicit phone edit may overwrite
                 // the instructions stored on the glasses.
                 if (customJson.optBoolean("hasUpdate", false)) {
-                    MainActivity.this.getPreferences().edit().putString(MainActivity.KEY_CUSTOM_INSTRUCTIONS, strTrim).apply();
-                    MainActivity.this.pushCustomInstructionsToPhoneAsync();
-                    customApplied = true;
-                    MainActivity.this.logToPhoneAsync("カスタム指示", "保存しました");
+                    String glassCurrent = MainActivity.this.getPreferences()
+                            .getString(KEY_CUSTOM_INSTRUCTIONS, "");
+                    boolean replace = customJson.optBoolean("replace", false);
+                    String merged = replace ? CustomInstructionsMerge.replaceIfCurrent(
+                            glassCurrent, customJson.optString("replaceBase", ""),
+                            phoneCustom, MAX_CUSTOM_CHARS)
+                            : CustomInstructionsMerge.merge(glassCurrent, strTrim, MAX_CUSTOM_CHARS);
+                    boolean conflict = replace && !glassCurrent.equals(
+                            customJson.optString("replaceBase", ""));
+                    if (conflict || merged == null || strTrim.length() == 0
+                            || merged.length() > MAX_CUSTOM_CHARS) {
+                        MainActivity.this.postPhoneCustomState(glassCurrent);
+                        MainActivity.this.logToPhoneAsync("カスタム指示",
+                                conflict ? "グラス側が更新されたため全文置換を保留しました"
+                                        : "空欄または文字数超過のため更新を保留しました");
+                    } else {
+                        // A durable backup must exist before changing the master copy.
+                        SharedPreferences.Editor edit = MainActivity.this.getPreferences().edit()
+                                .putString("custom_backup_before_phone_edit", glassCurrent)
+                                .putString(KEY_CUSTOM_INSTRUCTIONS, merged);
+                        if (!MainActivity.this.getPreferences().contains("custom_backup_glass_master_v3")) {
+                            edit.putString("custom_backup_glass_master_v3", glassCurrent);
+                        }
+                        boolean saved = edit.commit();
+                        if (!saved) throw new java.io.IOException("グラスのカスタム情報を保存できませんでした");
+                        MainActivity.this.postPhoneCustomState(merged);
+                        MainActivity.this.logToPhoneAsync("カスタム指示", "統合して保存しました");
+                    }
                     MainActivity.this.handler.post(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.38.1
                         @Override // java.lang.Runnable
                         public void run() {
@@ -10385,8 +10411,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         }
                     });
                 }
-                if (customJson.optBoolean("requestState", false) && !customApplied) {
-                    MainActivity.this.pushCustomInstructionsToPhoneAsync();
+                if (customJson.optBoolean("requestState", false)) {
+                    MainActivity.this.postPhoneCustomState(
+                            getPreferences().getString(KEY_CUSTOM_INSTRUCTIONS, ""), false,
+                            customJson.optString("stateRequestId", ""));
                 }
                 if (!MainActivity.this.ambientPausedForNavigation && MainActivity.this.voiceLoopMode && MainActivity.this.ambientPausedForVoice
                         && MainActivity.this.ambientUsesPlayback()) {
@@ -10741,22 +10769,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         postPhoneCustomState(custom, false);
     }
 
-    private static String mergeCustomCopies(String glassCopy, String phoneCopy) {
-        String primary = glassCopy == null ? "" : glassCopy.trim();
-        StringBuilder merged = new StringBuilder(primary);
-        java.util.HashSet<String> lines = new java.util.HashSet<String>();
-        for (String line : primary.split("\\r?\\n")) lines.add(line.trim());
-        for (String paragraph : (phoneCopy == null ? "" : phoneCopy).split("\\r?\\n")) {
-            String part = paragraph.trim();
-            if (part.length() > 0 && lines.add(part)) {
-                if (merged.length() > 0) merged.append('\n');
-                merged.append(part);
-            }
-        }
-        return merged.toString();
+    private void postPhoneCustomState(String custom, boolean migration) throws Exception {
+        postPhoneCustomState(custom, migration, "");
     }
 
-    private void postPhoneCustomState(String custom, boolean migration) throws Exception {
+    private void postPhoneCustomState(String custom, boolean migration, String requestId) throws Exception {
         String value = custom == null ? "" : custom;
         JSONObject audit = new JSONObject();
         audit.put("at", System.currentTimeMillis());
@@ -10777,6 +10794,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             audit.put(source + "MissingExactLines", missing);
         }
         byte[] bytes = ("custom=" + URLEncoder.encode(value, "UTF-8") + "&migration=" + migration
+                + "&requestId=" + URLEncoder.encode(requestId == null ? "" : requestId, "UTF-8")
                 + "&audit=" + URLEncoder.encode(audit.toString(), "UTF-8"))
                 .getBytes(StandardCharsets.UTF_8);
         Exception last = null;
