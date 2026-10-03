@@ -617,9 +617,6 @@ public class MainActivity extends Activity {
         Log.i("RokidZoomCamera", "capture trigger active=" + activityActive + " permission=" + checkSelfPermission(Manifest.permission.CAMERA) + " ready=" + (cameraDevice != null && captureSession != null && imageReader != null));
         if (!activityActive) {
             pendingCaptureWhenReady = true;
-            Intent resume = new Intent(this, MainActivity.class).setAction(MediaStore.ACTION_IMAGE_CAPTURE);
-            resume.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            try { startActivity(resume); } catch (RuntimeException error) { Log.e("RokidZoomCamera", "capture foreground launch failed", error); }
             return;
         }
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
