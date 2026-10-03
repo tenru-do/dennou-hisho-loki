@@ -135,6 +135,7 @@ public class MainActivity extends Activity {
         buildUi();
         registerBatteryStatus();
         registerHardwareButtonHooks();
+        activityActive = true;
         handleCameraIntent(getIntent());
         activityActive = true;
 
