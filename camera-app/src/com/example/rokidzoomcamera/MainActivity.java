@@ -499,12 +499,15 @@ public class MainActivity extends Activity {
         if (sizes == null || sizes.length == 0) {
             return new Size(1280, 720);
         }
-        Size best = sizes[0];
+        // Bound the JPEG and rotation buffers on the memory-constrained glasses.
+        Size best = null, smallest = sizes[0];
         for (Size size : sizes) {
-            if (size.getWidth() * size.getHeight() > best.getWidth() * best.getHeight()) {
-                best = size;
-            }
+            long pixels = (long) size.getWidth() * size.getHeight();
+            if (pixels < (long) smallest.getWidth() * smallest.getHeight()) smallest = size;
+            if (pixels <= 1920L * 1440L && (best == null || pixels > (long) best.getWidth() * best.getHeight())) best = size;
         }
+        if (best == null) best = smallest;
+        Log.i("RokidZoomCamera", "JPEG size selected " + best.getWidth() + "x" + best.getHeight());
         return best;
     }
 
@@ -924,8 +927,19 @@ public class MainActivity extends Activity {
         }
     }
 
+    private Bitmap decodeCaptureBitmap(byte[] jpegBytes) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.length, bounds);
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inPreferredConfig = Bitmap.Config.RGB_565;
+        options.inSampleSize = 1;
+        while ((long)(bounds.outWidth / options.inSampleSize) * (bounds.outHeight / options.inSampleSize) > 1920L * 1440L) options.inSampleSize *= 2;
+        return BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.length, options);
+    }
+
     private byte[] composeArImage(byte[] jpegBytes) {
-        Bitmap source = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.length);
+        Bitmap source = decodeCaptureBitmap(jpegBytes);
         if (source == null) {
             return jpegBytes;
         }
@@ -944,7 +958,7 @@ public class MainActivity extends Activity {
     }
 
     private byte[] rotateJpegLeft(byte[] jpegBytes) {
-        Bitmap source = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.length);
+        Bitmap source = decodeCaptureBitmap(jpegBytes);
         if (source == null) {
             return jpegBytes;
         }
