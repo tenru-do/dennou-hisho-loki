@@ -445,7 +445,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (!activityForeground || isFinishing() || isDestroyed()) return;
             if (voiceRecording || speechRecognizerActive || geminiRequestActive
                     || mascotMode == 2 || SystemClock.uptimeMillis() < ambientAutotalkSpeechUntil
-                    || morningPlaybackActive || radioModeEnabled || radioTopicPending
+                    || morningPlaybackActive || voiceLoopMode || conversationActive || radioModeEnabled || radioTopicPending
                     || topicFetching || topicControlPending || ambientPausedForNavigation
                     || (proximityStateKnown && !glassWorn)
                     || !isNetworkReady() || isGeminiCoolingDown()) {
