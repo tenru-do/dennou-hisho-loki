@@ -19,14 +19,20 @@ final class TransitJourney {
         final String travelMode, kind, encodedPolyline, transitDetailsJson;
         final String departureStop, arrivalStop, departureTime, arrivalTime, lineName;
         final String instruction;
+        final boolean geometryEstimated;
+        final double durationSeconds;
+        final int stopCount;
         Leg(JSONObject step, String kind) throws JSONException {
             travelMode = step.optString("travelMode", "UNKNOWN");
+            geometryEstimated=step.optBoolean("lokiGeometryEstimated",false);
             JSONObject navigation = step.optJSONObject("navigationInstruction");
             instruction = navigation == null ? "" : navigation.optString("instructions", "");
             this.kind = kind;
             JSONObject geometry = step.optJSONObject("polyline");
             encodedPolyline = geometry == null ? "" : geometry.optString("encodedPolyline", "");
             JSONObject details = step.optJSONObject("transitDetails");
+            durationSeconds = duration(step.optString("staticDuration", ""));
+            stopCount = details == null ? -1 : details.optInt("stopCount", -1);
             transitDetailsJson = details == null ? "{}" : details.toString();
             JSONObject stops = details == null ? null : details.optJSONObject("stopDetails");
             departureStop = stopName(stops, "departureStop");
@@ -34,12 +40,19 @@ final class TransitJourney {
             departureTime = stops == null ? "" : stops.optString("departureTime", "");
             arrivalTime = stops == null ? "" : stops.optString("arrivalTime", "");
             JSONObject line = details == null ? null : details.optJSONObject("transitLine");
-            lineName = line == null ? "" : line.optString("name", line.optString("nameShort", ""));
+            String name = line == null ? "" : line.optString("name", "");
+            lineName = name.isEmpty() && line != null ? line.optString("nameShort", "公共交通") : name;
         }
         private static String stopName(JSONObject stops, String key) {
             JSONObject stop = stops == null ? null : stops.optJSONObject(key);
             return stop == null ? "" : stop.optString("name", "");
         }
+    }
+    static double duration(String value) {
+        try {
+            double seconds = Double.parseDouble(value.replace("s", ""));
+            return Double.isFinite(seconds) && seconds >= 0 ? seconds : -1;
+        } catch (Exception absent) { return -1; }
     }
     private TransitJourney(String destination, String geometry, List<Leg> legs, long now) {
         id = UUID.randomUUID().toString(); finalDestination = destination;

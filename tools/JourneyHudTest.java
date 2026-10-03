@@ -14,7 +14,16 @@ public class JourneyHudTest {
         check(normal.getJSONArray("route").length()==2,"current geometry");
         check(overview.getJSONArray("route").length()==3,"whole geometry");
         check(normal.getString("detail").contains("B駅") && normal.getString("detail").contains("10:00"),"arrival");
-        check(normal.getString("afterNextInstruction").isEmpty() && normal.getString("nextDistance").isEmpty(),"no turns aboard");
+        check(normal.getString("afterNextInstruction").contains("B駅") && normal.getString("nextDistance").isEmpty(),"next alighting point, no road turns aboard");
+        leg.put("durationSeconds",1200).put("remainingSeconds",300).put("stopCount",7);
+        j.put("totalRemainingSeconds",1800).put("finalArrivalTime","2026-09-27T01:30:00Z")
+                .put("transitStops",new JSONArray().put(new JSONObject().put("lineName","テスト線"))
+                        .put(new JSONObject().put("lineName","バス")));
+        JSONObject timed=JourneyHud.apply(input,true);
+        check(timed.getString("afterNextInstruction").contains("区間7駅") && timed.getString("afterNextInstruction").contains("所要20分"),"segment count and duration");
+        check(timed.getString("afterNextDuration").contains("5分"),"next point remaining");
+        check(timed.getString("totalRemainingDuration").contains("30分") && timed.getString("routeArrival").contains("10:30"),"final time coexists");
+        check(timed.getString("transportSummary").contains("乗換1回") && timed.getString("transportSummary").contains("バス"),"overview transport");
         j.put("walkingFallback",true);
         leg.put("travelMode","WALK").put("kind","WALK");
         JSONObject fallback=JourneyHud.apply(input,false);
@@ -32,7 +41,7 @@ public class JourneyHudTest {
             check(waiting.getBoolean("routeReady") && waiting.getJSONArray("route").length()==3,"GPS waiting geometry " + mode);
             check(JourneyHud.routeFor(j,false).length()==3,"mode switch geometry " + mode);
         }
-        System.out.println("JourneyHud: 21 checks passed");
+        System.out.println("JourneyHud checks passed");
     }
     private static void check(boolean value,String label) { if(!value)throw new AssertionError(label); }
 }

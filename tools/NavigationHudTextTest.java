@@ -12,6 +12,10 @@ public final class NavigationHudTextTest {
         check("新宿駅で乗り換え", "午後3:17 着", "", "新宿駅で乗り換え");
         check("", "南へ進む", "", "南へ進む");
         check("Googleマップ画面共有", "", "", "");
-        System.out.println("7 navigation guidance text checks passed");
+        check("Googleマップとは？", "新宿駅で乗り換え", "", "新宿駅で乗り換え");
+        check("Google Mapとは?", "", "", "");
+        if (!"東京駅…".equals(NavigationHudText.endEllipsis("東京駅八重洲南口", 3))) throw new AssertionError("prefix");
+        if (!"🚉…".equals(NavigationHudText.endEllipsis("🚉東京", 1))) throw new AssertionError("unicode");
+        System.out.println("11 navigation guidance text checks passed");
     }
 }

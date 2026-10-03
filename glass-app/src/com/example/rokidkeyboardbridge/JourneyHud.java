@@ -37,16 +37,28 @@ final class JourneyHud {
         JSONArray selected = routeFor(journey, overview);
         out.put("route", selected).put("routeReady", selected.length() >= 2)
                 .put("routeDestination", journey.optString("finalDestination"));
+        JSONArray planned = journey.optJSONArray("transitStops");
+        if (planned != null && planned.length() > 0) {
+            StringBuilder transport = new StringBuilder();
+            for (int i = 0; i < planned.length(); i++) {
+                if (i > 0) transport.append(" → ");
+                transport.append(planned.getJSONObject(i).optString("lineName", "公共交通"));
+            }
+            out.put("transportSummary", "予定 乗換" + Math.max(0, planned.length() - 1) + "回 " + transport);
+        }
         if (leg == null || !journey.optBoolean("positionConfirmed")) {
             // Retain notification guidance while GPS cannot identify the current step.
             if (out.optString("instruction").isEmpty()) out.put("instruction", "現在区間を確認中");
             JSONArray stops = journey.optJSONArray("transitStops");
-            if (stops != null && stops.length() > 0 && out.optString("detail").isEmpty()) {
+            if (stops != null && stops.length() > 0) {
                 JSONObject next = stops.getJSONObject(0);
                 out.put("detail", "予定：" + next.optString("departureStop") + " " + time(next.optString("departureTime"))
                         + " 発 / " + next.optString("lineName") + " → " + next.optString("arrivalStop")
                         + " " + time(next.optString("arrivalTime")) + " 着");
             }
+            double scheduledTotal = journey.optDouble("totalRemainingSeconds", -1);
+            if (scheduledTotal >= 0) out.put("totalRemainingDuration", minutes(scheduledTotal) + "（予定）")
+                    .put("routeArrival", time(journey.optString("finalArrivalTime")) + "予定");
             return out;
         }
         // No mixing Google Maps' independently selected trip with this API journey.
@@ -54,10 +66,9 @@ final class JourneyHud {
                 "afterNextDuration", "currentRoad", "arrival", "routeArrival",
                 "totalRemainingDistance", "totalRemainingDuration"}) out.put(key, "");
         out.put("routeMode", journey.optString("effectiveMode", "transit"));
-        if (leg == null || !journey.optBoolean("positionConfirmed")) {
-            out.put("instruction", "現在区間を確認中").put("detail", fallbackNote + "GPSによる区間推定を待っています");
-            return out;
-        }
+        double total = journey.optDouble("totalRemainingSeconds", -1);
+        if (total >= 0) out.put("totalRemainingDuration", minutes(total) + "（予定）")
+                .put("routeArrival", time(journey.optString("finalArrivalTime")) + "予定");
         if ("TRANSIT".equals(leg.optString("travelMode"))) {
             JSONObject details = leg.optJSONObject("transitDetails");
             JSONObject line = details == null ? null : details.optJSONObject("transitLine");
@@ -68,6 +79,15 @@ final class JourneyHud {
             out.put("detail", leg.optString("departureStop", "") + " " + time(leg.optString("departureTime"))
                     + " 発 → 降車 " + leg.optString("arrivalStop", "")
                     + " / " + time(leg.optString("arrivalTime")) + " 着予定（区間推定）");
+            String point = "降車 " + leg.optString("arrivalStop", "停留所");
+            int count = leg.optInt("stopCount", -1);
+            if (count >= 0) point += "・区間" + count + ("バス".equals(label) ? "停留所" : "駅");
+            double remaining = leg.optDouble("remainingSeconds", -1);
+            double duration = leg.optDouble("durationSeconds", -1);
+            if (duration >= 0) point += "・所要" + minutes(duration);
+            out.put("afterNextInstruction", point)
+                    .put("afterNextDuration", remaining >= 0 ? minutes(remaining) + "（予定）" : "")
+                    .put("afterNextDistance", time(leg.optString("arrivalTime")) + "着予定");
         } else {
             String mode = "BICYCLE".equals(leg.optString("travelMode")) ? "bicycling" : "walking";
             String instruction = leg.optString("instruction", "").trim();
@@ -78,8 +98,17 @@ final class JourneyHud {
                     : "EGRESS".equals(kind) ? "目的地までの徒歩区間"
                     : "ACCESS".equals(kind) ? "駅・停留所までの区間"
                     : "bicycling".equals(mode) ? "目的地までの自転車区間" : "目的地までの徒歩区間"));
+            if ("ACCESS".equals(kind) || "TRANSFER".equals(kind)) {
+                JSONObject next = planned == null ? null : planned.optJSONObject(0);
+                if (next != null) out.put("afterNextInstruction", ("TRANSFER".equals(kind) ? "乗換 " : "乗車 ")
+                        + next.optString("departureStop") + " " + next.optString("lineName"))
+                        .put("afterNextDistance", time(next.optString("departureTime")) + "発予定");
+            }
         }
         return out;
+    }
+    private static String minutes(double seconds) {
+        return (long)Math.ceil(seconds / 60.0) + "分";
     }
     private static String time(String value) {
         try {

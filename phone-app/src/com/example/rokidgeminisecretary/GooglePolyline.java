@@ -10,37 +10,58 @@ final class GooglePolyline {
             route.put("polyline", overview);
         }
     }
+    static double[] location(org.json.JSONObject value) {
+        if(value==null)return null;
+        org.json.JSONObject p=value.optJSONObject("latLng");if(p==null)p=value;
+        double lat=p.optDouble("latitude",Double.NaN),lng=p.optDouble("longitude",Double.NaN);
+        if(!Double.isFinite(lat)||!Double.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return null;
+        return new double[]{lat,lng};
+    }
+    static String encode(java.util.List<double[]> points) {
+        StringBuilder encoded=new StringBuilder();long lat=0,lng=0;
+        for(double[] p:points){long a=Math.round(p[0]*1e5),b=Math.round(p[1]*1e5);
+            encodeComponent(encoded,a-lat);encodeComponent(encoded,b-lng);lat=a;lng=b;}
+        return encoded.toString();
+    }
+    private static double[] endpoint(org.json.JSONObject step,boolean start) {
+        double[] p=location(step.optJSONObject(start?"startLocation":"endLocation"));
+        if(p!=null)return p;
+        org.json.JSONObject details=step.optJSONObject("transitDetails");
+        org.json.JSONObject stops=details==null?null:details.optJSONObject("stopDetails");
+        org.json.JSONObject stop=stops==null?null:stops.optJSONObject(start?"departureStop":"arrivalStop");
+        return location(stop==null?null:stop.optJSONObject("location"));
+    }
     static void mergeSteps(org.json.JSONObject route) throws org.json.JSONException {
-        ArrayList<double[]> all = new ArrayList<>();
-        org.json.JSONArray legs = route.optJSONArray("legs");
-        if (legs == null) return;
-        for (int i = 0; i < legs.length(); i++) {
-            org.json.JSONArray steps = legs.getJSONObject(i).optJSONArray("steps");
-            if (steps == null) return;
-            for (int j = 0; j < steps.length(); j++) {
-                org.json.JSONObject step = steps.getJSONObject(j);
-                org.json.JSONObject line = step.optJSONObject("polyline");
-                if ((line == null || line.optString("encodedPolyline").isEmpty())
-                        && step.has("distanceMeters") && step.optInt("distanceMeters", -1) == 0) continue;
-                if (line == null) return; // Keep API overview rather than fabricate missing geometry.
-                double[][] points;
-                try { points = decode(line.optString("encodedPolyline")); }
-                catch (IllegalArgumentException missing) { return; }
-                for (double[] p : points) {
-                    double[] last = all.isEmpty() ? null : all.get(all.size()-1);
-                    if (last == null || last[0] != p[0] || last[1] != p[1]) all.add(p);
+        ArrayList<double[]> all=new ArrayList<>();
+        org.json.JSONArray segments=new org.json.JSONArray(),legs=route.optJSONArray("legs");
+        if(legs==null)return;
+        for(int i=0;i<legs.length();i++){
+            org.json.JSONObject leg=legs.optJSONObject(i);if(leg==null)continue;
+            org.json.JSONArray steps=leg.optJSONArray("steps");if(steps==null)continue;
+            for(int j=0;j<steps.length();j++){
+                org.json.JSONObject step=steps.optJSONObject(j);if(step==null)continue;
+                org.json.JSONObject line=step.optJSONObject("polyline");double[][] points=null;boolean estimated=step.optBoolean("lokiGeometryEstimated",false);
+                if(line!=null)try{points=decode(line.optString("encodedPolyline"));}catch(Exception ignored){}
+                if(points==null){
+                    double[] a=endpoint(step,true),b=endpoint(step,false);
+                    if(a==null && j==0)a=location(leg.optJSONObject("startLocation"));
+                    if(b==null && j==steps.length()-1)b=location(leg.optJSONObject("endLocation"));
+                    if(a==null && !all.isEmpty())a=all.get(all.size()-1);
+                    if(b==null && j+1<steps.length()) {org.json.JSONObject next=steps.optJSONObject(j+1);if(next!=null)b=endpoint(next,true);}
+                    if(a==null||b==null)continue;
+                    points=new double[][]{a,b};estimated=true;
+                    step.put("polyline",new org.json.JSONObject().put("encodedPolyline",encode(java.util.Arrays.asList(points))));
+                    step.put("lokiGeometryEstimated",true);
                 }
+                org.json.JSONArray path=new org.json.JSONArray();
+                for(double[] p:points){path.put(new org.json.JSONArray().put(p[0]).put(p[1]));
+                    double[] last=all.isEmpty()?null:all.get(all.size()-1);
+                    if(last==null||Math.round(last[0]*1e5)!=Math.round(p[0]*1e5)||Math.round(last[1]*1e5)!=Math.round(p[1]*1e5))all.add(p);}
+                segments.put(new org.json.JSONObject().put("travelMode",step.optString("travelMode")).put("estimated",estimated).put("points",path));
             }
         }
-        if (all.size() < 2) return;
-        StringBuilder encoded = new StringBuilder();
-        long lat = 0, lng = 0;
-        for (double[] p : all) {
-            long nextLat = Math.round(p[0]*1e5), nextLng = Math.round(p[1]*1e5);
-            encodeComponent(encoded, nextLat-lat); encodeComponent(encoded, nextLng-lng);
-            lat = nextLat; lng = nextLng;
-        }
-        route.put("polyline", new org.json.JSONObject().put("encodedPolyline", encoded.toString()));
+        route.put("lokiRouteSegments",segments);
+        if(all.size()>=2)route.put("polyline",new org.json.JSONObject().put("encodedPolyline",encode(all)));
     }
     private static void encodeComponent(StringBuilder out, long delta) {
         long value = delta < 0 ? ~(delta << 1) : delta << 1;

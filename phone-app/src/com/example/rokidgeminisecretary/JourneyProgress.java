@@ -44,6 +44,9 @@ final class JourneyProgress {
                 .put("fetchedAt", journey.fetchedAt).put("legCount", journey.legs.size())
                 .put("currentLegIndex", current).put("positionConfirmed", confident)
                 .put("selectionSource", "gps_estimate");
+        JSONArray segments=new JSONArray();
+        for(int i=0;i<geometry.size();i++)if(geometry.get(i).length>=2)segments.put(new JSONObject().put("index",i).put("travelMode",journey.legs.get(i).travelMode).put("estimated",journey.legs.get(i).geometryEstimated).put("points",pointsJson(geometry.get(i))));
+        out.put("routeSegments",segments);
         JSONArray transitStops = new JSONArray();
         for (int i = Math.max(0, current); i < journey.legs.size(); i++) {
             TransitJourney.Leg next = journey.legs.get(i);
@@ -53,6 +56,20 @@ final class JourneyProgress {
                     .put("lineName", next.lineName));
         }
         out.put("transitStops", transitStops);
+        long finalArrival = -1;
+        double egressSeconds = 0;
+        for (int i = journey.legs.size() - 1; i >= 0; i--) {
+            TransitJourney.Leg tail = journey.legs.get(i);
+            if ("TRANSIT".equals(tail.travelMode)) {
+                long arrival = instant(tail.arrivalTime);
+                if (arrival > 0 && egressSeconds >= 0) finalArrival = arrival + (long)(egressSeconds * 1000);
+                break;
+            }
+            if (tail.durationSeconds < 0) egressSeconds = -1;
+            else if (egressSeconds >= 0) egressSeconds += tail.durationSeconds;
+        }
+        if (finalArrival > now) out.put("finalArrivalTime", java.time.Instant.ofEpochMilli(finalArrival).toString())
+                .put("totalRemainingSeconds", (finalArrival - now) / 1000.0);
         if (current >= 0) {
             TransitJourney.Leg leg = journey.legs.get(current);
             out.put("currentLeg", new JSONObject().put("index", current).put("kind", leg.kind)
@@ -60,9 +77,17 @@ final class JourneyProgress {
                     .put("instruction", leg.instruction).put("departureStop", leg.departureStop)
                     .put("arrivalStop", leg.arrivalStop).put("departureTime", leg.departureTime)
                     .put("arrivalTime", leg.arrivalTime).put("lineName", leg.lineName)
+                    .put("durationSeconds", leg.durationSeconds).put("stopCount", leg.stopCount)
                     .put("transitDetails", new JSONObject(leg.transitDetailsJson)));
+            JSONObject currentLeg = out.getJSONObject("currentLeg");
+            long scheduled = instant(leg.arrivalTime);
+            if (confident && scheduled > now) currentLeg.put("remainingSeconds", (scheduled - now) / 1000.0);
         }
         return out;
+    }
+    private static long instant(String text) {
+        try { return java.time.Instant.parse(text).toEpochMilli(); }
+        catch (Exception missing) { return -1; }
     }
     private static JSONArray pointsJson(double[][] points) throws JSONException {
         JSONArray out = new JSONArray();

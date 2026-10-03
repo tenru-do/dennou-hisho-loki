@@ -167,6 +167,21 @@ final class GoogleNavigationClient {
         return found;
     }
 
+    static JSONArray nearbyTopicPois(Context c, double lat, double lng) throws Exception {
+        reserve(c, "places", 10, 3);
+        JSONObject body = new JSONObject().put("languageCode", "ja").put("maxResultCount", 5)
+                .put("rankPreference", "POPULARITY")
+                .put("includedTypes", new JSONArray().put("park").put("shopping_mall").put("tourist_attraction").put("museum"))
+                .put("locationRestriction", new JSONObject().put("circle", new JSONObject()
+                        .put("center", new JSONObject().put("latitude", lat).put("longitude", lng))
+                        .put("radius", LocalPoiCatalog.RADIUS_METERS)));
+        Response response = request(c, "https://places.googleapis.com/v1/places:searchNearby", body,
+                "places.displayName,places.location");
+        JSONArray places = new JSONObject(new String(response.bytes, StandardCharsets.UTF_8)).optJSONArray("places");
+        android.util.Log.i("LokiTopicData", "TOPIC/poi api=GooglePlaces radiusMeters=10000 rawResponseCount="+(places==null?0:places.length()));
+        return places==null?new JSONArray():places;
+    }
+
     static android.location.Address nearestStation(Context c, double lat, double lng) throws Exception {
         reserve(c, "places", 10, 3);
         JSONObject body = TransitAccess.stationRequest(lat, lng);
@@ -180,6 +195,8 @@ final class GoogleNavigationClient {
         station.setFeatureName(place.getJSONObject("displayName").getString("text"));
         return station;
     }
+    static double[] destinationCoordinates(Context c,String destination)throws Exception {JSONObject p=destinationWaypoint(c,destination).getJSONObject("location").getJSONObject("latLng");return new double[]{p.getDouble("latitude"),p.getDouble("longitude")};}
+    static JSONObject routeToPoint(Context c,double lat,double lng,double toLat,double toLng,String mode)throws Exception {String label="loki-segment:"+toLat+","+toLng;selectedDestinations.put(label,new double[]{toLat,toLng});try{return route(c,lat,lng,label,mode);}finally{selectedDestinations.remove(label);}}
     static JSONObject route(Context c, double lat, double lng, String destination, String mode) throws Exception {
         reserve(c, "routes", 20, 3);
         String travel = RoutesRequestPolicy.mode(mode);

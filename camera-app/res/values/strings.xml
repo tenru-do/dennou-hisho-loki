@@ -1,0 +1,8 @@
+<resources>
+    <string name="accessibility_service_description">Intercepts the Rokid camera button while Rokid Zoom Camera is active.</string>
+    <string name="recording_indicator">REC</string>
+    <string name="status_hud">%1$s %2$s C:%3$s%4$s</string>
+    <string name="charging_on">ON</string>
+    <string name="charging_off">OFF</string>
+    <string name="sleep_indicator">|SLEEP</string>
+</resources>
