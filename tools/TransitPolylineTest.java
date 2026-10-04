@@ -21,7 +21,7 @@ public class TransitPolylineTest {
         GooglePolyline.mergeStepsOrOverview(broken);
         if (!line.equals(broken.getJSONObject("polyline").getString("encodedPolyline"))) throw new AssertionError("overview fallback");
         String mask = RoutesRequestPolicy.mask("TRANSIT");
-        for (String field : new String[]{"routes.polyline", "routes.legs", "routes.description", "routes.warnings"})
+        for (String field : new String[]{"routes.polyline.encodedPolyline", "routes.legs", "routes.description", "routes.warnings"})
             if (!java.util.Arrays.asList(mask.split(",")).contains(field)) throw new AssertionError(field);
         System.out.println("TransitPolyline: 8 checks passed");
     }

@@ -4,7 +4,26 @@ import java.util.*;
 /** Completed answers are buffered into sentence groups; commas/newlines are not dispatch points. */
 public final class TtsSentenceBuffer {
     public static final int TARGET=240, MAX=420;
-    public static String[] splitTopic(String input) { return split(input,true); }
+    public static String[] splitTopic(String input) {
+        String text = input == null ? "" : input.replaceAll("[*#`]", "").replaceAll("[\\h]+", " ").trim();
+        if (text.isEmpty()) return new String[0];
+        List<String> sentences = new ArrayList<>(), chunks = new ArrayList<>();
+        int start = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if ("。！？!?".indexOf(text.charAt(i)) < 0) continue;
+            while (i + 1 < text.length() && "。！？!?」』\"".indexOf(text.charAt(i + 1)) >= 0) i++;
+            sentences.add(text.substring(start, i + 1)); start = i + 1;
+        }
+        if (start < text.length() && !text.substring(start).trim().isEmpty()) sentences.add(text.substring(start));
+        for (int i = 0; i < sentences.size();) {
+            int count = sentences.size() - i == 4 ? 2 : Math.min(3, sentences.size() - i);
+            StringBuilder group = new StringBuilder();
+            for (int j = 0; j < count; j++) group.append(sentences.get(i++));
+            // Exceptionally long sentences retain the transport's existing safe cap.
+            chunks.addAll(Arrays.asList(split(group.toString(), true)));
+        }
+        return chunks.toArray(new String[0]);
+    }
     public static String[] split(String input) { return split(input,false); }
     private static String[] split(String input,boolean keepLines) {
         String text=input==null?"":input.replaceAll("[*#`]", "").replaceAll(keepLines ? "[\\h]+" : "\\s+", " ").trim();

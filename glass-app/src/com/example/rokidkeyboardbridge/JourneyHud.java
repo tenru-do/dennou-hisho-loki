@@ -36,7 +36,8 @@ final class JourneyHud {
         JSONObject leg = journey.optJSONObject("currentLeg");
         JSONArray selected = routeFor(journey, overview);
         out.put("route", selected).put("routeReady", selected.length() >= 2)
-                .put("routeDestination", journey.optString("finalDestination"));
+                .put("routeDestination", journey.optString("phase").isEmpty()
+                        ? journey.optString("finalDestination") : input.optString("routeDestination"));
         JSONArray planned = journey.optJSONArray("transitStops");
         if (planned != null && planned.length() > 0) {
             StringBuilder transport = new StringBuilder();
@@ -79,6 +80,12 @@ final class JourneyHud {
             out.put("detail", leg.optString("departureStop", "") + " " + time(leg.optString("departureTime"))
                     + " 発 → 降車 " + leg.optString("arrivalStop", "")
                     + " / " + time(leg.optString("arrivalTime")) + " 着予定（区間推定）");
+            if ("TRANSIT_LEG".equals(journey.optString("phase"))) {
+                JSONObject stops = details == null ? null : details.optJSONObject("stopDetails");
+                JSONObject departure = stops == null ? null : stops.optJSONObject("departureStop");
+                String platform = departure == null ? "" : departure.optString("platform", "");
+                out.put("detail", out.optString("detail") + (platform.isEmpty() ? " / 番線情報未提供" : " / " + platform + "番線"));
+            }
             String point = "降車 " + leg.optString("arrivalStop", "停留所");
             int count = leg.optInt("stopCount", -1);
             if (count >= 0) point += "・区間" + count + ("バス".equals(label) ? "停留所" : "駅");
@@ -98,6 +105,8 @@ final class JourneyHud {
                     : "EGRESS".equals(kind) ? "目的地までの徒歩区間"
                     : "ACCESS".equals(kind) ? "駅・停留所までの区間"
                     : "bicycling".equals(mode) ? "目的地までの自転車区間" : "目的地までの徒歩区間"));
+            if ("FIRST_MILE".equals(journey.optString("phase"))) out.put("detail", "乗車駅までの区間");
+            else if ("LAST_MILE".equals(journey.optString("phase"))) out.put("detail", "最終目的地までの区間");
             if ("ACCESS".equals(kind) || "TRANSFER".equals(kind)) {
                 JSONObject next = planned == null ? null : planned.optJSONObject(0);
                 if (next != null) out.put("afterNextInstruction", ("TRANSFER".equals(kind) ? "乗換 " : "乗車 ")
@@ -110,7 +119,7 @@ final class JourneyHud {
     private static String minutes(double seconds) {
         return (long)Math.ceil(seconds / 60.0) + "分";
     }
-    private static String time(String value) {
+    static String time(String value) {
         try {
             java.time.Instant instant = java.time.Instant.parse(value);
             SimpleDateFormat format = new SimpleDateFormat("HH:mm", Locale.JAPAN);

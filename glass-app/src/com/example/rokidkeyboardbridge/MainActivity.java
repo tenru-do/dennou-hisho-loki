@@ -155,7 +155,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long VOICE_SILENCE_STOP_MS = 1000L;
     private static final long VOICE_MIN_CAPTURE_MS = 1500L;
     private static final int VOICE_LEVEL_THRESHOLD = 18;
-    private static final int VOICE_AUDIO_SOURCE_PROFILE_VERSION = 2;
+    private static final int VOICE_AUDIO_SOURCE_PROFILE_VERSION = 3;
     private static final int VOICE_PENDING_MAX_SEGMENTS = 12;
     private static final int VOICE_PENDING_MAX_CHARS = 2800;
     private static final long MAP_NAVIGATION_WAKE_MS = 12000L;
@@ -234,6 +234,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String navigationTransportSummary = "";
     private TextView navigationDestinationLabel;
     private String handledCompletionId = "";
+    private ScrollView navigationOverviewScroll;
+    private NavigationOverviewView navigationOverviewView;
+    private NavigationOverviewSummary navigationOverviewSummary;
     private LinearLayout navigationGuidanceColumn;
     private String sdkNavigationSession = "";
     private String navigationRouteIdentity = "";
@@ -517,12 +520,49 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
+    // Context speech is queued independently of conversation silence policy.
+    private final java.util.ArrayDeque<String> contextSpeechQueue = new java.util.ArrayDeque<>();
+    private String eveningContextDay = "";
+    private long contextSpeechUntil;
+    private boolean contextSpeechTimerScheduled;
+    private synchronized void enqueueEveningContext(long now, boolean worn, String weather) {
+        java.util.Calendar clock = java.util.Calendar.getInstance(); clock.setTimeInMillis(now);
+        String day = clock.get(java.util.Calendar.YEAR)+":"+clock.get(java.util.Calendar.DAY_OF_YEAR);
+        if (!worn || clock.get(java.util.Calendar.HOUR_OF_DAY)*60+clock.get(java.util.Calendar.MINUTE)<990
+                || day.equals(eveningContextDay)) return;
+        eveningContextDay=day;
+        contextSpeechQueue.add("16時30分を過ぎました。"+(weather==null||weather.trim().isEmpty()?"": "現在の天候は"+weather.trim()+"です。")
+                +"帰宅時間と夕食の予定を確認しておくと安心です。");
+        Log.i(TAG,"Context speech queued: evening; weather="+(weather!=null&&!weather.trim().isEmpty()));
+    }
+    private final Runnable contextSpeechTimer = new Runnable() {
+        @Override public void run() {
+            if (!activityForeground || isFinishing() || isDestroyed()) {contextSpeechTimerScheduled=false;return;}
+            long now=System.currentTimeMillis();
+            enqueueEveningContext(now,proximityStateKnown&&glassWorn,
+                    weatherUpdatedAt>0 && now-weatherUpdatedAt<=7200000L ? weatherCondition : "");
+            if (!radioObservationActive && CaptureLease.CAMERA.availablePermits()>0 && CaptureLease.MICROPHONE.availablePermits()>0
+                    && !voiceRecording && !speechRecognizerActive && !geminiRequestActive && mascotMode!=2
+                    && !morningPlaybackActive && !radioModeEnabled && !radioTopicPending
+                    && !topicFetching && !topicControlPending && !ambientPausedForNavigation
+                    && proximityStateKnown && glassWorn && SystemClock.uptimeMillis()>=contextSpeechUntil) {
+                String text; synchronized(MainActivity.this){text=contextSpeechQueue.poll();}
+                if(text!=null){contextSpeechUntil=SystemClock.uptimeMillis()+30000L;
+                    speakWithPhoneTtsChunked("[System: Context Speech]",text);}
+            }
+            handler.postDelayed(this,30000L);
+        }
+    };
+
     private void resetAmbientTimer() {
         if (Looper.myLooper() != handler.getLooper()) {
             handler.post(() -> resetAmbientTimer());
             return;
         }
         handler.removeCallbacks(ambientTimer);
+        if(!contextSpeechTimerScheduled && activityForeground && !isFinishing() && !isDestroyed()) {
+            contextSpeechTimerScheduled=true;handler.postDelayed(contextSpeechTimer,30000L);
+        }
         if (activityForeground && !isFinishing() && !isDestroyed() && !voiceLoopMode && !radioModeEnabled && !radioTopicPending && !conversationActive)
             handler.postDelayed(ambientTimer, AMBIENT_TRIGGER_MS);
     }
@@ -1854,6 +1894,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
         FrameLayout frameLayout = new FrameLayout(this);
         this.hudRoot = frameLayout;
         frameLayout.setBackgroundColor(Color.BLACK);
+        this.navigationOverviewScroll = new ScrollView(this);
+        this.navigationOverviewScroll.setBackgroundColor(Color.BLACK);
+        this.navigationOverviewScroll.setVerticalScrollBarEnabled(false);
+        this.navigationOverviewView = new NavigationOverviewView(this);
+        this.navigationOverviewScroll.addView(this.navigationOverviewView);
+        this.navigationOverviewScroll.setVisibility(View.GONE);
+        frameLayout.addView(this.navigationOverviewScroll, new FrameLayout.LayoutParams(1, 1));
         frameLayout.addView(linearLayout, new FrameLayout.LayoutParams(-1, -1));
         this.mascotView = new MascotView(this);
         FrameLayout.LayoutParams layoutParams6 = new FrameLayout.LayoutParams(dp(96), dp(96), 51);
@@ -1943,9 +1990,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         updateNavigationCommentLayout();
     }
 
-    private void showDisplaySettings() {
-        new AlertDialog.Builder(this).setTitle("設定")
-                .setItems(new String[]{"表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示"},
+    private AlertDialog showDisplaySettings() {
+        return NavigationChoiceDialog.show(this, "設定",
+                new String[]{"表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示"}, -1,
                     new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface dialog, int which) {
                             if (which == 3) { showApiKeyDialog(); return; }
@@ -1953,7 +2000,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                     .putBoolean("lower_half", which == 1).putBoolean("upper_half", which == 2).apply();
                             applyDisplayArea();
                         }
-                    }).setNegativeButton("閉じる", null).show();
+                    });
     }
 
     public void showApiKeyDialog() {
@@ -3364,6 +3411,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     MainActivity.this.transitUpdatedAt = topTime;
                     MainActivity.this.navigationUpdatedAt = json.optLong("time", 0L);
                     final boolean navigationSuppressed = json.optBoolean("suppressed", false);
+                    final NavigationOverviewSummary summaryData = NavigationOverviewSummary.from(json);
                     json = JourneyHud.apply(json, getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("overview", false));
                     final JSONObject journeyData = "navigation_sdk".equals(json.optString("source")) ? null : json.optJSONObject("journey");
                     final String instruction = json.optString("instruction", "").trim();
@@ -3476,6 +3524,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                 MainActivity.this.navigationMap.setJourneyRoutes(journeyData);
                             }
                             MainActivity.this.updateNavigationButtonLabel();
+                            MainActivity.this.navigationOverviewSummary = summaryData;
                             MainActivity.this.applyMapNavigationGuidance(
                                     navigationActive, instruction, detail, nextDistance, arrival,
                                     afterNextInstruction, afterNextDistance, afterNextDuration,
@@ -3483,6 +3532,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                     currentRoad,
                                     latitude, longitude, bearing, speed, accuracy, locationTime,
                                     routeReady, routeDestination, routeJson);
+                            MainActivity.this.updateNavigationCommentLayout();
                             MainActivity.this.updateInfoLine();
                         }
                     });
@@ -3497,6 +3547,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void resetNavigationDisplay() {
         mapNavigationActive = false;
+        navigationOverviewSummary = null;
+        if (navigationOverviewScroll != null) navigationOverviewScroll.setVisibility(View.GONE);
         lastValidMapNavigationSignalAt = 0;
         mapNavigationInstruction = "";
         mapNavigationDetail = "";
@@ -3804,7 +3856,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }, "NavigationHudToggle").start();
     }
 
-    private void showNavigationDestinationSelection() {
+    private AlertDialog showNavigationDestinationSelection() {
         int theme=getResources().getIdentifier("NavigationDialogTheme","style",getPackageName());
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.BLACK);
         TextView input=new TextView(this); input.setText("目的地を選んでください"); input.setTextColor(Color.WHITE); input.setTextSize(18); input.setPadding(dp(8),dp(8),dp(8),dp(8)); input.setMaxLines(2); input.setFocusable(false);
@@ -3818,55 +3870,122 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         String[] modes={"walking","driving","bicycling","transit"}; String[] labels={"徒歩","車","自転車","公共交通"};
         final int[] selected={0}; Button modeButton=new Button(this); modeButton.setText(labels[0]); NavigationChoiceDialog.styleButton(this,modeButton); root.addView(modeButton);
+        // Explicit horizontal chain: geometry must not skip the last preset.
+        for (int i = 0; i < presets.getChildCount(); i++) {
+            View preset = presets.getChildAt(i);
+            if (preset.getId() == View.NO_ID) preset.setId(View.generateViewId());
+        }
+        if (modeButton.getId() == View.NO_ID) modeButton.setId(View.generateViewId());
+        View home = presets.getChildAt(0), work = presets.getChildAt(1), saved = presets.getChildAt(2);
+        home.setNextFocusRightId(work.getId());
+        home.setNextFocusForwardId(work.getId());
+        home.setNextFocusDownId(modeButton.getId());
+        work.setNextFocusLeftId(home.getId());
+        work.setNextFocusRightId(saved.getId());
+        work.setNextFocusForwardId(saved.getId());
+        work.setNextFocusDownId(modeButton.getId());
+        saved.setNextFocusLeftId(work.getId());
+        saved.setNextFocusForwardId(modeButton.getId());
+        saved.setNextFocusDownId(modeButton.getId());
+        saved.setNextFocusRightId(modeButton.getId());
+        modeButton.setNextFocusUpId(saved.getId());
+        // Own the entire forward key gesture so repeats cannot carry focus past the saved button.
+        final int[] capturedForwardKey={-1};
+        android.view.View.OnKeyListener savedFocusGuard=(v,code,event)-> {
+            boolean forward=code==KeyEvent.KEYCODE_DPAD_RIGHT
+                    || (code==KeyEvent.KEYCODE_TAB && !event.isShiftPressed());
+            if(capturedForwardKey[0]==code) {
+                if(event.getAction()==KeyEvent.ACTION_UP)capturedForwardKey[0]=-1;
+                return true;
+            }
+            if(v==work && forward) {
+                if(event.getAction()==KeyEvent.ACTION_DOWN && !event.isCanceled()) {
+                    capturedForwardKey[0]=code; saved.requestFocus();
+                }
+                return true;
+            }
+            // Preserve the existing decision-key behavior installed by styleButton.
+            if(code!=KeyEvent.KEYCODE_DPAD_CENTER && code!=KeyEvent.KEYCODE_ENTER
+                    && code!=KeyEvent.KEYCODE_NUMPAD_ENTER && code!=KeyEvent.KEYCODE_BUTTON_SELECT)return false;
+            if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())v.performClick();
+            return true;
+        };
+        work.setOnKeyListener(savedFocusGuard);
+        saved.setOnKeyListener(savedFocusGuard);
         modeButton.setOnClickListener(v->NavigationChoiceDialog.show(this,"移動手段",labels,selected[0],(d,i)-> { selected[0]=i; modeButton.setText(labels[i]); }));
         AlertDialog dialog=new AlertDialog.Builder(this,theme).setTitle("登録地点からナビ").setView(root)
             .setPositiveButton("MAPナビ開始",null).setNegativeButton("閉じる",null).create();
         dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             String destination=input.getTag() instanceof String ? (String)input.getTag() : "";
             if(destination.isEmpty()||destination.length()>200) { feedback.setText("自宅・勤務先・登録地点から目的地を選んでください"); return; }
-            String path="navigation_start?destination="+android.net.Uri.encode(destination)+"&mode="+modes[selected[0]]+"&id="+java.util.UUID.randomUUID().toString();
+            String path="navigation_start?destination="+android.net.Uri.encode(destination)+"&name="+android.net.Uri.encode(input.getText().toString())+"&mode="+modes[selected[0]]+"&id="+java.util.UUID.randomUUID().toString();
+            feedback.setText("ルート検索中…");
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
             new Thread(()-> {
                 try {
                     JSONObject result=new JSONObject(fetchPhoneEndpointJson(path));
-                    if(!result.optBoolean("ok")) throw new IllegalStateException();
-                    handler.post(()-> { dialog.dismiss(); setStatus("スマホへナビ開始要求を送信しました",Color.GREEN); });
-                } catch(Exception e) { handler.post(()-> { if(dialog.isShowing()) { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); feedback.setText("スマホに接続できません。接続を確認してください"); } }); }
+                    if(!result.optBoolean("ok")) throw new IllegalStateException(result.optString("error","ナビ開始に失敗しました"));
+                    handler.post(()-> { dialog.dismiss(); setStatus("スマホでルート生成・画面起動が完了しました",Color.GREEN); });
+                } catch(Exception e) { Log.w("LokiGoogleNav","glass_start_failed",e); handler.post(()-> { if(dialog.isShowing()) { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); String message="エラー: "+(e.getMessage()==null?"ナビ開始に失敗しました":e.getMessage()); feedback.setText(message); android.widget.Toast.makeText(this,message,android.widget.Toast.LENGTH_LONG).show(); } }); }
             },"GlassNavigationStart").start();
         })); dialog.show();
         NavigationChoiceDialog.styleButton(this,dialog.getButton(AlertDialog.BUTTON_POSITIVE));
         NavigationChoiceDialog.styleButton(this,dialog.getButton(AlertDialog.BUTTON_NEGATIVE));
+        NavigationChoiceDialog.installDialogSelection(dialog,(Button)presets.getChildAt(0));
         presets.getChildAt(0).requestFocus();
         dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.BLACK));
+        return dialog;
+    }
+    private volatile java.util.List<SavedNavigationPlace> savedNavigationPlaces = java.util.Collections.emptyList();
+    private int navigationPlacesGeneration;
+    static void bindNavigationPlace(TextView input,TextView feedback,SavedNavigationPlace place) {
+        input.setTag(place.query); input.setText(place.name); feedback.setText("");
     }
     private void loadNavigationPlaces(TextView input,TextView feedback,String kind) {
+        final int ticket=++navigationPlacesGeneration;
+        Log.i("LokiGoogleNav", "glass_places_clicked kind=" + kind);
+        feedback.setText("登録地点を取得中…");
         new Thread(()-> {
             try {
-                org.json.JSONArray places=new JSONObject(fetchPhoneEndpointJson("navigation_places")).getJSONArray("places");
+                java.util.List<SavedNavigationPlace> places=SavedNavigationPlace.parse(new JSONObject(fetchPhoneEndpointJson("navigation_places")));
                 handler.post(()-> {
-                    if(!input.isAttachedToWindow()) return;
+                    if(!input.isAttachedToWindow() || ticket!=navigationPlacesGeneration)return;
+                    savedNavigationPlaces=places;
+                    Log.i("LokiGoogleNav", "glass_places_ready count=" + places.size());
                     if(!"favorites".equals(kind)) {
-                        JSONObject place=places.optJSONObject("home".equals(kind)?0:1);
-                        if(place==null||place.optString("query").isEmpty()) { feedback.setText("スマホでこの地点を登録してください"); return; }
-                        input.setTag(place.optString("query")); input.setText(place.optString("name")); feedback.setText(""); return;
+                        for(SavedNavigationPlace place:places)if(kind.equals(place.kind)){bindNavigationPlace(input,feedback,place);return;}
+                        feedback.setText("スマホでこの地点を登録してください");return;
                     }
-                    if(places.length()<=2) { feedback.setText("スマホの登録地点の管理で追加してください"); return; }
-                    String[] names=new String[places.length()-2];
-                    for(int i=0;i<names.length;i++) names[i]=places.optJSONObject(i+2).optString("name");
-                    NavigationChoiceDialog.show(this,"登録地点",names,0,(d,i)-> { JSONObject place=places.optJSONObject(i+2); input.setTag(place.optString("query")); input.setText(place.optString("name")); feedback.setText(""); });
+                    java.util.List<SavedNavigationPlace> favorites=new java.util.ArrayList<>();
+                    for(SavedNavigationPlace place:places)if(!"home".equals(place.kind)&&!"work".equals(place.kind))favorites.add(place);
+                    if(favorites.isEmpty()){feedback.setText("スマホの登録地点の管理で追加してください");return;}
+                    String[] names=new String[favorites.size()];for(int i=0;i<names.length;i++)names[i]=favorites.get(i).name;
+                    feedback.setText("");
+                    navigationChoiceDialog = NavigationChoiceDialog.show(this,"登録地点",names,0,(d,i)->bindNavigationPlace(input,feedback,favorites.get(i)));
                 });
-            } catch(Exception e) { handler.post(()-> { if(input.isAttachedToWindow()) feedback.setText("登録地点を取得できません。スマホ接続を確認してください"); }); }
+            }catch(Exception e){handler.post(()-> {if(input.isAttachedToWindow()&&ticket==navigationPlacesGeneration)feedback.setText("登録地点を取得できません。スマホ接続を確認してください");});}
         },"GlassNavigationPlaces").start();
     }
     private AlertDialog navigationChoiceDialog;
     private void showNavigationDisplayMenu() {
         navigationChoiceDialog = NavigationChoiceDialog.show(this, "ナビ", new String[]{"登録地点からMAPナビ", "操作モード（地図を小さく）", "大きい地図・現在地追従", "大きい地図・取得経路全体",
-                        this.navigationHudSuppressed ? "ナビ表示を再開" : "ナビ表示を停止"},
+                        this.navigationHudSuppressed ? "ナビ表示を再開" : "ナビ表示を停止", "駅に到着（乗車）", "電車を降りた（降車）"},
                         getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("large_map", false)
                             ? (getSharedPreferences("navigation_display", MODE_PRIVATE).getBoolean("overview", false) ? 3 : 2) : 0,
                         new DialogInterface.OnClickListener() {
                             @Override public void onClick(DialogInterface dialog, int which) {
                                 if (which == 0) { showNavigationDestinationSelection(); return; }
+                                if (which == 5 || which == 6) {
+                                    final String action=which==5?"board":"alight";
+                                    new Thread(() -> {
+                                        String message;
+                                        try { message=new JSONObject(fetchPhoneEndpointJson("navigation_action?action="+action)).optString("message"); }
+                                        catch(Exception failure){message="スマホとの接続を確認してください";}
+                                        final String reply=message;
+                                        handler.post(() -> showLocalAssistantReply(reply,MASCOT_EXPR_LISTENING,"ナビ操作"));
+                                    },"MultimodalManualAdvance").start();
+                                    return;
+                                }
                                 if (which == 4) {
                                     toggleNavigationHudFromGlass();
                                     return;
@@ -4025,6 +4144,21 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.answerScroll.requestLayout();
         }
         applyLowerHalfStack(navigationMain);
+        if (navigationOverviewScroll != null) {
+            boolean showSummary = overviewLayout && mapNavigationActive;
+            navigationOverviewScroll.setVisibility(showSummary ? View.VISIBLE : View.GONE);
+            if (showSummary) {
+                int width = hudRoot.getWidth() > 0 ? hudRoot.getWidth() : getResources().getDisplayMetrics().widthPixels;
+                int height = hudRoot.getHeight() > 0 ? hudRoot.getHeight() : getResources().getDisplayMetrics().heightPixels;
+                FrameLayout.LayoutParams summaryParams = new FrameLayout.LayoutParams(Math.max(1,(width-12)/2), Math.max(1,height-dp(52)), android.view.Gravity.TOP | android.view.Gravity.LEFT);
+                summaryParams.leftMargin=6; summaryParams.topMargin=dp(20);
+                navigationOverviewScroll.setLayoutParams(summaryParams);
+                navigationOverviewScroll.bringToFront();
+                navigationOverviewView.bind(navigationOverviewSummary != null ? navigationOverviewSummary
+                        : NavigationOverviewSummary.from(new JSONObject()));
+                if (answerScroll != null) answerScroll.setVisibility(View.GONE);
+            }
+        }
         updateNavigationScreenPolicy();
     }
 
@@ -6591,7 +6725,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         setStatus(topicModeName(topic.optString("mode", currentTopicMode)) + "・話しかけると停止", Color.rgb(90, 220, 120));
         final int nativeVoiceGeneration;
         synchronized (nativeSpeechLock) { nativeVoiceGeneration = ++ttsGeneration; }
-        final String[] topicChunks = splitForTts(topic.optString("message"));
+        final String[] topicChunks = TtsSentenceBuffer.splitTopic(topic.optString("message"));
         final long[] topicDurations = new long[topicChunks.length];
         for (int i = 0; i < topicChunks.length; i++) topicDurations[i] = i == topicChunks.length - 1
                 ? estimatePhoneTtsFinalDurationMs(topicChunks[i]) : estimatePhoneTtsInterChunkMs(topicChunks[i]);
@@ -6927,7 +7061,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         */
     public void recordVoiceAndSend(String apiKey, final int requestId) {
         AudioRecord recorder = null;
+        CaptureLease lease = null;
+        RecognitionNoiseControl noiseControl = null;
         try {
+            lease = CaptureLease.acquire(CaptureLease.MICROPHONE, () -> requestId != voiceRecognitionGeneration);
             int sampleRate = 16000;
             int minBuffer = AudioRecord.getMinBufferSize(sampleRate,
                     AudioFormat.CHANNEL_IN_MONO,
@@ -6971,6 +7108,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (recorder == null) {
                 throw new IllegalStateException("使えるマイク入力経路が見つかりません");
             }
+            noiseControl = new RecognitionNoiseControl(recorder);
             ByteArrayOutputStream pcm = new ByteArrayOutputStream();
             // A minBuffer-sized read can block for about a second on the
             // glasses. Keep the AudioRecord allocation large, but read in
@@ -7040,6 +7178,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             } catch (Exception ignored) {
             }
             recorder = null;
+            noiseControl.close(); noiseControl = null;
+            lease.close(); lease = null;
             if (requestId != this.voiceRecognitionGeneration) {
                 return;
             }
@@ -7254,12 +7394,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
             });
         } finally {
+            if (noiseControl != null) noiseControl.close();
             if (recorder != null) {
                 try {
                     recorder.release();
                 } catch (Exception ignored) {
                 }
             }
+            if (lease != null) lease.close();
         }
     }
 
@@ -7350,11 +7492,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             Log.i(TAG, "voice audio source profile reset to VOICE_RECOG");
             return 0;
         }
-        int index = getPreferences().getInt(KEY_VOICE_AUDIO_SOURCE_INDEX, 0);
-        if (index < 0) {
-            index = 0;
-        }
-        return index % sources.length;
+        // A previous silent recording must not make MIC/DEFAULT the next default.
+        return 0;
     }
 
     private void advanceVoiceAudioSource(String reason) {
@@ -8871,7 +9010,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private byte[] recordAmbientPcm(int generation) throws Exception {
         AudioRecord recorder = null;
+        CaptureLease lease = null;
         try {
+            lease = CaptureLease.acquire(CaptureLease.MICROPHONE, () -> generation != ambientGeneration
+                    || voiceRecording || System.currentTimeMillis() < ambientPauseUntil);
             int sampleRate = 16000;
             int minBuffer = AudioRecord.getMinBufferSize(sampleRate,
                     AudioFormat.CHANNEL_IN_MONO,
@@ -9020,6 +9162,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 } catch (Exception ignored) {
                 }
             }
+            if (lease != null) lease.close();
         }
     }
 
@@ -12147,7 +12290,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         // All bridge candidates are local-LAN addresses. A stale DHCP address
         // should fail fast so discovery can advance to the phone's new address.
         httpURLConnection.setConnectTimeout(400);
-        httpURLConnection.setReadTimeout(str.contains("/google_tile?") ? 30000 : str.contains("/morning") ? 15000 : 1800);
+        httpURLConnection.setReadTimeout(str.contains("/navigation_start?") ? 75000 : str.contains("/google_tile?") ? 30000 : str.contains("/morning") ? 15000 : 1800);
         int responseCode = httpURLConnection.getResponseCode();
         String all = readAll((responseCode < 200 || responseCode >= 300) ? httpURLConnection.getErrorStream() : httpURLConnection.getInputStream());
         httpURLConnection.disconnect();
@@ -15030,7 +15173,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
             JSONObject leg = journey.optJSONObject("currentLeg");
             JSONArray part = leg == null ? null : leg.optJSONArray("route");
             journeyWholeRoute = whole == null ? "[]" : whole.toString();
-            journeyLegRoute = JourneyHud.routeFor(journey, false).toString();
+            JSONArray activeRoute=JourneyHud.routeFor(journey,false);
+            if("FIRST_MILE".equals(journey.optString("phase")) && (activeRoute==null||activeRoute.length()<2)) {
+                JSONArray access=part;
+                if(access!=null && access.length()>=2) activeRoute=access;
+            }
+            journeyLegRoute = activeRoute==null?"[]":activeRoute.toString();
+            if(!overview && "FIRST_MILE".equals(journey.optString("phase")) && activeRoute!=null && activeRoute.length()>=2) {
+                setRoute(journeyLegRoute);
+                Log.i("LokiGoogleNav","first_mile_bound points="+activeRoute.length());
+            }
         }
         void setOverview(boolean value) {
             overview=value;
@@ -15740,6 +15892,25 @@ public final class MainActivity extends Activity implements SensorEventListener 
     // Declared on the Activity because Java 8 inner classes cannot declare enums.
     private enum AngleState { THREE_QUARTER, TRANSITION_TO_FRONT, FRONT, TRANSITION_TO_3Q }
 
+    private int mascotCameraPauseDepth;
+    AutoCloseable pauseMascotForCamera() throws Exception {
+        java.util.concurrent.CountDownLatch ready=new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean applied=new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+        Throwable[] failure={null};
+        Runnable release=()->{if(applied.getAndSet(false)){mascotCameraPauseDepth=Math.max(0,mascotCameraPauseDepth-1);
+            if(mascotCameraPauseDepth==0 && mascotView!=null && !isDestroyed())mascotView.setCameraPaused(false);}};
+        runOnUiThread(()->{try{if(!cancelled.get() && mascotView!=null && !isDestroyed()){
+            mascotCameraPauseDepth++;applied.set(true);mascotView.setCameraPaused(true);
+        }}catch(Throwable error){failure[0]=error;}finally{
+            // Let the black frame replace GPU references before opening the camera.
+            handler.postDelayed(()->{System.gc();System.runFinalization();ready.countDown();},250);}});
+        try {if(!ready.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("mascot_pause_timeout");
+            if(failure[0]!=null)throw new Exception("mascot_pause_failed",failure[0]);}
+        catch(Exception error){cancelled.set(true);runOnUiThread(release);throw error;}
+        return ()->runOnUiThread(release);
+    }
+
     private final class MascotView extends View {
         private AngleState angleState = AngleState.THREE_QUARTER;
         private long frontHoldUntil;
@@ -16410,9 +16581,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.bitmapDst = new RectF();
             this.oval = new RectF();
             this.bitmapPaint = new Paint(7);
-            smoothTalkSheets[0] = loadSmoothAsset("mascot_sheet_v6_smooth_talk.png");
-            smoothTalkSheets[1] = loadSmoothAsset("mascot_sheet_v6_smooth_talk_part2.png");
-            headGestureSheet = loadSmoothAsset("mascot_sheet_head_gestures_16.png");
             this.ticker = new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.MascotView.1
                 @Override // java.lang.Runnable
                 public void run() {
@@ -16441,6 +16609,178 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.cut.setStyle(Paint.Style.FILL);
             this.glow.setColor(Color.argb(0, 90, 255, 130));
             this.glow.setStyle(Paint.Style.FILL);
+            loadMascotArtwork();
+            loadDenseTurnAssets();
+            initializePortraitCache();
+            initializeDenseOverlays();
+        }
+
+        void setMode(int i) {
+            if (this.mode != i) {
+                smoothTalkStartedAt = android.os.SystemClock.uptimeMillis();
+                if (i == 2) {
+                    speechVisual.begin(smoothTalkStartedAt);
+                    frontHoldUntil = smoothTalkStartedAt + 1500L;
+                }
+                else speechVisual.stop();
+                removeCallbacks(this.ticker);
+                if (renderingActive) post(this.ticker);
+                this.frame = 0;
+                if (i == 0) {
+                    resetIdleAnimation();
+                } else {
+                    this.idleBlinking = false;
+                }
+            }
+            this.mode = i;
+            if (i != 2) {
+                speechKeepsFront = false;
+                frontHoldUntil = 0L;
+                this.speakingAnimationEnabled = true;
+                this.speechActionStyle = MASCOT_ACTION_NONE;
+            }
+            if (i == 2 && this.expression == 0) {
+                this.expression = 1;
+            } else if (i == 1 && this.expression == 0) {
+                this.expression = 0;
+            }
+            post(refreshFrame);
+        }
+
+        private void resetIdleAnimation() {
+            this.idleBlinking = false;
+            this.idleDoubleBlinkPending = false;
+            this.idleBlinkEndAt = 0L;
+            this.nextIdleBlinkAt = 0L;
+            this.nextIdlePoseAt = 0L;
+            this.idlePoseIndex = 0;
+            this.idlePoseExpression = 0;
+        }
+
+        private long idleBlinkIntervalMs() {
+            switch (this.idleBlinkCount % 6) {
+                case 0:
+                    return 2900L;
+                case 1:
+                    return 4300L;
+                case 2:
+                    return 3400L;
+                case 3:
+                    return 5200L;
+                case 4:
+                    return 3700L;
+                default:
+                    return 4700L;
+            }
+        }
+
+        private long idlePoseIntervalMs() {
+            switch (this.idlePoseIndex % 5) {
+                case 0:
+                    return 4200L;
+                case 1:
+                    return 5600L;
+                case 2:
+                    return 4800L;
+                case 3:
+                    return 6200L;
+                default:
+                    return 5100L;
+            }
+        }
+
+        private int nextIdlePoseExpression() {
+            // Mostly cool and attentive, with occasional upward glances and a
+            // brief soft smile. The mischievous face is deliberately rare.
+            switch (this.idlePoseIndex % 12) {
+                case 1:
+                case 7:
+                    return 4;
+                case 2:
+                case 10:
+                    return MASCOT_EXPR_SEARCHING_MEMORY;
+                case 4:
+                    return 9;
+                case 5:
+                case 11:
+                    return 1;
+                case 8:
+                    return 14;
+                default:
+                    return 0;
+            }
+        }
+
+        /**
+         * Advances only when an idle event is due. Between events the ticker
+         * sleeps for up to 620 ms, while a blink gets its own short 145 ms
+         * frame. This looks alive without redrawing the HUD at video rates.
+         */
+        private long advanceIdleAnimation() {
+            long now = SystemClock.uptimeMillis();
+            if (this.nextIdleBlinkAt <= 0L) {
+                this.nextIdleBlinkAt = now + 2200L;
+            }
+            if (this.nextIdlePoseAt <= 0L) {
+                this.nextIdlePoseAt = now + 3600L;
+            }
+
+            if (this.idleBlinking && now >= this.idleBlinkEndAt) {
+                this.idleBlinking = false;
+                if (this.idleDoubleBlinkPending) {
+                    this.idleDoubleBlinkPending = false;
+                    this.nextIdleBlinkAt = now + 190L;
+                } else {
+                    this.nextIdleBlinkAt = now + idleBlinkIntervalMs();
+                }
+            } else if (!this.idleBlinking && now >= this.nextIdleBlinkAt) {
+                this.idleBlinking = true;
+                this.idleBlinkCount++;
+                this.idleBlinkEndAt = now + 145L;
+                // Roughly every fifth blink becomes a natural quick double.
+                this.idleDoubleBlinkPending = (this.idleBlinkCount % 5) == 0;
+            }
+
+            if (now >= this.nextIdlePoseAt) {
+                this.idlePoseIndex++;
+                this.idlePoseExpression = nextIdlePoseExpression();
+                this.nextIdlePoseAt = now + idlePoseIntervalMs();
+            }
+
+            if (this.idleBlinking) {
+                return Math.max(60L, this.idleBlinkEndAt - now);
+            }
+            long nextEventAt = Math.min(this.nextIdleBlinkAt, this.nextIdlePoseAt);
+            return Math.max(80L, Math.min(620L, nextEventAt - now));
+        }
+
+        void setSpeechPresentation(boolean animateMouth, int actionStyle) {
+            int nextActionStyle = Math.max(MASCOT_ACTION_NONE,
+                    Math.min(MASCOT_ACTION_BREATHLESS, actionStyle));
+            if (this.speakingAnimationEnabled != animateMouth
+                    || this.speechActionStyle != nextActionStyle) {
+                this.frame = 0;
+            }
+            this.speakingAnimationEnabled = animateMouth;
+            this.speechActionStyle = nextActionStyle;
+            post(refreshFrame);
+        }
+
+        void setExpression(int i) {
+            int nextExpression = Math.max(0, Math.min(MASCOT_EXPR_MAX, i));
+            if (this.expression != nextExpression || nextExpression == MASCOT_EXPR_REFUSAL_CENTER) {
+                // Start pose animations from their neutral frame instead of an
+                // arbitrary point in the global idle ticker.
+                this.frame = 0;
+            }
+            this.expression = nextExpression;
+            post(refreshFrame);
+        }
+
+        private void loadMascotArtwork() {
+            smoothTalkSheets[0] = loadSmoothAsset("mascot_sheet_v6_smooth_talk.png");
+            smoothTalkSheets[1] = loadSmoothAsset("mascot_sheet_v6_smooth_talk_part2.png");
+            headGestureSheet = loadSmoothAsset("mascot_sheet_head_gestures_16.png");
             try {
                 InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v4_40.png");
                 try {
@@ -16627,177 +16967,51 @@ public final class MainActivity extends Activity implements SensorEventListener 
             } catch (Exception error) {
                 Log.e(MainActivity.TAG, "mascot v14 post-intimacy sheet load failed", error);
             }
-            loadDenseTurnAssets();
-            initializePortraitCache();
-            initializeDenseOverlays();
         }
 
-        void setMode(int i) {
-            if (this.mode != i) {
-                smoothTalkStartedAt = android.os.SystemClock.uptimeMillis();
-                if (i == 2) {
-                    speechVisual.begin(smoothTalkStartedAt);
-                    frontHoldUntil = smoothTalkStartedAt + 1500L;
-                }
-                else speechVisual.stop();
-                removeCallbacks(this.ticker);
-                if (renderingActive) post(this.ticker);
-                this.frame = 0;
-                if (i == 0) {
-                    resetIdleAnimation();
-                } else {
-                    this.idleBlinking = false;
-                }
+        private boolean cameraPaused;
+        void setCameraPaused(boolean paused) {
+            if(cameraPaused==paused)return;
+            long before=android.os.Debug.getNativeHeapAllocatedSize();
+            cameraPaused=paused;
+            if(paused){
+                renderingActive=false;stopRendering();preparedFrameAvailable=false;
+                setLayerType(View.LAYER_TYPE_NONE,null);
+                // Keep expression/mode while releasing artwork for the camera.
+                portraitCache.clear();portraits.clear();faceWeights=new float[0];fadeStartWeights=new float[0];
+                faceTarget=-1;cachedEmotion=-1;cachedAngle=null;angleBaseFace=-1;
+                denseEntryBlend=false;denseEntryWeights=null;
+                // Release camera-time artwork; reload the same assets after capture closes.
+                mascotSheet=null;mascotExtraSheet=null;mascotTalkSheet=null;
+                mascotActionSheet=null;mascotBreathingSheet=null;mascotExtremeSheet=null;
+                mascotDistressSheet=null;mascotPostIntimacyV14Sheet=null;headGestureSheet=null;
+                denseTurnSheet=null;denseClosedEyeSheet=null;denseCheekGlow=null;denseFaces=null;
+                prepared_sourceSheet=null;secondaryLayersReady=false;
+                for(Bitmap[] row:denseOpenEyes)java.util.Arrays.fill(row,null);
+                for(Bitmap[] row:denseClosedEyes)java.util.Arrays.fill(row,null);
+                for(Bitmap[] row:denseMouthFrames)java.util.Arrays.fill(row,null);
+                for(Bitmap[] row:denseEyeWhites)java.util.Arrays.fill(row,null);
+                for(Bitmap[] row:densePupils)java.util.Arrays.fill(row,null);
+                java.util.Arrays.fill(denseBareFaces,null);java.util.Arrays.fill(denseFringe,null);
+                java.util.Arrays.fill(denseSideHair,null);java.util.Arrays.fill(smoothTalkSheets,null);
+                java.util.Arrays.fill(mascotEmotionV11Sheets,null);java.util.Arrays.fill(mascotReclinedV12Sheets,null);
+                java.util.Arrays.fill(mascotMotionV13Sheets,null);
+                overlayPicture.beginRecording(1,1);overlayPicture.endRecording();
+                fallbackPicture.beginRecording(1,1);fallbackPicture.endRecording();
+                invalidate();System.gc();System.runFinalization();
+                Log.i("LokiCameraMemory","mascot paused nativeBefore="+before+" nativeAfter="+android.os.Debug.getNativeHeapAllocatedSize());
+            }else{
+                loadMascotArtwork();loadDenseTurnAssets();initializePortraitCache();initializeDenseOverlays();
+                setLayerType(View.LAYER_TYPE_HARDWARE,null);
+                reconcileRendering();invalidate();
+                Log.i("LokiCameraMemory","mascot resumed mode="+mode+" expression="+expression);
             }
-            this.mode = i;
-            if (i != 2) {
-                speechKeepsFront = false;
-                frontHoldUntil = 0L;
-                this.speakingAnimationEnabled = true;
-                this.speechActionStyle = MASCOT_ACTION_NONE;
-            }
-            if (i == 2 && this.expression == 0) {
-                this.expression = 1;
-            } else if (i == 1 && this.expression == 0) {
-                this.expression = 0;
-            }
-            post(refreshFrame);
-        }
-
-        private void resetIdleAnimation() {
-            this.idleBlinking = false;
-            this.idleDoubleBlinkPending = false;
-            this.idleBlinkEndAt = 0L;
-            this.nextIdleBlinkAt = 0L;
-            this.nextIdlePoseAt = 0L;
-            this.idlePoseIndex = 0;
-            this.idlePoseExpression = 0;
-        }
-
-        private long idleBlinkIntervalMs() {
-            switch (this.idleBlinkCount % 6) {
-                case 0:
-                    return 2900L;
-                case 1:
-                    return 4300L;
-                case 2:
-                    return 3400L;
-                case 3:
-                    return 5200L;
-                case 4:
-                    return 3700L;
-                default:
-                    return 4700L;
-            }
-        }
-
-        private long idlePoseIntervalMs() {
-            switch (this.idlePoseIndex % 5) {
-                case 0:
-                    return 4200L;
-                case 1:
-                    return 5600L;
-                case 2:
-                    return 4800L;
-                case 3:
-                    return 6200L;
-                default:
-                    return 5100L;
-            }
-        }
-
-        private int nextIdlePoseExpression() {
-            // Mostly cool and attentive, with occasional upward glances and a
-            // brief soft smile. The mischievous face is deliberately rare.
-            switch (this.idlePoseIndex % 12) {
-                case 1:
-                case 7:
-                    return 4;
-                case 2:
-                case 10:
-                    return MASCOT_EXPR_SEARCHING_MEMORY;
-                case 4:
-                    return 9;
-                case 5:
-                case 11:
-                    return 1;
-                case 8:
-                    return 14;
-                default:
-                    return 0;
-            }
-        }
-
-        /**
-         * Advances only when an idle event is due. Between events the ticker
-         * sleeps for up to 620 ms, while a blink gets its own short 145 ms
-         * frame. This looks alive without redrawing the HUD at video rates.
-         */
-        private long advanceIdleAnimation() {
-            long now = SystemClock.uptimeMillis();
-            if (this.nextIdleBlinkAt <= 0L) {
-                this.nextIdleBlinkAt = now + 2200L;
-            }
-            if (this.nextIdlePoseAt <= 0L) {
-                this.nextIdlePoseAt = now + 3600L;
-            }
-
-            if (this.idleBlinking && now >= this.idleBlinkEndAt) {
-                this.idleBlinking = false;
-                if (this.idleDoubleBlinkPending) {
-                    this.idleDoubleBlinkPending = false;
-                    this.nextIdleBlinkAt = now + 190L;
-                } else {
-                    this.nextIdleBlinkAt = now + idleBlinkIntervalMs();
-                }
-            } else if (!this.idleBlinking && now >= this.nextIdleBlinkAt) {
-                this.idleBlinking = true;
-                this.idleBlinkCount++;
-                this.idleBlinkEndAt = now + 145L;
-                // Roughly every fifth blink becomes a natural quick double.
-                this.idleDoubleBlinkPending = (this.idleBlinkCount % 5) == 0;
-            }
-
-            if (now >= this.nextIdlePoseAt) {
-                this.idlePoseIndex++;
-                this.idlePoseExpression = nextIdlePoseExpression();
-                this.nextIdlePoseAt = now + idlePoseIntervalMs();
-            }
-
-            if (this.idleBlinking) {
-                return Math.max(60L, this.idleBlinkEndAt - now);
-            }
-            long nextEventAt = Math.min(this.nextIdleBlinkAt, this.nextIdlePoseAt);
-            return Math.max(80L, Math.min(620L, nextEventAt - now));
-        }
-
-        void setSpeechPresentation(boolean animateMouth, int actionStyle) {
-            int nextActionStyle = Math.max(MASCOT_ACTION_NONE,
-                    Math.min(MASCOT_ACTION_BREATHLESS, actionStyle));
-            if (this.speakingAnimationEnabled != animateMouth
-                    || this.speechActionStyle != nextActionStyle) {
-                this.frame = 0;
-            }
-            this.speakingAnimationEnabled = animateMouth;
-            this.speechActionStyle = nextActionStyle;
-            post(refreshFrame);
-        }
-
-        void setExpression(int i) {
-            int nextExpression = Math.max(0, Math.min(MASCOT_EXPR_MAX, i));
-            if (this.expression != nextExpression || nextExpression == MASCOT_EXPR_REFUSAL_CENTER) {
-                // Start pose animations from their neutral frame instead of an
-                // arbitrary point in the global idle ticker.
-                this.frame = 0;
-            }
-            this.expression = nextExpression;
-            post(refreshFrame);
         }
 
         void reconcileRendering() {
             // Visibility callbacks can run from the View constructor before our fields exist.
             if (ticker == null || faceWeights == null) return;
-            boolean visible = attached && MainActivity.this.mascotHostResumed
+            boolean visible = !cameraPaused && attached && MainActivity.this.mascotHostResumed
                     && getWindowVisibility() == View.VISIBLE && isShown();
             if (visible == renderingActive) return;
             renderingActive = visible;
@@ -16864,6 +17078,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            if(cameraPaused){canvas.drawColor(Color.BLACK);return;}
             if (!preparedFrameAvailable) return;
             if (portraitReady) drawBitmapMascot(canvas);
             else canvas.drawPicture(fallbackPicture);
@@ -17038,6 +17253,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private boolean portraitReady;
 
         private void prepareFrame() {
+            if(cameraPaused)return;
             if (preparingFrame || faceWeights == null) return;
             int width = getWidth(), height = getHeight();
             preparedFrameAvailable = width > 0 && height > 0;

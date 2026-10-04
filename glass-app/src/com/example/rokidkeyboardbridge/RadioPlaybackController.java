@@ -87,12 +87,16 @@ final class RadioPlaybackController {
                                  VoiceTransport transport, final Listener listener) {
         AudioRecord recorder = null;
         AcousticEchoCanceler echo = null;
+        RecognitionNoiseControl noiseControl = null;
+        CaptureLease lease = null;
         try {
+            lease = CaptureLease.acquire(CaptureLease.MICROPHONE, () -> token != generation);
             int minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             if (minimum <= 0) throw new IllegalStateException("microphone unavailable");
-            recorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, 16000,
+            recorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(minimum, 6400));
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("microphone unavailable");
+            noiseControl = new RecognitionNoiseControl(recorder);
             if (AcousticEchoCanceler.isAvailable()) {
                 echo = AcousticEchoCanceler.create(recorder.getAudioSessionId());
                 if (echo != null) echo.setEnabled(true);
@@ -197,8 +201,11 @@ final class RadioPlaybackController {
                 }
             }
         } finally {
-            if (echo != null) echo.release();
-            if (recorder != null) { try { recorder.stop(); } catch (Exception ignored) {} recorder.release(); }
+            try {
+                if (noiseControl != null) noiseControl.close();
+                try { if (echo != null) echo.release(); }
+                finally { if (recorder != null) { try { recorder.stop(); } catch (Exception ignored) {} recorder.release(); } }
+            } finally { if (lease != null) lease.close(); }
         }
     }
 }

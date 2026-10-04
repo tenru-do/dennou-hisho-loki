@@ -1,6 +1,28 @@
 package com.example.rokidgeminisecretary;
 import java.util.ArrayList;
 final class GooglePolyline {
+    static void normalize(org.json.JSONObject route) throws org.json.JSONException {
+        if(!route.has("polyline") && route.optJSONObject("overview_polyline")!=null)
+            route.put("polyline",new org.json.JSONObject().put("encodedPolyline",route.getJSONObject("overview_polyline").optString("points")));
+        org.json.JSONArray legs=route.optJSONArray("legs");if(legs==null)return;
+        for(int i=0;i<legs.length();i++) {
+            org.json.JSONObject leg=legs.optJSONObject(i);if(leg==null)continue;
+            org.json.JSONArray steps=leg.optJSONArray("steps");if(steps==null)continue;
+            for(int j=0;j<steps.length();j++) {
+                org.json.JSONObject step=steps.optJSONObject(j);if(step==null)continue;
+                if(!step.has("travelMode")){String mode=step.optString("travel_mode");step.put("travelMode","WALKING".equals(mode)?"WALK":"DRIVING".equals(mode)?"DRIVE":mode);}
+                org.json.JSONObject polyline=step.optJSONObject("polyline");
+                if(polyline!=null && !polyline.has("encodedPolyline"))polyline.put("encodedPolyline",polyline.optString("points"));
+                for(String key:new String[]{"start","end"})if(!step.has(key+"Location") && step.optJSONObject(key+"_location")!=null) {
+                    org.json.JSONObject p=step.getJSONObject(key+"_location");
+                    step.put(key+"Location",new org.json.JSONObject().put("latitude",p.optDouble("lat",Double.NaN)).put("longitude",p.optDouble("lng",Double.NaN)));
+                }
+                if(!step.has("navigationInstruction")&&step.has("html_instructions"))step.put("navigationInstruction",new org.json.JSONObject().put("instructions",step.optString("html_instructions").replaceAll("<[^>]+>","")));
+                if(!step.has("staticDuration")&&step.optJSONObject("duration")!=null)step.put("staticDuration",step.getJSONObject("duration").optDouble("value",0)+"s");
+                if(!step.has("distanceMeters")&&step.optJSONObject("distance")!=null)step.put("distanceMeters",step.getJSONObject("distance").optDouble("value",0));
+            }
+        }
+    }
     static void mergeStepsOrOverview(org.json.JSONObject route) throws org.json.JSONException {
         org.json.JSONObject overview = route.optJSONObject("polyline");
         try { mergeSteps(route); }
@@ -32,6 +54,7 @@ final class GooglePolyline {
         return location(stop==null?null:stop.optJSONObject("location"));
     }
     static void mergeSteps(org.json.JSONObject route) throws org.json.JSONException {
+        normalize(route);
         ArrayList<double[]> all=new ArrayList<>();
         org.json.JSONArray segments=new org.json.JSONArray(),legs=route.optJSONArray("legs");
         if(legs==null)return;

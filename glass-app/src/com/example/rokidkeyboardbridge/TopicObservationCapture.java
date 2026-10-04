@@ -40,18 +40,22 @@ final class TopicObservationCapture {
         if (!cancelled.getAsBoolean() && ("vision".equals(mode) || "both".equals(mode))) {
             try {
                 if (context.checkSelfPermission("android.permission.CAMERA") != 0) throw new IllegalStateException();
-                result.put("image", Base64.encodeToString(photo(cancelled), Base64.NO_WRAP));
+                try(AutoCloseable mascotPause=context instanceof MainActivity
+                        ? ((MainActivity)context).pauseMascotForCamera() : ()->{}) {
+                    result.put("image", Base64.encodeToString(photo(cancelled), Base64.NO_WRAP));
+                }
             } catch (Exception error) { result.put("imageUnavailable", true); }
         }
         if (cancelled.getAsBoolean()) throw new InterruptedException("observation cancelled");
         return result;
     }
     private static byte[] audio(BooleanSupplier cancelled) throws Exception {
+        try (CaptureLease lease = CaptureLease.acquire(CaptureLease.MICROPHONE, cancelled)) {
         int minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         if (minimum <= 0) throw new IllegalStateException("microphone unavailable");
-        AudioRecord recorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, 16000,
+        AudioRecord recorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(minimum, 6400));
-        try {
+        try (RecognitionNoiseControl noise = new RecognitionNoiseControl(recorder)) {
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException();
             recorder.startRecording();
             if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException();
@@ -66,6 +70,7 @@ final class TopicObservationCapture {
             if (cancelled.getAsBoolean() || pcm.size() < 3200) throw new InterruptedException();
             return wav(pcm.toByteArray());
         } finally { try { recorder.stop(); } catch (Exception ignored) {} recorder.release(); }
+        }
     }
     private static byte[] wav(byte[] data) {
             ByteBuffer wav = ByteBuffer.allocate(44 + data.length).order(ByteOrder.LITTLE_ENDIAN);
@@ -76,6 +81,7 @@ final class TopicObservationCapture {
     }
     @SuppressWarnings("deprecation")
     private static byte[] photo(BooleanSupplier cancelled) throws Exception {
+        try (CaptureLease lease = CaptureLease.acquire(CaptureLease.CAMERA, cancelled)) {
         HandlerThread thread = new HandlerThread("TopicCamera"); thread.start();
         Handler cameraHandler = new Handler(thread.getLooper());
         CountDownLatch done = new CountDownLatch(1);
@@ -123,12 +129,27 @@ final class TopicObservationCapture {
                 return out.toByteArray();
             } finally { bitmap.recycle(); }
         } finally {
+            cameraHandler.removeCallbacksAndMessages(null);
             CountDownLatch released = new CountDownLatch(1);
             cameraHandler.post(() -> {
-                try { if (camera[0] != null) camera[0].release(); }
-                finally { if (surface[0] != null) surface[0].release(); released.countDown(); }
+                try {
+                    if (camera[0] != null) {
+                        try { camera[0].stopPreview(); } catch (Exception ignored) {}
+                        camera[0].release(); camera[0] = null;
+                    }
+                } finally {
+                    try { if (surface[0] != null) { surface[0].release(); surface[0] = null; } }
+                    finally { released.countDown(); thread.quitSafely(); }
+                }
             });
-            released.await(2, TimeUnit.SECONDS); thread.quitSafely();
+            boolean interrupted = false;
+            // Ownership ends only after the camera thread releases its resources.
+            while (released.getCount() != 0) {
+                try { released.await(); } catch (InterruptedException error) { interrupted = true; }
+            }
+            thread.join(2000L);
+            if (interrupted) Thread.currentThread().interrupt();
+        }
         }
     }
 }

@@ -207,6 +207,7 @@ final class GoogleNavigationClient {
         String fields = RoutesRequestPolicy.mask(travel);
         if ("TRANSIT".equals(travel)) {
             body.put("computeAlternativeRoutes", false);
+            body.put("departureTime", java.time.Instant.now().toString());
             // Omit transitPreferences: no mode filter or walking/transfer preference.
         }
         android.util.Log.d("LokiRoutesApi", "request=" + body.toString());
@@ -220,7 +221,11 @@ final class GoogleNavigationClient {
         android.util.Log.d("LokiRoutesApi", "response routes=" + (routes == null ? "missing" : routes.length()));
         if (routes == null || routes.length() == 0) throw new Exception("google_route_not_found");
         JSONObject route = routes.getJSONObject(0);
-        if ("TRANSIT".equals(travel)) GooglePolyline.mergeStepsOrOverview(route);
+        if ("TRANSIT".equals(travel)) {
+            try { WalkingAccessGeometry.repairLeading(route,(a,b,x,y,m)->routeToPoint(c,a,b,x,y,m)); }
+            catch(Exception unavailable) { android.util.Log.w("LokiTransit","walking access geometry unavailable; retaining marked fallback"); }
+            GooglePolyline.mergeStepsOrOverview(route);
+        }
         return route;
     }
     private static synchronized String session(Context c) throws Exception {

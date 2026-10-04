@@ -145,12 +145,11 @@ final class NavitimeRouteAdapter {
                 JSONObject road;try{road=roads.route(a[0],a[1],b[0],b[1],requested);roadGeometry(road);}catch(Exception unavailable){
                     JSONObject fallback=new JSONObject().put("travelMode","WALK").put("startLocation",location(a)).put("endLocation",location(b)).put("staticDuration",seconds(move)+"s").put("distanceMeters",move.optDouble("distance",0)).put("lokiGeometryEstimated",true).put("polyline",new JSONObject().put("encodedPolyline",encode(Arrays.asList(a,b))));
                     road=new JSONObject().put("legs",new JSONArray().put(new JSONObject().put("steps",new JSONArray().put(fallback)))).put("polyline",fallback.getJSONObject("polyline"));
-                }JSONArray legs=road.getJSONArray("legs");
+                }
+                JSONArray normalizedRoadSteps=WalkingAccessGeometry.roadSteps(road,"car".equals(mode)?"DRIVE":"bicycle".equals(mode)?"BICYCLE":"WALK");
                 wholeGeometry.addAll(roadGeometry(road));
                 int before=steps.length();
-                for(int l=0;l<legs.length();l++){JSONArray roadSteps=legs.getJSONObject(l).getJSONArray("steps");for(int k=0;k<roadSteps.length();k++){
-                    JSONObject step=roadSteps.getJSONObject(k);if(!zeroRoadStep(step))steps.put(step);
-                }}
+                for(int k=0;k<normalizedRoadSteps.length();k++){JSONObject step=normalizedRoadSteps.getJSONObject(k);if(!zeroRoadStep(step))steps.put(step);}
                 if(steps.length()==before)throw new Exception("navitime_road_geometry_unavailable");
             }else{
                 String type=vehicle(mode);List<double[]> path=segment(shapes,a,b);JSONObject transport=move.optJSONObject("transport");

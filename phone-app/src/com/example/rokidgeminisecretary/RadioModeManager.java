@@ -92,12 +92,14 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                             if (closed || token != generation) return;
                             JSONObject candidate = generate(key, promptContext, observation);
                             boolean badTone=!LokiPersonaPolicy.accepts(candidate.getString("message"));
-                            boolean tooShort = !"scheduled".equals(mode) && candidate.getString("message").length() < 80;
+                            candidate.put("message", ColumnSpeechFormatter.format(candidate.getString("message"), continuous));
+                            boolean tooShort = !ColumnSpeechFormatter.accepts(candidate.getString("message"));
+                            boolean badGranularity = false; // Sentence grouping belongs to the existing glass TTS chunker.
                             boolean duplicate = repeated(candidate);
-                            if (!tooShort && !duplicate && !badTone) { generated = candidate; break; }
+                            if (!tooShort && !duplicate && !badTone && !badGranularity) { generated = candidate; break; }
                             Log.i("LokiRadio", "topic rejected chars=" + candidate.getString("message").length()
-                                    + " short=" + tooShort + " repeated=" + duplicate+" badTone="+badTone);
-                            promptContext = contextPrompt() + "\n前の案は不採用です。礼儀正しい秘書官として、です・ますの文末を厳守し、160〜300文字、自然な2〜3文で新しい背景と補足を届けてください。";
+                                    + " short=" + tooShort + " repeated=" + duplicate+" badTone="+badTone + " sentenceCount=" + badGranularity);
+                            promptContext = contextPrompt() + "\n前の案は不採用です。挨拶・日付コールなしでタイトルまたは本文から始め、400〜600文字で歴史的背景、仕組み、実用例、盲点を具体的に説明してください。";
                         }
                         if (generated == null) throw new IllegalStateException("repeated topics");
                         String text = generated.getString("message");
@@ -256,6 +258,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
         if (topic != null && topic.optLong("expiresAt") <= System.currentTimeMillis()) {
             manager.pipeline.cancel(chain, revision); return new JSONObject().put("ok", false);
         }
+        if (topic != null) topic.put("message", ColumnSpeechFormatter.format(topic.optString("message"), true));
         return new JSONObject().put("ok", true).put("topic", topic == null ? JSONObject.NULL : topic);
     }
     private String contextPrompt() throws Exception {
@@ -374,9 +377,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                         .put("mime_type", "audio".equals(kind) ? "audio/wav" : "image/jpeg").put("data", content)));
             }
         }
-        String length = "scheduled".equals(prefs.getString(MODE, "scheduled"))
-                ? "定期ラジオは日本語150〜280文字、2〜4文、最大300文字。"
-                : "連続・音・カメラモードは日本語160〜300文字、自然な2〜3文を目安に必要な背景を添える。少なくとも80文字、最大400文字。";
+        String length = "本文は日本語400〜600文字。歴史的起源・背景、科学的・技術的メカニズム、現代社会の実用例、意外な盲点を具体的に含める。挨拶と日付コールを入れずタイトルまたは本文から始める。文の数は内容に合わせ、2〜3文の発話チャンク分割はグラス側に任せる。";
         String instruction = LokiPersonaPolicy.INSTRUCTION + length
                 + "身近な話題から関連する雑学、なぜそうなるか、歴史や意外なつながりへ自然に広げる。毎回あいさつせず、質問ばかりで終わらず、相手の返事がなくても話を進める。"
                 + "recent_topicsとalready_coveredの説明・事実は言い換えても繰り返さない。次の角度のヒントを参考に分野を変え、新しい事実を1〜2個含める。topicKeyは広い分野名ではなく今回の具体的な主題、coveredPointsは説明した事実の短い要約。"
@@ -423,7 +424,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                 if (!parts.getJSONObject(i).optBoolean("thought")) text.append(parts.getJSONObject(i).optString("text"));
             JSONObject result = new JSONObject(text.toString().trim());
             String message = result.getString("message").trim();
-            int maximum = "scheduled".equals(prefs.getString(MODE, "scheduled")) ? 300 : 400;
+            int maximum = 600;
             JSONArray claims = result.getJSONArray("coveredPoints");
             if (message.isEmpty() || message.length() > maximum || result.getString("topicKey").isEmpty()
                     || result.getString("topicKey").length() > 120 || claims.length() < 1 || claims.length() > 6)

@@ -23,7 +23,34 @@ final class NavigationChoiceDialog {
         button.setTextColor(Color.WHITE); button.setTextSize(16); button.setAllCaps(false);
         button.setMinWidth(0); button.setMinimumWidth(0); button.setMinHeight(0); button.setMinimumHeight(0);
         button.setBackgroundTintList(null); button.setStateListAnimator(null); button.setBackground(background(context,false));
-        button.setFocusable(true); button.setFocusableInTouchMode(true);
+        enableSelection(button);
+    }
+    static void enableSelection(Button button) {
+        button.setFocusable(true); button.setFocusableInTouchMode(true); button.setClickable(true);
+        button.setOnTouchListener((v,event)-> {
+            if(!v.isEnabled())return false;
+            if(event.getAction()==MotionEvent.ACTION_DOWN){v.requestFocus();v.setPressed(true);return true;}
+            if(event.getAction()==MotionEvent.ACTION_UP){boolean activate=v.isPressed()&&event.getX()>=0&&event.getX()<v.getWidth()&&event.getY()>=0&&event.getY()<v.getHeight();v.setPressed(false);if(activate)v.performClick();return true;}
+            if(event.getAction()==MotionEvent.ACTION_CANCEL){v.setPressed(false);return true;}
+            return true;
+        });
+        button.setOnKeyListener((v,code,event)-> {
+            if(code!=KeyEvent.KEYCODE_DPAD_CENTER && code!=KeyEvent.KEYCODE_ENTER
+                    && code!=KeyEvent.KEYCODE_NUMPAD_ENTER && code!=KeyEvent.KEYCODE_BUTTON_SELECT)return false;
+            if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())v.performClick();
+            return true;
+        });
+    }
+    static void installDialogSelection(AlertDialog dialog,Button fallback) {
+        dialog.setOnKeyListener((d,code,event)-> {
+            if(code!=KeyEvent.KEYCODE_DPAD_CENTER && code!=KeyEvent.KEYCODE_ENTER
+                    && code!=KeyEvent.KEYCODE_NUMPAD_ENTER && code!=KeyEvent.KEYCODE_BUTTON_SELECT)return false;
+            View focus=dialog.getWindow().getDecorView().findFocus();
+            View target=focus instanceof Button?focus:fallback;
+            if(target==null)return false;
+            if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())target.performClick();
+            return true;
+        });
     }
     private static void blackContainers(View v){
         if(v instanceof ViewGroup){v.setBackgroundColor(Color.BLACK);ViewGroup g=(ViewGroup)v;
@@ -45,14 +72,14 @@ final class NavigationChoiceDialog {
             final int index=i;Button b=new Button(context);b.setText((i==current?"✓ ":"")+labels[i]);b.setTextColor(i==current?Color.CYAN:Color.WHITE);
             b.setTextSize(16);b.setAllCaps(false);b.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);b.setPadding(dp(context,8),0,dp(context,8),0);
             b.setMinHeight(0);b.setMinimumHeight(0);b.setBackgroundTintList(null);b.setStateListAnimator(null);b.setBackground(background(context,i==current));
-            b.setFocusable(true);b.setFocusableInTouchMode(true);b.setOnClickListener(v->{dialog.dismiss();action.onClick(dialog,index);});
+            enableSelection(b);b.setOnClickListener(v->{dialog.dismiss();action.onClick(dialog,index);});
             choices.addView(b,new LinearLayout.LayoutParams(-1,dp(context,48)));buttons[i]=b;
         }
         Button close=new Button(context);close.setText("閉じる");close.setTextColor(Color.WHITE);close.setTextSize(16);close.setAllCaps(false);
         close.setMinHeight(0);close.setMinimumHeight(0);close.setBackgroundTintList(null);close.setStateListAnimator(null);close.setBackground(background(context,false));close.setOnClickListener(v->dialog.dismiss());
         root.addView(close,new LinearLayout.LayoutParams(-1,dp(context,40)));
-        dialog.setView(root,0,0,0,0);dialog.show();Window window=dialog.getWindow();
+        dialog.setView(root,0,0,0,0);installDialogSelection(dialog,buttons.length>0?buttons[Math.max(0,Math.min(current,buttons.length-1))]:close);dialog.show();Window window=dialog.getWindow();
         window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));window.getDecorView().setBackgroundColor(Color.BLACK);window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-        blackContainers(window.getDecorView());buttons[Math.max(0,Math.min(current,buttons.length-1))].requestFocus();return dialog;
+        blackContainers(window.getDecorView());if(buttons.length>0)buttons[Math.max(0,Math.min(current,buttons.length-1))].requestFocus();return dialog;
     }
 }

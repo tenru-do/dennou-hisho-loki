@@ -7,7 +7,7 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 
 final class TopicFallbackContent {
-    private static final String HISTORY="offline_topic_history_v2";
+    private static final String HISTORY="offline_long_column_history_v3";
     static synchronized JSONArray freshNews(Context context, JSONArray incoming) throws Exception {
         SharedPreferences prefs=context.getSharedPreferences("phone_secretary",Context.MODE_PRIVATE);
         JSONArray history=new JSONArray(prefs.getString("topic_rss_history_v1","[]"));
@@ -27,7 +27,7 @@ final class TopicFallbackContent {
     static synchronized JSONObject local(Context context) throws Exception {
         SharedPreferences prefs=context.getSharedPreferences("phone_secretary",Context.MODE_PRIVATE);
         Set<String> used=new HashSet<>(prefs.getStringSet(HISTORY,Collections.emptySet()));
-        String[] topic=OfflineTopicCatalog.select(LocalDateTime.now(),used,new Random());
+        String[] topic=LongColumnCatalog.select(used,new Random());
         prefs.edit().putStringSet(HISTORY,used).apply();
         return new JSONObject().put("title",topic[0]).put("text",topic[1]);
     }
