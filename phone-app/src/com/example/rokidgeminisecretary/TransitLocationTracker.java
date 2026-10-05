@@ -55,6 +55,12 @@ public final class TransitLocationTracker implements LocationListener {
     private static final long LINE_CACHE_MS = 24L * 60L * 60L * 1000L;
     private static final float MIN_TRANSIT_SPEED_MPS = 4.2f;
     private static final float MIN_HEADING_DISTANCE_M = 25.0f;
+    private static final long IDLE_GPS_INTERVAL_MS = 120000L;
+    private static final long IDLE_NETWORK_INTERVAL_MS = 60000L;
+    private static final long ACTIVE_GPS_INTERVAL_MS = 5000L;
+    private static final long ACTIVE_NETWORK_INTERVAL_MS = 10000L;
+    private static final long RETURN_TO_IDLE_MS = 120000L;
+    private static final long NAVIGATION_GRACE_MS = 30000L;
 
     private static TransitLocationTracker instance;
 
@@ -63,11 +69,13 @@ public final class TransitLocationTracker implements LocationListener {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Map<String, CachedLine> lineCache = new HashMap<String, CachedLine>();
     private boolean registered;
+    private boolean highRateTracking;
     private volatile boolean queryInFlight;
     private Location previousLocation;
     private Location lastQueryLocation;
     private long lastQueryAt;
     private long lastMovingAt;
+    private long navigationActiveUntil;
     private float smoothedSpeed;
     private float smoothedHeading = Float.NaN;
     private String pendingPredictionKey = "";
@@ -89,6 +97,27 @@ public final class TransitLocationTracker implements LocationListener {
         if (instance != null) {
             instance.stopInternal();
             instance = null;
+        }
+    }
+
+    public static synchronized void setNavigationActive(boolean active) {
+        if (instance != null) {
+            instance.setNavigationActiveInternal(active);
+        }
+    }
+
+    private synchronized void setNavigationActiveInternal(boolean active) {
+        long now = System.currentTimeMillis();
+        if (active) {
+            navigationActiveUntil = now + NAVIGATION_GRACE_MS;
+            if (registered && !highRateTracking) {
+                registerLocationUpdates(true);
+                Log.i(TAG, "navigation HUD requested high-rate GPS");
+            }
+        } else if (registered && highRateTracking && now >= navigationActiveUntil
+                && (lastMovingAt == 0L || now - lastMovingAt > RETURN_TO_IDLE_MS)) {
+            registerLocationUpdates(false);
+            Log.i(TAG, "navigation HUD released high-rate GPS");
         }
     }
 
@@ -120,21 +149,36 @@ public final class TransitLocationTracker implements LocationListener {
             return;
         }
         try {
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                        5000L, 10.0f, this, Looper.getMainLooper());
-            }
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
-                        10000L, 25.0f, this, Looper.getMainLooper());
-            }
+            registerLocationUpdates(false);
             registered = true;
-            Log.i(TAG, "GPS transit estimation started");
+            Log.i(TAG, "GPS transit estimation started in idle power mode");
         } catch (SecurityException error) {
             Log.w(TAG, "location permission unavailable", error);
         } catch (Exception error) {
             Log.w(TAG, "location tracking could not start", error);
         }
+    }
+
+    private synchronized void registerLocationUpdates(boolean highRate) {
+        try {
+            locationManager.removeUpdates(this);
+        } catch (Exception ignored) {
+        }
+        long gpsInterval = highRate ? ACTIVE_GPS_INTERVAL_MS : IDLE_GPS_INTERVAL_MS;
+        long networkInterval = highRate ? ACTIVE_NETWORK_INTERVAL_MS : IDLE_NETWORK_INTERVAL_MS;
+        float gpsDistance = highRate ? 10.0f : 50.0f;
+        float networkDistance = highRate ? 25.0f : 75.0f;
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
+                    gpsInterval, gpsDistance, this, Looper.getMainLooper());
+        }
+        if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,
+                    networkInterval, networkDistance, this, Looper.getMainLooper());
+        }
+        highRateTracking = highRate;
+        Log.i(TAG, highRate ? "transit tracking switched to moving mode"
+                : "transit tracking switched to idle power mode");
     }
 
     private synchronized void stopInternal() {
@@ -203,6 +247,14 @@ public final class TransitLocationTracker implements LocationListener {
             if (speed >= MIN_TRANSIT_SPEED_MPS) {
                 lastMovingAt = now;
             }
+        }
+
+        boolean navigationTracking = now < navigationActiveUntil;
+        if ((navigationTracking || speed >= MIN_TRANSIT_SPEED_MPS) && !highRateTracking) {
+            registerLocationUpdates(true);
+        } else if (highRateTracking && !navigationTracking
+                && (lastMovingAt == 0L || now - lastMovingAt > RETURN_TO_IDLE_MS)) {
+            registerLocationUpdates(false);
         }
 
         if (speed < MIN_TRANSIT_SPEED_MPS || Float.isNaN(heading)) {

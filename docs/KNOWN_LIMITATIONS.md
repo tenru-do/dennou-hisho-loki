@@ -35,6 +35,8 @@ Areas that still need refinement:
 - calendar search ranking
 - mail notification summarization
 - Loki Topic news/event selection and station inference
+- ambient microphone/playback capture reliability and battery use
+- navigation notification parsing, road-name completeness, and route refresh
 - Gradle/reproducible build setup
 
 Use this repository as a research prototype, not as a finished product.
@@ -52,6 +54,9 @@ Known environment-dependent areas include:
 - Android calendar provider sync state
 - notification listener behavior for mail summaries
 - Gemini model availability, billing state, and quota
+- Android media-projection/playback-capture support and source-app DRM policy
+- Google Maps notification wording and OpenStreetMap road/intersection coverage
+- destination remaining time is minute-based and depends on a fresh Google Maps arrival clock or usable GPS/route progress; moving-route behavior still needs testing across devices
 
 ## Google Workspace scope
 

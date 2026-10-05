@@ -1,6 +1,7 @@
 # Build outputs
 build/
 build*/
+.build*/
 classes/
 classes*/
 dex/
