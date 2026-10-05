@@ -55,6 +55,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
             final boolean duringPlayback = continuous && pipeline.speaking();
             worker.execute(new Runnable() {
                 public void run() {
+                    String observationId="", analysisError="TOPIC cancelled";
                     try {
                         if (closed || token != generation || !prefs.getBoolean(ENABLED, false)) return;
                         if (continuous && !pipeline.currentWork(workTicket)) return;
@@ -69,7 +70,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                         JSONObject observation = null;
                         if (TopicMode.audio(mode) || TopicMode.camera(mode)) {
                             String id = java.util.UUID.randomUUID().toString();
-                            RadioObservationStore.begin(id, revision);
+                            observationId=id;RadioObservationStore.begin(id, revision);
                             JSONObject capture = new JSONObject().put("requestId", id).put("revision", revision)
                                     .put("mode", mode).put("expiresAt", System.currentTimeMillis() + 20000L);
                             if (continuous) capture.put("chainId", chain).put("prefetch", duringPlayback);
@@ -120,13 +121,16 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                             prefs.edit().putString("radio_topic_history_v1", topicHistory.toString())
                                     .putInt("radio_topic_turn", prefs.getInt("radio_topic_turn", 0) + 1).apply();
                         }
+                        analysisError=queued?"":"TOPIC delivery cancelled";
                         Log.i("LokiRadio", queued ? "topic queued; prefetch=" + duringPlayback : "topic skipped: queue occupied or cancelled");
                     } catch (Exception error) {
                         // Never log credentials, context, or API response bodies.
+                        analysisError="TOPIC analysis failed: "+error.getClass().getSimpleName();
                         DailyContextSync.LOG.failed("TOPIC", error);
                         publishFallback(token, revision, mode, continuous, workTicket, chain);
                         if (token == generation) retryAfter = System.currentTimeMillis() + 30000L;
                     } finally {
+                        if(!observationId.isEmpty())RadioObservationStore.finishAnalysis(observationId,analysisError);
                         if (continuous) pipeline.finishGeneration(workTicket);
                         RadioObservationStore.clear();
                         handler.post(new Runnable() {
@@ -263,6 +267,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
     }
     private String contextPrompt() throws Exception {
         JSONObject data = new JSONObject();
+        data.put("hirokid_reference", HirokidLogMonitor.contextForPrompt(context));
         data.put("time", new SimpleDateFormat("yyyy-MM-dd HH:mm z", Locale.JAPAN).format(new Date()));
         String place = "現在地不明";
         String movement = "不明";

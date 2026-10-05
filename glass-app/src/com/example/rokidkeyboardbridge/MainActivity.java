@@ -155,7 +155,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final long VOICE_SILENCE_STOP_MS = 1000L;
     private static final long VOICE_MIN_CAPTURE_MS = 1500L;
     private static final int VOICE_LEVEL_THRESHOLD = 18;
-    private static final int VOICE_AUDIO_SOURCE_PROFILE_VERSION = 3;
+    private static final int VOICE_AUDIO_SOURCE_PROFILE_VERSION = 4;
     private static final int VOICE_PENDING_MAX_SEGMENTS = 12;
     private static final int VOICE_PENDING_MAX_CHARS = 2800;
     private static final long MAP_NAVIGATION_WAKE_MS = 12000L;
@@ -4216,11 +4216,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (buttonPanel != null) {
                 FrameLayout.LayoutParams controls = (FrameLayout.LayoutParams)buttonPanel.getLayoutParams();
                 controls.gravity = android.view.Gravity.TOP | android.view.Gravity.LEFT;
-                controls.topMargin = dp(96);
+                controls.topMargin = dp(72);
                 controls.bottomMargin = 0;
                 buttonPanel.setLayoutParams(controls);
             }
-            if (hudContent != null) hudContent.setPadding(6, dp(118), 6, 2);
+            if (hudContent != null) hudContent.setPadding(6, dp(94), 6, 2);
         }
         if (!lower) return;
         // Keep native text/mascot sizes; reserve a bottom information band and
@@ -6579,7 +6579,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void advanceRadioPipeline(boolean enabled, String mode, long revision) {
         if (revision != radioSettingsRevisionSeen || enabled != radioModeEnabled) return;
         if (!enabled || topicStopRequested || "scheduled".equals(mode)) {
-            this.activityForeground = false;
         handler.removeCallbacks(ambientTimer);
         cancelAmbientAutotalkRequest();
         radioResume.clear();
@@ -6627,8 +6626,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return request.optBoolean("prefetch") && sameChain
                 ? !conversationActive || (radioTopicPending && radioPlayback != null && radioPlayback.isSpeaking()) : !radioBusy();
     }
+    private void awaitTopicAnalysis(JSONObject request, java.util.function.BooleanSupplier cancelled) throws Exception {
+        long until=SystemClock.elapsedRealtime()+90000L;
+        while(!cancelled.getAsBoolean() && SystemClock.elapsedRealtime()<until){
+            JSONObject status=new JSONObject(fetchPhoneEndpointJson("radio_observation_status?id="+android.net.Uri.encode(request.getString("requestId"))));
+            String state=status.optString("state");
+            if("completed".equals(state)){Log.i("CameraTopic","TOPIC analysis completed");return;}
+            if("error".equals(state)||!status.optBoolean("known"))throw new IllegalStateException(status.optString("error","TOPIC analysis state unavailable"));
+            Thread.sleep(500L);
+        }
+        throw new InterruptedException(cancelled.getAsBoolean()?"TOPIC cancelled":"TOPIC analysis timeout");
+    }
     private void captureTopicObservation(final JSONObject request) {
         if (!canCaptureRadioObservation(request)) return;
+        if(mascotView!=null)mascotView.setCameraPaused(true);
         pauseAmbientForUserAction(30000L); stopAmbientCapture();
         final boolean prefetch = request.optBoolean("prefetch");
         final long pipelineToken = radioNextBuffer.token();
@@ -6638,18 +6649,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
         final RadioPlaybackController shared = prefetch && radioPlayback != null && radioPlayback.isSpeaking() ? radioPlayback : null;
         if (!prefetch) setStatus("TOPIC：周囲の音・景色を取得中", Color.rgb(90, 220, 120));
         new Thread(() -> {
-            try {
+            try (AutoCloseable topicPause=pauseMascotForCamera()) {
                 JSONObject observation = TopicObservationCapture.capture(this, request,
                         () -> pipelineToken != radioNextBuffer.token() || (!prefetch && session != radioSessionGeneration)
                                 || !activityForeground || !radioModeEnabled || topicStopRequested
                                 || voiceRecording || geminiRequestActive || ambientPausedForNavigation,
                         shared == null ? null : cancelled -> shared.captureAmbientPcm(cancelled));
                 if (pipelineToken != radioNextBuffer.token()) return;
-                postTopicForm("radio_observation", "observation=" + URLEncoder.encode(observation.toString(), "UTF-8"));
+                JSONObject uploaded=new JSONObject(postTopicForm("radio_observation", "observation=" + URLEncoder.encode(observation.toString(), "UTF-8")));
+                if(!uploaded.optBoolean("ok"))throw new IllegalStateException("TOPIC observation rejected");
+                awaitTopicAnalysis(request,()->pipelineToken!=radioNextBuffer.token()||!activityForeground||!radioModeEnabled||topicStopRequested);
                 Log.i("LokiRadioPipeline", "observation uploaded; prefetch=" + prefetch + "; sharedMic=" + (shared != null));
                 if (observation.optBoolean("audioUnavailable") || observation.optBoolean("imageUnavailable"))
                     handler.post(() -> { if (pipelineToken == radioNextBuffer.token() && !prefetch) setStatus("TOPIC：音・カメラを取得できません。権限・使用中アプリを確認", Color.YELLOW); });
-            } catch (Exception error) { handler.post(() -> { if (pipelineToken == radioNextBuffer.token() && !prefetch) {
+            } catch (Exception error) { Log.w("CameraTopic","TOPIC capture/analysis error",error); handler.post(() -> { if (pipelineToken == radioNextBuffer.token() && !prefetch) {
                 triggerMascotGesture(MascotAnimationController.GestureState.SHAKE);
                 setStatus("TOPIC取得失敗・スマホ接続を確認", Color.YELLOW);
             } }); }
@@ -7108,7 +7121,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (recorder == null) {
                 throw new IllegalStateException("使えるマイク入力経路が見つかりません");
             }
-            noiseControl = new RecognitionNoiseControl(recorder);
+            // Rokid fallback sources already provide usable PCM; extra suppression can erase it.
+            if (audioSource == MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                noiseControl = new RecognitionNoiseControl(recorder);
             ByteArrayOutputStream pcm = new ByteArrayOutputStream();
             // A minBuffer-sized read can block for about a second on the
             // glasses. Keep the AudioRecord allocation large, but read in
@@ -7178,7 +7193,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             } catch (Exception ignored) {
             }
             recorder = null;
-            noiseControl.close(); noiseControl = null;
+            if (noiseControl != null) noiseControl.close(); noiseControl = null;
             lease.close(); lease = null;
             if (requestId != this.voiceRecognitionGeneration) {
                 return;
@@ -7469,6 +7484,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private int[] voiceAudioSources() {
+        // RG-glasses reports an initialized but zero-valued VOICE_RECOGNITION route.
+        // Use the DEFAULT route verified with real PCM and phone transcription.
+        if ("RG-glasses".equalsIgnoreCase(Build.MODEL.replace('_', '-'))) {
+            return new int[]{
+                    MediaRecorder.AudioSource.DEFAULT,
+                    MediaRecorder.AudioSource.MIC,
+                    MediaRecorder.AudioSource.CAMCORDER,
+                    MediaRecorder.AudioSource.UNPROCESSED,
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION
+            };
+        }
         return new int[]{
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
                 MediaRecorder.AudioSource.DEFAULT,
@@ -7489,11 +7515,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     .putInt(KEY_VOICE_AUDIO_SOURCE_PROFILE_VERSION,
                             VOICE_AUDIO_SOURCE_PROFILE_VERSION)
                     .apply();
-            Log.i(TAG, "voice audio source profile reset to VOICE_RECOG");
+            Log.i(TAG, "voice audio source profile reset to " + audioSourceLabel(sources[0]));
             return 0;
         }
-        // A previous silent recording must not make MIC/DEFAULT the next default.
-        return 0;
+        // Start with VOICE_RECOG, but retain the fallback selected after a silent capture.
+        return Math.floorMod(getPreferences().getInt(KEY_VOICE_AUDIO_SOURCE_INDEX, 0), sources.length);
     }
 
     private void advanceVoiceAudioSource(String reason) {
@@ -11632,6 +11658,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             || MainActivity.this.morningPlaybackActive
                             || MainActivity.this.mascotMode == 2) {
                         Log.i(MainActivity.TAG, "proactive alert deferred while assistant is active");
+                        MainActivity.this.fetchPhoneEndpointJson("defer_command");
                         return;
                     }
                     try {
@@ -11671,9 +11698,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         }
                     });
                     Log.i(MainActivity.TAG, "Codex notification displayed chars=" + codexMessage.length());
-                    return;
-                }
-                if (MainActivity.this.voiceRecording) {
                     return;
                 }
                 if (strTrim3.length() != 0) {
@@ -12962,6 +12986,41 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return toolConfirmation;
     }
 
+    // Runs on Gemini's worker; bounded asynchronous I/O cannot delay ordinary VOICE indefinitely.
+    private String readRecentExternalAiContext() {
+        java.util.concurrent.ExecutorService reader = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "ExternalAiContext"); t.setDaemon(true); return t;
+        });
+        java.util.concurrent.Future<String> pending = reader.submit(() -> {
+            for (String url : buildPhoneEndpointUrls("knowledge_state")) {
+                if (Thread.currentThread().isInterrupted()) break;
+                HttpURLConnection connection = null;
+                try {
+                    connection = (HttpURLConnection) new URL(url).openConnection();
+                    addBridgeAuthorization(connection);
+                    connection.setConnectTimeout(400); connection.setReadTimeout(600);
+                    if (connection.getResponseCode() != 200) continue;
+                    try (java.io.InputStream in = connection.getInputStream()) {
+                        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                        byte[] buffer = new byte[4096]; int n;
+                        while ((n = in.read(buffer)) != -1) {
+                            bytes.write(buffer, 0, n);
+                            if (bytes.size() > 256 * 1024) throw new java.io.IOException("context size limit");
+                        }
+                        rememberPhoneHostFromUrl(url);
+                        JSONObject state = new JSONObject(bytes.toString("UTF-8"));
+                        return ExternalAiContext.format(state.optJSONObject("knowledge"), System.currentTimeMillis());
+                    }
+                } catch (Exception unavailable) {
+                    Log.d(TAG, "ExternalAiContext unavailable: " + unavailable.getClass().getSimpleName());
+                } finally { if (connection != null) connection.disconnect(); }
+            }
+            return "";
+        });
+        try { return pending.get(1800, java.util.concurrent.TimeUnit.MILLISECONDS); }
+        catch (Exception unavailable) { pending.cancel(true); return ""; }
+        finally { reader.shutdownNow(); }
+    }
     private void appendGeminiRuntimeContext(JSONObject request) throws org.json.JSONException {
         SimpleDateFormat clock = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss 'JST'", Locale.JAPAN);
         clock.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Tokyo"));
@@ -12974,6 +13033,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         system.put("parts", parts);
         request.put("systemInstruction", system);
         this.sharedMemoryManager.appendToRequest(request);
+        String externalContext = readRecentExternalAiContext();
+        if (!externalContext.isEmpty()) {
+            request.getJSONObject("systemInstruction").getJSONArray("parts").put(
+                    new JSONObject().put("text", externalContext));
+        }
         // Last system rule at every dispatch, including retries and function continuations.
         request.getJSONObject("systemInstruction").getJSONArray("parts").put(
                 new JSONObject().put("text", LokiPersonaPolicy.INSTRUCTION));
@@ -15904,7 +15968,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             mascotCameraPauseDepth++;applied.set(true);mascotView.setCameraPaused(true);
         }}catch(Throwable error){failure[0]=error;}finally{
             // Let the black frame replace GPU references before opening the camera.
-            handler.postDelayed(()->{System.gc();System.runFinalization();ready.countDown();},250);}});
+            handler.postDelayed(()->{try{if(mascotView!=null)mascotView.completeCameraPurge();System.gc();}catch(Throwable error){failure[0]=error;}finally{ready.countDown();}},250);}});
         try {if(!ready.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("mascot_pause_timeout");
             if(failure[0]!=null)throw new Exception("mascot_pause_failed",failure[0]);}
         catch(Exception error){cancelled.set(true);runOnUiThread(release);throw error;}
@@ -16068,8 +16132,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         void requestFrontAttention(long durationMs) {
             attentionUntil = Math.max(attentionUntil, SystemClock.uptimeMillis() + durationMs);
             removeCallbacks(refreshFrame);
-            post(refreshFrame);
-            postDelayed(refreshFrame, Math.max(0L, attentionUntil - SystemClock.uptimeMillis()));
+            if(!cameraPaused)post(refreshFrame);
+            if(!cameraPaused)postDelayed(refreshFrame, Math.max(0L, attentionUntil - SystemClock.uptimeMillis()));
         }
 
         private int turnCell(long now) {
@@ -16508,7 +16572,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
         void setSpeechText(String text) {
             speechVisual.setText(morningPlaybackActive || radioTopicPending ? "" : text);
-            post(refreshFrame);
+            if(!cameraPaused)post(refreshFrame);
         }
 
         void startSpeechGesture(String text) {
@@ -16533,7 +16597,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 });
                 gestureAnimator.start();
             }
-            post(refreshFrame);
+            if(!cameraPaused)post(refreshFrame);
         }
 
         private Bitmap loadSmoothAsset(String filename) {
@@ -16644,7 +16708,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             } else if (i == 1 && this.expression == 0) {
                 this.expression = 0;
             }
-            post(refreshFrame);
+            if(!cameraPaused)post(refreshFrame);
         }
 
         private void resetIdleAnimation() {
@@ -16763,7 +16827,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             this.speakingAnimationEnabled = animateMouth;
             this.speechActionStyle = nextActionStyle;
-            post(refreshFrame);
+            if(!cameraPaused)post(refreshFrame);
         }
 
         void setExpression(int i) {
@@ -16774,7 +16838,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 this.frame = 0;
             }
             this.expression = nextExpression;
-            post(refreshFrame);
+            if(!cameraPaused)post(refreshFrame);
         }
 
         private void loadMascotArtwork() {
@@ -16969,6 +17033,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
         }
 
+        private final java.util.IdentityHashMap<Bitmap,Boolean> cameraPurgeBitmaps=new java.util.IdentityHashMap<>();
+        private int cameraPurgedCount;
+        private void retainForCameraPurge(Bitmap... bitmaps) {
+            for(Bitmap bitmap:bitmaps)if(bitmap!=null&&!bitmap.isRecycled())cameraPurgeBitmaps.put(bitmap,Boolean.TRUE);
+        }
+        private void retainForCameraPurge(Bitmap[][] rows) {
+            for(Bitmap[] row:rows)retainForCameraPurge(row);
+        }
+        private void completeCameraPurge() {
+            int count=0;
+            for(Bitmap bitmap:cameraPurgeBitmaps.keySet())if(!bitmap.isRecycled()){bitmap.recycle();count++;}
+            cameraPurgeBitmaps.clear();cameraPurgedCount+=count;
+            if(count>0)Log.i("MascotLifecycle","Mascot purge recycled="+count+" nativeHeap="+android.os.Debug.getNativeHeapAllocatedSize());
+        }
         private boolean cameraPaused;
         void setCameraPaused(boolean paused) {
             if(cameraPaused==paused)return;
@@ -16976,6 +17054,22 @@ public final class MainActivity extends Activity implements SensorEventListener 
             cameraPaused=paused;
             if(paused){
                 renderingActive=false;stopRendering();preparedFrameAvailable=false;
+                for(ValueAnimator animator:new ValueAnimator[]{secondaryExitAnimator,gestureAnimator,angleAnimator,faceAnimator})
+                    if(animator!=null){animator.cancel();animator.removeAllUpdateListeners();animator.removeAllListeners();}
+                secondaryExitAnimator=null;gestureAnimator=null;angleAnimator=null;faceAnimator=null;
+                removeCallbacks(ticker);removeCallbacks(refreshFrame);
+                Log.i("MascotLifecycle","Mascot stop: Handler/Choreographer cancelled; ValueAnimator disposed; Canvas View renderer stopped");
+                for(Bitmap bitmap:portraits)retainForCameraPurge(bitmap);
+                for(Bitmap[] cells:portraitCache.values())retainForCameraPurge(cells);
+                retainForCameraPurge(mascotSheet,mascotExtraSheet,mascotTalkSheet,mascotActionSheet,mascotBreathingSheet,
+                        mascotExtremeSheet,mascotDistressSheet,mascotPostIntimacyV14Sheet,headGestureSheet,
+                        denseTurnSheet,denseClosedEyeSheet,denseCheekGlow,prepared_sourceSheet);
+                if(denseFaces!=null)retainForCameraPurge(denseFaces);
+                retainForCameraPurge(denseOpenEyes);retainForCameraPurge(denseClosedEyes);retainForCameraPurge(denseMouthFrames);
+                retainForCameraPurge(denseEyeWhites);retainForCameraPurge(densePupils);
+                retainForCameraPurge(denseBareFaces);retainForCameraPurge(denseFringe);retainForCameraPurge(denseSideHair);
+                retainForCameraPurge(smoothTalkSheets);retainForCameraPurge(mascotEmotionV11Sheets);
+                retainForCameraPurge(mascotReclinedV12Sheets);retainForCameraPurge(mascotMotionV13Sheets);
                 setLayerType(View.LAYER_TYPE_NONE,null);
                 // Keep expression/mode while releasing artwork for the camera.
                 portraitCache.clear();portraits.clear();faceWeights=new float[0];fadeStartWeights=new float[0];
@@ -17001,10 +17095,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 invalidate();System.gc();System.runFinalization();
                 Log.i("LokiCameraMemory","mascot paused nativeBefore="+before+" nativeAfter="+android.os.Debug.getNativeHeapAllocatedSize());
             }else{
+                completeCameraPurge();
                 loadMascotArtwork();loadDenseTurnAssets();initializePortraitCache();initializeDenseOverlays();
                 setLayerType(View.LAYER_TYPE_HARDWARE,null);
                 reconcileRendering();invalidate();
                 Log.i("LokiCameraMemory","mascot resumed mode="+mode+" expression="+expression);
+                Log.i("MascotLifecycle","Mascot resume after TOPIC resources/analysis completed or error; portraits="+portraits.size());
             }
         }
 
@@ -17020,7 +17116,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             resetIdleAnimation();
             if (mode == 2) speechVisual.begin(SystemClock.uptimeMillis());
             removeCallbacks(refreshFrame);
-            post(refreshFrame);
+            if(!cameraPaused)post(refreshFrame);
             removeCallbacks(ticker);
             post(ticker);
         }

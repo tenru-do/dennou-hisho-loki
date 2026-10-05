@@ -18,6 +18,7 @@ public final class BridgeForegroundService extends Service {
     private static final int NOTIFICATION_ID = 8765;
     private RadioModeManager radioMode;
     private DailyContextSync dailyContext;
+    private HirokidLogMonitor hirokidLogMonitor;
     private final Handler morningHandler = new Handler(Looper.getMainLooper());
     private final Handler proactiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable morningCheck = new Runnable() {
@@ -41,6 +42,7 @@ public final class BridgeForegroundService extends Service {
         super.onCreate();
         startBridgeForeground();
         dailyContext = new DailyContextSync(this);
+        hirokidLogMonitor = new HirokidLogMonitor(this);
         radioMode = new RadioModeManager(this);
         ContextSyncPolicy.attempt("LOCATION/tracker", () -> { TransitLocationTracker.start(this); return true; }, false, DailyContextSync.LOG);
         morningHandler.postDelayed(morningCheck, 3000L);
@@ -57,6 +59,7 @@ public final class BridgeForegroundService extends Service {
     @Override
     public void onDestroy() {
         if (dailyContext != null) dailyContext.close();
+        if (hirokidLogMonitor != null) hirokidLogMonitor.close();
         if (radioMode != null) radioMode.close();
         morningHandler.removeCallbacks(morningCheck);
         proactiveHandler.removeCallbacks(proactiveCheck);

@@ -310,6 +310,7 @@ public final class MainActivity extends Activity {
         restoreGlassRuntimeState();
         restoreRecentConversationLogs();
         buildUi();
+        HirokidLogMonitor.requestPermission(this);
         // One-time recheck of the user's existing setup after fixing diagnostic
         // classification. Never runs for a device without a prior manual check.
         final SharedPreferences mapsCheck = getSharedPreferences("loki_maps_secure", MODE_PRIVATE);
@@ -2570,6 +2571,7 @@ public final class MainActivity extends Activity {
             boolean command = request != null && request.startsWith("GET /command");
             boolean postCommand = request != null && request.startsWith("POST /command");
             boolean ackCommand = request != null && request.startsWith("GET /ack_command");
+            boolean deferCommand = request != null && request.startsWith("GET /defer_command ");
             boolean control = request != null && request.startsWith("GET /control");
             boolean memory = request != null && request.startsWith("GET /memory");
             boolean log = request != null && request.startsWith("GET /log");
@@ -2694,6 +2696,9 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket, 200, RadioModeManager.state(this).toString());
                 return;
             }
+            if (request.startsWith("GET /radio_observation_status?")) {
+                writeJsonResponse(socket,200,RadioObservationStore.analysisStatus(queryParam(request,"id")).toString());return;
+            }
             if (request.startsWith("POST /radio_observation ")) {
                 JSONObject observation = new JSONObject(formValue(bodyText, "observation"));
                 boolean accepted = RadioObservationStore.accept(observation,
@@ -2742,6 +2747,9 @@ public final class MainActivity extends Activity {
                 synchronized (MainActivity.class) { pendingCustomStateRequest = true; }
                 writeJsonResponse(socket, 200, snapshot.toString());
                 return;
+            }
+            if (request.startsWith("GET /knowledge_state ")) {
+                writeJsonResponse(socket,200,HirokidLogMonitor.state(this).toString());return;
             }
             if (request.startsWith("GET /imported_memory?")) {
                 writeJsonResponse(socket, 200, ImportedMemory.search(this,
@@ -2793,6 +2801,7 @@ public final class MainActivity extends Activity {
                     : morning ? MorningBriefingManager.readStoredForPlayback(this).toString()
                     : postCommand ? buildPostCommandResult(bodyText).toString()
                     : command ? buildCommandJson().toString()
+                    : deferCommand ? buildDeferCommandJson().toString()
                     : ackCommand ? buildAckCommandJson().toString()
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
@@ -3906,6 +3915,18 @@ public final class MainActivity extends Activity {
         return root;
     }
 
+    private JSONObject buildDeferCommandJson() throws Exception {
+        boolean deferred = false;
+        synchronized (MainActivity.class) {
+            ArrayList<String> queue = readPendingCommandsLocked(getPreferences());
+            if (queue.size() > 1 && queue.get(0).startsWith("__LOKI_ALERT__:")) {
+                queue.add(queue.remove(0));
+                persistPendingCommandsLocked(getPreferences(), queue);
+                deferred = true;
+            }
+        }
+        return new JSONObject().put("ok", true).put("deferred", deferred);
+    }
     private JSONObject buildAckCommandJson() throws Exception {
         JSONObject root = new JSONObject();
         synchronized (MainActivity.class) {
