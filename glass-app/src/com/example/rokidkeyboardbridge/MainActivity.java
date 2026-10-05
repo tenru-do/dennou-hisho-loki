@@ -15998,6 +15998,66 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private int cachedEmotion = -1;
         private AngleState cachedAngle;
         private float anglePosition;
+        // Primitive interpolation state only: reuse every cached bitmap and paint.
+        private long smoothFrameNanos, smoothPreparedNanos, smoothPoseAt, smoothMouthAt;
+        private boolean smoothFrameScheduled, smoothPreparing;
+        private int smoothPose = -1, smoothMouth = -1, smoothPreviousMouth;
+        private float smoothX, smoothY, smoothRotation, smoothScale = 1f;
+        private float smoothStartX, smoothStartY, smoothStartRotation, smoothStartScale = 1f;
+        private float smoothMouthBlend = 1f;
+        private final Paint smoothMouthPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF smoothLipRect = new RectF();
+        private final android.view.Choreographer.FrameCallback smoothFrameCallback = nanos -> {
+            smoothFrameScheduled = false;
+            if (!MascotView.this.renderingActive || MascotView.this.cameraPaused) return;
+            if (smoothFrameNanos == 0L || nanos >= smoothFrameNanos) {
+                // One clock and one preparation owner; retain cadence after a late vsync.
+                smoothFrameNanos = smoothFrameNanos == 0L || nanos-smoothFrameNanos >= 33_333_333L
+                        ? nanos+33_333_333L : smoothFrameNanos+33_333_333L;
+                smoothPreparedNanos = nanos;
+                smoothPreparing = true;
+                try { prepareFrame(); invalidate(); }
+                finally { smoothPreparing = false; }
+            }
+            if (isTurning() || (MascotView.this.mode == 2 && MascotView.this.speakingAnimationEnabled)
+                    || SystemClock.uptimeMillis() - smoothPoseAt < 80L) scheduleSmoothFrame();
+        };
+        private void scheduleSmoothFrame() {
+            if (!renderingActive || cameraPaused || smoothFrameScheduled) return;
+            smoothFrameScheduled = true;
+            android.view.Choreographer.getInstance().postFrameCallback(smoothFrameCallback);
+        }
+        private float smoothEase(long elapsed, float duration) {
+            float t = Math.max(0f, Math.min(1f, elapsed / duration));
+            return t * t * (3f - 2f * t);
+        }
+        private void prepareSmoothPose(long now) {
+            // Normalize existing pose landmarks before interpolation: frames 8/9
+            // have a different source height. Anchor the mouth, not a copied jaw tile.
+            Rect[] start = denseRegions[0], end = denseRegions[MascotTurnPolicy.FRAME_COUNT - 1];
+            Rect[] pose = denseRegions[preparedDenseFrame];
+            float targetX = start[2].exactCenterX() + (end[2].exactCenterX()-start[2].exactCenterX()) * anglePosition;
+            float targetY = start[2].exactCenterY() + (end[2].exactCenterY()-start[2].exactCenterY()) * anglePosition;
+            float startHeight = start[2].exactCenterY() - (start[0].exactCenterY()+start[1].exactCenterY())*.5f;
+            float endHeight = end[2].exactCenterY() - (end[0].exactCenterY()+end[1].exactCenterY())*.5f;
+            float poseHeight = pose[2].exactCenterY() - (pose[0].exactCenterY()+pose[1].exactCenterY())*.5f;
+            smoothX = (targetX - pose[2].exactCenterX()) / FACE_CACHE_SIZE;
+            smoothY = (targetY - pose[2].exactCenterY()) / FACE_CACHE_SIZE;
+            smoothScale = Math.max(.9f, Math.min(1.15f, (startHeight+(endHeight-startHeight)*anglePosition)/Math.max(1f,poseHeight)));
+            float startRoll = (float)Math.atan2(start[1].exactCenterY()-start[0].exactCenterY(),start[1].exactCenterX()-start[0].exactCenterX());
+            float endRoll = (float)Math.atan2(end[1].exactCenterY()-end[0].exactCenterY(),end[1].exactCenterX()-end[0].exactCenterX());
+            float poseRoll = (float)Math.atan2(pose[1].exactCenterY()-pose[0].exactCenterY(),pose[1].exactCenterX()-pose[0].exactCenterX());
+            smoothRotation = Math.max(-8f,Math.min(8f,(startRoll+(endRoll-startRoll)*anglePosition-poseRoll)*57.29578f));
+            if (smoothPose != preparedDenseFrame) smoothPoseAt = now;
+            smoothPose = preparedDenseFrame;
+            if (smoothMouth != preparedDenseMouthStage) {
+                smoothPreviousMouth = smoothMouth < 0 ? preparedDenseMouthStage : smoothMouth;
+                smoothMouth = preparedDenseMouthStage;
+                smoothMouthAt = now;
+            }
+            smoothMouthBlend = smoothEase(now - smoothMouthAt, 65f);
+            if (isTurning() || (mode == 2 && speakingAnimationEnabled) || now-smoothPoseAt < 80L) scheduleSmoothFrame();
+        }
         private int angleBaseFace = -1;
         private ValueAnimator angleAnimator, faceAnimator, gestureAnimator;
         private boolean preparingFrame;
@@ -16220,8 +16280,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if (angleState == AngleState.THREE_QUARTER) beginSecondaryExit();
                 else secondaryTailActive = false;
             }
-            prepareFrame();
-            invalidate();
+            if (isTurning() || (MascotView.this.mode == 2 && MascotView.this.speakingAnimationEnabled)) scheduleSmoothFrame();
+            else { prepareFrame(); invalidate(); }
             if (isTurning() || !secondaryMotion.isAtRest()) scheduleSecondaryFrame();
         };
 
@@ -16476,6 +16536,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         secondaryMotion.cheekX() * bitmapDst.width(), secondaryMotion.cheekY() * bitmapDst.height());
             }
             mapDenseRegion(denseRegions[preparedDenseFrame][2], denseMouthDst);
+            prepareSmoothPose(SystemClock.uptimeMillis());
         }
 
         private void drawDensePortrait(Canvas canvas) {
@@ -16517,8 +16578,25 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 eyeClearPaint.setAlpha(255);
             }
-            if (mode == 2 && speakingAnimationEnabled)
-                canvas.drawBitmap(denseMouthFrames[preparedDenseFrame][preparedDenseMouthStage], null, denseMouthDst, bitmapPaint);
+            if (mode == 2 && speakingAnimationEnabled) {
+                // Keep the original jaw pixels; interpolate only the lip outline.
+                canvas.drawBitmap(denseMouthFrames[preparedDenseFrame][0], null, denseMouthDst, bitmapPaint);
+                float previousHeight = smoothPreviousMouth == 0 ? 0f : smoothPreviousMouth * 4f - 1f;
+                float targetHeight = preparedDenseMouthStage == 0 ? 0f : preparedDenseMouthStage * 4f - 1f;
+                float height = previousHeight + (targetHeight - previousHeight) * smoothMouthBlend;
+                if (height > .01f) {
+                    smoothMouthPaint.setColor(Color.rgb(0, 255, 190));
+                    smoothMouthPaint.setAlpha(Math.round(255f * preparedDenseAlpha * Math.min(1f, height)));
+                    smoothMouthPaint.setStyle(Paint.Style.STROKE);
+                    smoothMouthPaint.setStrokeWidth(1.5f * denseMouthDst.width() / 96f);
+                    float halfHeight = height * denseMouthDst.height() / 40f;
+                    smoothLipRect.set(denseMouthDst.left + denseMouthDst.width() * .3125f,
+                            denseMouthDst.centerY() - halfHeight,
+                            denseMouthDst.left + denseMouthDst.width() * .6875f,
+                            denseMouthDst.centerY() + halfHeight);
+                    canvas.drawOval(smoothLipRect, smoothMouthPaint);
+                }
+            }
             bitmapPaint.setAlpha(255);
             if (preparedDenseCheekAlpha > 0) {
                 cheekPaint.setShader(null);
@@ -17129,6 +17207,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
 
         private void stopRendering() {
+            android.view.Choreographer.getInstance().removeFrameCallback(smoothFrameCallback);
+            smoothFrameScheduled = false;
+            smoothFrameNanos = 0L;
+            smoothPreparedNanos = 0L;
+            smoothPreparing = false;
+            smoothPose = smoothMouth = -1;
+            smoothX = smoothY = smoothRotation = 0f;
+            smoothScale = 1f;
             removeCallbacks(ticker);
             removeCallbacks(refreshFrame);
             android.view.Choreographer.getInstance().removeFrameCallback(secondaryFrameCallback);
@@ -17358,6 +17444,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
         private void prepareFrame() {
             if(cameraPaused)return;
             if (preparingFrame || faceWeights == null) return;
+            // Coalesce animator, physics and ticker updates into one 30fps preparation.
+            if (renderingActive && (isTurning() || (mode == 2 && speakingAnimationEnabled))) {
+                if (!smoothPreparing) {
+                    scheduleSmoothFrame();
+                    return;
+                }
+                scheduleSmoothFrame();
+            }
             int width = getWidth(), height = getHeight();
             preparedFrameAvailable = width > 0 && height > 0;
             if (!preparedFrameAvailable) return;
@@ -17929,7 +18023,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
             canvas.translate(prepared_motionX, 0f);
             canvas.rotate(prepared_rotation, preparedCenterX, preparedCenterY);
             canvas.scale(prepared_pulse, prepared_pulse, preparedCenterX, preparedCenterY);
-            if (preparedDensePortrait) drawDensePortrait(canvas);
+            if (preparedDensePortrait) {
+                canvas.translate(smoothX * bitmapDst.width(), smoothY * bitmapDst.height());
+                canvas.rotate(smoothRotation, denseMouthDst.centerX(), denseMouthDst.centerY());
+                canvas.scale(smoothScale, smoothScale, denseMouthDst.centerX(), denseMouthDst.centerY());
+                drawDensePortrait(canvas);
+            }
             else drawBlendedFace(canvas);
             canvas.drawPicture(overlayPicture);
             canvas.restoreToCount(save);
