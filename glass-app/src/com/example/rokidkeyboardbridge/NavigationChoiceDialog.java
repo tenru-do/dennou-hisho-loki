@@ -41,15 +41,52 @@ final class NavigationChoiceDialog {
             return true;
         });
     }
+    private static void collectButtons(View view,java.util.List<Button> buttons) {
+        if(view instanceof Button && view.isShown() && view.isEnabled())buttons.add((Button)view);
+        if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)collectButtons(group.getChildAt(i),buttons);}
+    }
     static void installDialogSelection(AlertDialog dialog,Button fallback) {
+        final int[] held={-1}; final View[] pressed={null};
+        final long[] nextSlideAt={0L};
         dialog.setOnKeyListener((d,code,event)-> {
-            if(code!=KeyEvent.KEYCODE_DPAD_CENTER && code!=KeyEvent.KEYCODE_ENTER
-                    && code!=KeyEvent.KEYCODE_NUMPAD_ENTER && code!=KeyEvent.KEYCODE_BUTTON_SELECT)return false;
-            View focus=dialog.getWindow().getDecorView().findFocus();
-            View target=focus instanceof Button?focus:fallback;
-            if(target==null)return false;
-            if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())target.performClick();
-            return true;
+            boolean forward=code==KeyEvent.KEYCODE_DPAD_RIGHT || code==KeyEvent.KEYCODE_DPAD_DOWN
+                    || (code==KeyEvent.KEYCODE_TAB && !event.isShiftPressed());
+            boolean backward=code==KeyEvent.KEYCODE_DPAD_LEFT || code==KeyEvent.KEYCODE_DPAD_UP
+                    || (code==KeyEvent.KEYCODE_TAB && event.isShiftPressed());
+            boolean select=code==KeyEvent.KEYCODE_DPAD_CENTER || code==KeyEvent.KEYCODE_ENTER
+                    || code==KeyEvent.KEYCODE_NUMPAD_ENTER || code==KeyEvent.KEYCODE_BUTTON_SELECT;
+            if(!forward && !backward && !select)return false;
+            if(event.getAction()==KeyEvent.ACTION_UP){
+                if(held[0]!=code)return true;
+                View target=pressed[0];held[0]=-1;pressed[0]=null;
+                if(select && !event.isCanceled() && target!=null && target.isShown() && target.isEnabled())target.performClick();
+                return true;
+            }
+            if(event.getAction()!=KeyEvent.ACTION_DOWN)return true;
+            // One physical slide moves one item; holding the pad cannot skip rows.
+            if(event.getRepeatCount()>0 || held[0]==code)return true;
+            held[0]=code;
+            View root=dialog.getWindow().getDecorView(),focus=root.findFocus();
+            if(select){pressed[0]=focus instanceof Button?focus:fallback;return true;}
+            // The touchpad can emit fresh DOWN/UP pairs for one slide (repeatCount=0).
+            long now=android.os.SystemClock.uptimeMillis();
+            if(now<nextSlideAt[0])return true;
+            nextSlideAt[0]=now+400L;
+            java.util.List<Button> buttons=new java.util.ArrayList<>();collectButtons(root,buttons);
+            if(buttons.isEmpty())return true;
+            int index=buttons.indexOf(focus);
+            int explicit=View.NO_ID;
+            if(focus!=null){
+                if(code==KeyEvent.KEYCODE_DPAD_RIGHT)explicit=focus.getNextFocusRightId();
+                else if(code==KeyEvent.KEYCODE_DPAD_LEFT)explicit=focus.getNextFocusLeftId();
+                else if(code==KeyEvent.KEYCODE_DPAD_DOWN)explicit=focus.getNextFocusDownId();
+                else if(code==KeyEvent.KEYCODE_DPAD_UP)explicit=focus.getNextFocusUpId();
+                else if(forward)explicit=focus.getNextFocusForwardId();
+            }
+            View target=explicit==View.NO_ID?null:root.findViewById(explicit);
+            if(!(target instanceof Button) || !target.isShown() || !target.isEnabled())
+                target=buttons.get(index<0?0:Math.max(0,Math.min(buttons.size()-1,index+(forward?1:-1))));
+            target.requestFocus();return true;
         });
     }
     private static void blackContainers(View v){

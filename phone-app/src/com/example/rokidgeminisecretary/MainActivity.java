@@ -311,6 +311,10 @@ public final class MainActivity extends Activity {
         restoreRecentConversationLogs();
         buildUi();
         HirokidLogMonitor.requestPermission(this);
+        if(!Settings.canDrawOverlays(this) && !getPreferences().getBoolean("navigation_overlay_prompted",false)) {
+            getPreferences().edit().putBoolean("navigation_overlay_prompted",true).apply();
+            new Handler(android.os.Looper.getMainLooper()).postDelayed(()-> {if(!isFinishing() && !isDestroyed() && hasWindowFocus())requestNavigationBackgroundPermission();},1500);
+        }
         // One-time recheck of the user's existing setup after fixing diagnostic
         // classification. Never runs for a device without a prior manual check.
         final SharedPreferences mapsCheck = getSharedPreferences("loki_maps_secure", MODE_PRIVATE);
@@ -1581,13 +1585,18 @@ public final class MainActivity extends Activity {
                         Uri.parse("https://www.google.com/maps"));
             }
         } else {
-            Uri directions = Uri.parse("https://www.google.com/maps/dir/?api=1"
+            Uri directions = Uri.parse("https://www.google.com/maps/dir/?api=1&dir_action=navigate"
                     + "&destination=" + Uri.encode(GoogleNavigationClient.selectedDestinationCoordinates(destination).isEmpty()
                             ? destination : GoogleNavigationClient.selectedDestinationCoordinates(destination))
                     + (GoogleNavigationClient.selectedDestinationPlaceId(destination).isEmpty() ? ""
                             : "&destination_place_id=" + Uri.encode(GoogleNavigationClient.selectedDestinationPlaceId(destination)))
                     + "&travelmode=" + Uri.encode(mode)
                     );
+            if(!"transit".equals(mode)) {
+                String coordinate=GoogleNavigationClient.selectedDestinationCoordinates(destination);
+                String nativeMode="walking".equals(mode)?"w":"bicycling".equals(mode)?"b":"d";
+                directions=Uri.parse("google.navigation:q="+Uri.encode(coordinate.isEmpty()?destination:coordinate)+"&mode="+nativeMode);
+            }
             intent = new Intent(Intent.ACTION_VIEW, directions);
             intent.setPackage("com.google.android.apps.maps");
         }
@@ -1605,7 +1614,7 @@ public final class MainActivity extends Activity {
                 Intent browser = new Intent(Intent.ACTION_VIEW,
                         destination.length() == 0
                                 ? Uri.parse("https://www.google.com/maps")
-                                : Uri.parse("https://www.google.com/maps/dir/?api=1"
+                                : Uri.parse("https://www.google.com/maps/dir/?api=1&dir_action=navigate"
                                         + "&destination=" + Uri.encode(destination)
                                         ));
                 startActivity(browser);
@@ -2124,6 +2133,40 @@ public final class MainActivity extends Activity {
             throw new IllegalStateException("route_http_" + code);
         }
         return builder.toString();
+    }
+
+    private void launchAfterMapsNavigationExit(NavigationStartAck ack) {
+        if(!MailNotificationService.hasMapsNavigationExitAction()){launchSelectedGoogleMapsNavigation();return;}
+        updateStatus("目的地変更", "現在のGoogleマップ案内を終了しています");
+        new Thread(()-> {
+            try {
+                if(!MailNotificationService.stopMapsNavigation())throw new IllegalStateException("現在のGoogleマップ案内を終了できませんでした");
+                long deadline=android.os.SystemClock.elapsedRealtime()+8000;
+                while(MailNotificationService.hasMapsNavigationExitAction() && android.os.SystemClock.elapsedRealtime()<deadline)
+                    Thread.sleep(100);
+                if(MailNotificationService.hasMapsNavigationExitAction())throw new IllegalStateException("Googleマップの案内終了を確認できませんでした");
+                Log.i("LokiGoogleNav","maps_previous_navigation_exit_confirmed");
+                runOnUiThread(()-> {
+                    if(ack.done.getCount()==0)return;
+                    try {launchSelectedGoogleMapsNavigation();}
+                    catch(Exception failure){ack.fail("新しい目的地の起動失敗: "+failure.getMessage());Log.w("LokiGoogleNav","maps_switch_launch_failed",failure);}
+                });
+            }catch(Exception failure){
+                ack.fail("目的地切替失敗: "+failure.getMessage());Log.w("LokiGoogleNav","maps_switch_exit_failed",failure);
+                runOnUiThread(()->updateStatus("目的地切替失敗",failure.getMessage()));
+            }
+        },"MapsNavigationSwitch").start();
+    }
+
+    private void requestNavigationBackgroundPermission() {
+        if(Settings.canDrawOverlays(this))return;
+        new AlertDialog.Builder(this).setTitle("グラスからのナビ切替")
+                .setMessage("Googleマップが前面でもグラスから目的地を変更するには、「他のアプリの上に表示」を許可してください。")
+                .setPositiveButton("設定を開く",(dialog,which)-> {
+                    try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:"+getPackageName()))); }
+                    catch(Exception unavailable){android.widget.Toast.makeText(this,"端末設定の「他のアプリの上に表示」でLokiを許可してください",android.widget.Toast.LENGTH_LONG).show();}
+                }).setNegativeButton("後で",null).show();
     }
 
     private boolean hasNotificationListenerAccess() {
@@ -2662,9 +2705,13 @@ public final class MainActivity extends Activity {
                             Runnable dispatch=()-> {try {
                                 if(ack.done.getCount()==0)return;
                                 if(target.isFinishing()||target.isDestroyed())throw new IllegalStateException("母艦画面が終了しています");
+                                if(!Settings.canDrawOverlays(target) && !target.hasWindowFocus()) {
+                                    ack.fail("スマホでLokiの「他のアプリの上に表示」を許可してください");
+                                    return;
+                                }
                                 target.getPreferences().edit().putString(KEY_MAP_ROUTE_MODE,mode).apply();
                                 ack.destination=target.normalizeNavigationDestination(target.navigationDestinationInput.getText().toString());
-                                target.launchSelectedGoogleMapsNavigation();
+                                target.launchAfterMapsNavigationExit(ack);
                             }catch(Exception failure){ack.fail("画面起動失敗: "+failure.getMessage());Log.w("LokiGoogleNav","glass_start_dispatch_failed",failure);}};
                             if(selectedCoordinate!=null || destinationName.isEmpty()) {
                                 if(selectedCoordinate!=null)GoogleNavigationClient.rememberDestination(destinationName,selectedCoordinate);

@@ -198,7 +198,7 @@ final class GoogleNavigationClient {
     static double[] destinationCoordinates(Context c,String destination)throws Exception {JSONObject p=destinationWaypoint(c,destination).getJSONObject("location").getJSONObject("latLng");return new double[]{p.getDouble("latitude"),p.getDouble("longitude")};}
     static JSONObject routeToPoint(Context c,double lat,double lng,double toLat,double toLng,String mode)throws Exception {String label="loki-segment:"+toLat+","+toLng;selectedDestinations.put(label,new double[]{toLat,toLng});try{return route(c,lat,lng,label,mode);}finally{selectedDestinations.remove(label);}}
     static JSONObject route(Context c, double lat, double lng, String destination, String mode) throws Exception {
-        reserve(c, "routes", 20, 3);
+        reserve(c, "routes", 50, 3);
         String travel = RoutesRequestPolicy.mode(mode);
         JSONObject point = new JSONObject().put("latitude", lat).put("longitude", lng);
         JSONObject body = new JSONObject().put("origin", new JSONObject().put("location", new JSONObject().put("latLng", point)))

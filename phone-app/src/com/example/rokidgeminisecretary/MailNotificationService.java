@@ -281,6 +281,16 @@ public final class MailNotificationService extends NotificationListenerService {
         }
     }
 
+    static boolean hasMapsNavigationExitAction() {
+        Notification current=latestMapsNotification;
+        if(current==null || current.actions==null)return false;
+        for(Notification.Action action:current.actions) {
+            String title=action.title==null?"":action.title.toString();
+            if(title.matches(".*(ナビを終了|ナビゲーションを終了|終了|Exit navigation|Stop navigation).*"))return true;
+        }
+        return false;
+    }
+
     static boolean stopMapsNavigation() {
         Notification current = latestMapsNotification;
         if (current == null || current.actions == null) return false;

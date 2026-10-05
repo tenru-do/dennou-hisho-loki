@@ -3869,7 +3869,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             button.setOnClickListener(v->loadNavigationPlaces(input,feedback,kind)); presets.addView(button,new LinearLayout.LayoutParams(0,-2,1f));
         }
         String[] modes={"walking","driving","bicycling","transit"}; String[] labels={"徒歩","車","自転車","公共交通"};
-        final int[] selected={0}; Button modeButton=new Button(this); modeButton.setText(labels[0]); NavigationChoiceDialog.styleButton(this,modeButton); root.addView(modeButton);
+        final int[] selected={Math.max(0,Math.min(labels.length-1,getSharedPreferences("navigation_display",MODE_PRIVATE).getInt("selection_mode",0)))}; Button modeButton=new Button(this); modeButton.setText(labels[selected[0]]); NavigationChoiceDialog.styleButton(this,modeButton); root.addView(modeButton);
         // Explicit horizontal chain: geometry must not skip the last preset.
         for (int i = 0; i < presets.getChildCount(); i++) {
             View preset = presets.getChildAt(i);
@@ -3912,21 +3912,27 @@ public final class MainActivity extends Activity implements SensorEventListener 
         };
         work.setOnKeyListener(savedFocusGuard);
         saved.setOnKeyListener(savedFocusGuard);
-        modeButton.setOnClickListener(v->NavigationChoiceDialog.show(this,"移動手段",labels,selected[0],(d,i)-> { selected[0]=i; modeButton.setText(labels[i]); }));
+        modeButton.setOnClickListener(v->NavigationChoiceDialog.show(this,"移動手段",labels,selected[0],(d,i)-> { selected[0]=i; getSharedPreferences("navigation_display",MODE_PRIVATE).edit().putInt("selection_mode",i).apply(); modeButton.setText(labels[i]); }));
         AlertDialog dialog=new AlertDialog.Builder(this,theme).setTitle("登録地点からナビ").setView(root)
             .setPositiveButton("MAPナビ開始",null).setNegativeButton("閉じる",null).create();
+        navigationDestinationDialog=dialog;
+        dialog.setOnDismissListener(d->{if(navigationDestinationDialog==dialog)navigationDestinationDialog=null;});
         dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             String destination=input.getTag() instanceof String ? (String)input.getTag() : "";
             if(destination.isEmpty()||destination.length()>200) { feedback.setText("自宅・勤務先・登録地点から目的地を選んでください"); return; }
             String path="navigation_start?destination="+android.net.Uri.encode(destination)+"&name="+android.net.Uri.encode(input.getText().toString())+"&mode="+modes[selected[0]]+"&id="+java.util.UUID.randomUUID().toString();
             feedback.setText("ルート検索中…");
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            dialog.dismiss();
+            setStatus("ナビ開始中: "+input.getText(),Color.YELLOW);
+            setGlanceHudVisible(true);
+            wakeDisplayForGlance();
             new Thread(()-> {
                 try {
                     JSONObject result=new JSONObject(fetchPhoneEndpointJson(path));
                     if(!result.optBoolean("ok")) throw new IllegalStateException(result.optString("error","ナビ開始に失敗しました"));
                     handler.post(()-> { dialog.dismiss(); setStatus("スマホでルート生成・画面起動が完了しました",Color.GREEN); });
-                } catch(Exception e) { Log.w("LokiGoogleNav","glass_start_failed",e); handler.post(()-> { if(dialog.isShowing()) { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); String message="エラー: "+(e.getMessage()==null?"ナビ開始に失敗しました":e.getMessage()); feedback.setText(message); android.widget.Toast.makeText(this,message,android.widget.Toast.LENGTH_LONG).show(); } }); }
+                } catch(Exception e) { Log.w("LokiGoogleNav","glass_start_failed",e); handler.post(()-> { String message="エラー: "+(e.getMessage()==null?"ナビ開始に失敗しました":e.getMessage()); setStatus(message,Color.YELLOW); setGlanceHudVisible(true); wakeDisplayForGlance(); android.widget.Toast.makeText(this,message,android.widget.Toast.LENGTH_LONG).show(); }); }
             },"GlassNavigationStart").start();
         })); dialog.show();
         NavigationChoiceDialog.styleButton(this,dialog.getButton(AlertDialog.BUTTON_POSITIVE));
@@ -3938,6 +3944,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
     private volatile java.util.List<SavedNavigationPlace> savedNavigationPlaces = java.util.Collections.emptyList();
     private int navigationPlacesGeneration;
+    private AlertDialog navigationDestinationDialog;
     static void bindNavigationPlace(TextView input,TextView feedback,SavedNavigationPlace place) {
         input.setTag(place.query); input.setText(place.name); feedback.setText("");
     }
@@ -3961,7 +3968,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     if(favorites.isEmpty()){feedback.setText("スマホの登録地点の管理で追加してください");return;}
                     String[] names=new String[favorites.size()];for(int i=0;i<names.length;i++)names[i]=favorites.get(i).name;
                     feedback.setText("");
-                    navigationChoiceDialog = NavigationChoiceDialog.show(this,"登録地点",names,0,(d,i)->bindNavigationPlace(input,feedback,favorites.get(i)));
+                    navigationChoiceDialog = NavigationChoiceDialog.show(this,"登録地点",names,0,(d,i)-> { bindNavigationPlace(input,feedback,favorites.get(i)); AlertDialog parent=navigationDestinationDialog; if(parent!=null && parent.isShowing())parent.getButton(AlertDialog.BUTTON_POSITIVE).performClick(); });
                 });
             }catch(Exception e){handler.post(()-> {if(input.isAttachedToWindow()&&ticket==navigationPlacesGeneration)feedback.setText("登録地点を取得できません。スマホ接続を確認してください");});}
         },"GlassNavigationPlaces").start();
