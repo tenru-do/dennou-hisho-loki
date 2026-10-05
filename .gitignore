@@ -54,3 +54,9 @@ window*.xml
 Thumbs.db
 .idea/
 .vscode/
+# Build & investigation outputs (Logs, JSON, APKs)
+outputs/
+shared_knowledge*.json
+.env
+.env.*
+!.env.example
