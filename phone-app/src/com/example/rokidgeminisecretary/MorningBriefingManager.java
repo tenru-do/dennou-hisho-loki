@@ -52,12 +52,13 @@ final class MorningBriefingManager {
     private static final String KEY_DATE = "morning_briefing_date";
     private static final String KEY_TIME = "morning_briefing_time";
     private static final String KEY_SLOT = "topic_briefing_slot";
+    private static final String KEY_NEWS_CACHE = "topic_scheduled_news_cache";
     private static final String KEY_ENABLED = "morning_briefing_enabled";
     private static final String KEY_FORMAT_VERSION = "morning_briefing_format_version";
     private static final String KEY_CUSTOM = "custom_instructions";
     private static final String KEY_PROFILE_ZODIAC = "morning_profile_zodiac";
     private static final String KEY_HOROSCOPE_ANNOUNCED_DATE = "topic_horoscope_announced_date";
-    private static final int FORMAT_VERSION = 9;
+    private static final int FORMAT_VERSION = 11;
     private static final String KEY_WEATHER_LOCATION = "weather_location";
     private static final String KEY_WEATHER_CONDITION = "weather_condition";
     private static final String KEY_WEATHER_TEMPERATURE = "weather_temperature";
@@ -70,6 +71,7 @@ final class MorningBriefingManager {
     private static final long TRIVIA_SEEN_RETENTION_MS = 14L * 24L * 60L * 60L * 1000L;
     private static final Object LOCK = new Object();
     private static volatile boolean building;
+    private static final TopicPlaybackLoader<JSONObject> playbackLoader = new TopicPlaybackLoader<>();
 
     private MorningBriefingManager() {
     }
@@ -86,12 +88,18 @@ final class MorningBriefingManager {
     static boolean shouldBuildToday(Context context) {
         if (!isCollectionEnabled(context)) return false;
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        // Catch up after a late app/service start instead of requiring the first 15 minutes.
         int slot = currentTopicSlot();
-        if (slot < 0) return false;
+        if (slot < 0) slot=7;
         String currentSlotKey = topicSlotKey(today, slot);
         String savedSlotKey = preferences(context).getString(KEY_SLOT, "");
         int version = preferences(context).getInt(KEY_FORMAT_VERSION, 0);
-        return !currentSlotKey.equals(savedSlotKey) || version != FORMAT_VERSION;
+        JSONObject cache=newsCache(context);
+        boolean empty=cachedSection(cache,"topNews").length()==0;
+        if(empty && cache.optLong("attemptedAt",0)>0 && version==FORMAT_VERSION
+                && System.currentTimeMillis()-cache.optLong("attemptedAt",0)<60000L)return false;
+        return !currentSlotKey.equals(savedSlotKey) || version != FORMAT_VERSION
+                || empty && System.currentTimeMillis()-cache.optLong("attemptedAt",0)>60000L;
     }
 
     private static int currentTopicSlot() {
@@ -114,19 +122,18 @@ final class MorningBriefingManager {
         return "夜";
     }
 
-    static void ensureFreshAsync(final Context context, final boolean force) {
+    static synchronized void ensureFreshAsync(final Context context, final boolean force) {
         if (!isCollectionEnabled(context)
-                || building || (!force && !shouldBuildToday(context))) return;
+                || building || !force && !shouldBuildToday(context)) return;
         building = true;
         final Context app = context.getApplicationContext();
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    JSONObject result = buildAndStore(app);
-                    Log.i(TAG, "topic briefing ready chars="
-                            + result.optString("script", "").length());
+                    collectScheduledNews(app);
+                    Log.i(TAG, "scheduled topic news updated");
                 } catch (Exception error) {
-                    Log.w(TAG, "morning briefing build failed", error);
+                    DailyContextSync.LOG.failed("TOPIC/briefing", error);
                 } finally {
                     building = false;
                 }
@@ -156,15 +163,68 @@ final class MorningBriefingManager {
     }
 
     static JSONObject readStoredForPlayback(Context context) throws Exception {
-        JSONObject stored = readStored(context);
-        if (stored.optBoolean("ok", false)) {
+        JSONObject before=newsCache(context);
+        ensureFreshAsync(context, cachedSection(before,"topNews").length()==0
+                && System.currentTimeMillis()-before.optLong("attemptedAt",0)>=60000L);
+        JSONObject stored = playbackLoader.loadLazy(() -> buildAndStore(context),
+                () -> localBriefing(context), 3500L, DailyContextSync.LOG);
+        if (stored.optBoolean("ok", false) && !stored.optBoolean("fallback",false)) {
             try {
                 markStoredItemsAsAnnounced(context, stored);
             } catch (Exception error) {
                 Log.w(TAG, "morning announcement history update failed", error);
             }
         }
-        return stored;
+        return TopicWirePayload.prepare(context, stored);
+    }
+
+    static JSONObject newsCache(Context context) {
+        try {
+            JSONObject cache=new JSONObject(preferences(context).getString(KEY_NEWS_CACHE,"{}"));
+            return LocalDate.now().toString().equals(cache.optString("date"))?cache:new JSONObject();
+        }catch(Exception e){return new JSONObject();}
+    }
+    static boolean initialNewsPending(Context context) {
+        JSONObject cache=newsCache(context);
+        return building && cachedSection(cache,"topNews").length()==0
+                && System.currentTimeMillis()-cache.optLong("attemptedAt",0)<6000L;
+    }
+
+    private static void collectScheduledNews(Context context) throws Exception {
+        SharedPreferences prefs = preferences(context);
+        LocalDate date = LocalDate.now(ZoneId.systemDefault());
+        int slot = currentTopicSlot();
+        String region = clean(prefs.getString(KEY_WEATHER_LOCATION, ""));
+        if (region.length() == 0 || "取得済".equals(region)) region = "立川・多摩地域";
+        JSONObject cache = newsCache(context);
+        cache.put("date", date.toString());
+        cache.put("attemptedAt", System.currentTimeMillis());
+        prefs.edit().putString(KEY_NEWS_CACHE,cache.toString()).apply();
+        final String newsRegion = TopicTextPolicy.region(region);
+        JSONArray top=ContextSyncPolicy.attempt("TOPIC/news",
+                () -> fetchNews("", 10), new JSONArray(), DailyContextSync.LOG);
+        if(top.length()>0){cache.put("topNews",top);cache.put("collectedAt",System.currentTimeMillis());}
+        // Publish the main headlines immediately; local search/POI must not delay them.
+        prefs.edit().putString(KEY_NEWS_CACHE, cache.toString()).apply();
+        cache.put("localNews", ContextSyncPolicy.attempt("TOPIC/localNews",
+                () -> fetchNews(newsRegion + " ニュース", 7), new JSONArray(), DailyContextSync.LOG));
+        cache.put("localEvents", ContextSyncPolicy.attempt("TOPIC/events",
+                () -> fetchNews(newsRegion + " (イベント OR 祭り OR 展示 OR 催し) when:30d", 40), new JSONArray(), DailyContextSync.LOG));
+        JSONArray raw=cachedSection(cache,"localEvents");
+        JSONArray upcoming=filterUpcomingEvents(raw,date,30,7);
+        Log.i("LokiTopicData","TOPIC/events api=GoogleNewsRSS cachedCandidateCount="+raw.length()
+                +" selectedCount="+upcoming.length()+" daysAhead=30 queryRegion="+newsRegion);
+        cache.put("upcomingEvents",upcoming);
+        prefs.edit().putString(KEY_NEWS_CACHE,cache.toString()).apply();
+        if(upcoming.length()==0)NearbyTopicPois.refresh(context);
+        prefs.edit().putString(KEY_NEWS_CACHE, cache.toString())
+                .putString(KEY_SLOT, top.length()>0?topicSlotKey(date, slot):"")
+                .putInt(KEY_FORMAT_VERSION, FORMAT_VERSION).apply();
+    }
+
+    private static JSONArray cachedSection(JSONObject cache, String name) {
+        JSONArray items = cache.optJSONArray(name);
+        return items == null ? new JSONArray() : items;
     }
 
     private static void markStoredItemsAsAnnounced(Context context, JSONObject stored)
@@ -216,6 +276,14 @@ final class MorningBriefingManager {
         }
     }
 
+    private static JSONObject localBriefing(Context context) throws Exception {
+        JSONObject topic = TopicFallbackContent.local(context);
+        String script = topic.getString("text");
+        return new JSONObject().put("ok", true).put("status", "ready").put("fallback", true)
+                .put("date", LocalDate.now(ZoneId.systemDefault()).toString())
+                .put("script", script).put("summary", script).put("title", topic.getString("title"))
+                .put("trivia", new JSONArray().put(topic)).put("generatedAt", System.currentTimeMillis());
+    }
     private static JSONObject statusJson(String status) throws Exception {
         JSONObject root = new JSONObject();
         root.put("ok", false);
@@ -233,14 +301,16 @@ final class MorningBriefingManager {
             if (slot < 0) slot = 7;
             String slotLabel = topicSlotLabel(slot);
             SharedPreferences prefs = preferences(context);
-            JSONArray events = readTodayEvents(context);
+            JSONArray events = ContextSyncPolicy.attempt("TOPIC/calendar",
+                    () -> readTodayEvents(context), new JSONArray(), DailyContextSync.LOG);
             JSONArray rawMails = recentMailsSince(
                     generatedAt - 7L * 24L * 60L * 60L * 1000L);
             JSONObject dedupedMails = deduplicateMailItems(
                     context, date, generatedAt, rawMails);
             JSONArray mails = dedupedMails.optJSONArray("mails");
             JSONArray skippedMails = dedupedMails.optJSONArray("skippedMails");
-            JSONObject gmailUnread = GmailUnreadReader.read(context);
+            JSONObject gmailUnread = ContextSyncPolicy.attempt("TOPIC/mail",
+                    () -> GmailUnreadReader.read(context), new JSONObject(), DailyContextSync.LOG);
             Log.i(TAG, "mail candidates raw=" + rawMails.length()
                     + " fresh=" + (mails == null ? 0 : mails.length())
                     + " skipped=" + (skippedMails == null ? 0 : skippedMails.length())
@@ -250,21 +320,25 @@ final class MorningBriefingManager {
             if (region.length() == 0 || "取得済".equals(region)) region = "立川・多摩地域";
 
             HourlyForecast homeHourly = null;
-            Location home = bestLastLocation(context);
+            Location home = ContextSyncPolicy.attempt("LOCATION/briefing",
+                    () -> bestLastLocation(context), null, DailyContextSync.LOG);
             if (home != null) {
                 try {
                     homeHourly = fetchHourly(home.getLatitude(), home.getLongitude());
                 } catch (Exception error) {
-                    Log.w(TAG, "home hourly forecast unavailable", error);
+                    DailyContextSync.LOG.failed("WEATHER/briefing", error);
                 }
             }
 
             JSONArray eventWeather = buildEventWeather(context, events, homeHourly, region);
-            JSONArray rawTopNews = fetchNews("", 10);
-            JSONArray rawLocalNews = fetchNews(region + " ニュース", 7);
+            JSONObject newsCache = newsCache(context);
+            // Do not pass yesterday's headlines off as today's updates.
+            if (!date.toString().equals(newsCache.optString("date", ""))) newsCache = new JSONObject();
+            JSONArray rawTopNews = cachedSection(newsCache, "topNews");
+            JSONArray rawLocalNews = cachedSection(newsCache, "localNews");
             JSONArray rawLocalEvents = filterUpcomingEvents(
-                    fetchNews(region + " イベント 開催 今日 今週末", 30),
-                    date, 7, 7);
+                    cachedSection(newsCache, "localEvents"),
+                    date, 30, 7);
             JSONObject deduped = deduplicateBriefingItems(context, date, generatedAt,
                     rawTopNews, rawLocalNews, rawLocalEvents);
             JSONArray topNews = deduped.optJSONArray("topNews");
@@ -273,6 +347,11 @@ final class MorningBriefingManager {
             JSONArray skippedTopNews = deduped.optJSONArray("skippedTopNews");
             JSONArray skippedLocalNews = deduped.optJSONArray("skippedLocalNews");
             JSONArray skippedLocalEvents = deduped.optJSONArray("skippedLocalEvents");
+            if(topNews.length()==0 && rawTopNews.length()>0) {
+                // TOPIC explicitly requested: show the latest collected headlines, labelled as a recap.
+                topNews=rawTopNews;
+                Log.i("LokiTopicData","TOPIC/news status=recap rawCount="+rawTopNews.length());
+            }
             JSONArray horoscope = date.toString().equals(
                     prefs.getString(KEY_HOROSCOPE_ANNOUNCED_DATE, ""))
                     ? new JSONArray() : buildHoroscope(date, prefs);
@@ -296,6 +375,8 @@ final class MorningBriefingManager {
             root.put("slot", slot);
             root.put("slotLabel", slotLabel);
             root.put("generatedAt", generatedAt);
+            root.put("personalDataRefreshedAt", generatedAt);
+            root.put("newsCollectedAt", newsCache.optLong("collectedAt", 0L));
             root.put("region", region);
             root.put("script", script);
             root.put("summary", summary);
@@ -317,9 +398,8 @@ final class MorningBriefingManager {
             root.put("trivia", trivia);
             writeAtomically(context, root.toString());
             prefs.edit().putString(KEY_DATE, date.toString())
-                    .putString(KEY_SLOT, topicSlotKey(date, slot))
                     .putLong(KEY_TIME, generatedAt)
-                    .putInt(KEY_FORMAT_VERSION, FORMAT_VERSION).apply();
+                    .apply();
             MainActivity.rememberMorningBriefing(context, summary);
             return root;
         }
@@ -571,38 +651,47 @@ final class MorningBriefingManager {
         return result;
     }
 
-    private static JSONArray fetchNews(String query, int max) {
-        JSONArray result = new JSONArray();
-        try {
-            String url = query.length() == 0
-                    ? "https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja"
-                    : "https://news.google.com/rss/search?q="
-                    + URLEncoder.encode(query, "UTF-8") + "&hl=ja&gl=JP&ceid=JP:ja";
-            String xml = fetchText(url);
-            Matcher matcher = Pattern.compile("<item>(.*?)</item>", Pattern.DOTALL).matcher(xml);
-            while (matcher.find() && result.length() < max) {
-                String item = matcher.group(1);
-                String title = decodeXml(extractXml(item, "title"));
-                String source = "";
-                int separator = title.lastIndexOf(" - ");
-                if (separator > 0) {
-                    source = title.substring(separator + 3).trim();
-                    title = title.substring(0, separator).trim();
+    static JSONArray publicNewsFallback(int max) throws Exception {
+        return newsArticles(null, max);
+    }
+    private static JSONArray fetchNews(String query, int max) throws Exception {
+        String primary = query.isEmpty()
+                ? "https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja"
+                : "https://news.google.com/rss/search?q=" + URLEncoder.encode(query, "UTF-8")
+                    + "&hl=ja&gl=JP&ceid=JP:ja";
+        // Regional/event feeds must not be replaced by unrelated national headlines.
+        if (!query.isEmpty()) {
+            JSONArray result = new JSONArray();
+            try {
+                List<NewsRssFallback.Article> parsed=NewsRssFallback.parse(fetchText(primary), Integer.MAX_VALUE);
+                int chars=0;
+                for (NewsRssFallback.Article article : parsed) {
+                    chars+=article.title.length()+article.description.length();
+                    if(result.length()<max)result.put(bindNewsArticle(article));
                 }
-                JSONObject article = new JSONObject();
-                article.put("title", shortText(title, 110));
-                article.put("source", shortText(source, 40));
-                article.put("published", shortText(decodeXml(extractXml(item, "pubDate")), 50));
-                article.put("description", shortText(stripHtml(
-                        decodeXml(extractXml(item, "description"))), 500));
-                result.put(article);
+                Log.i("LokiTopicData","TOPIC/rss source=GoogleNewsSearch queryType="+(query.contains("(イベント")?"events":"localNews")
+                        +" rawResponseCount="+parsed.size()+" parsedChars="+chars+" selectedCount="+result.length());
             }
-        } catch (Exception error) {
-            Log.w(TAG, "news fetch failed query=" + query, error);
+            catch (Exception error) { DailyContextSync.LOG.failed("TOPIC/regional-news", error); }
+            return result;
         }
+        return newsArticles(primary, max);
+    }
+    private static JSONArray newsArticles(String primary, int max) throws Exception {
+        JSONArray result = new JSONArray();
+        for (NewsRssFallback.Article article : NewsRssFallback.fetch(primary, max, url -> {
+            try { return fetchText(url); }
+            catch (Exception error) { DailyContextSync.LOG.failed("TOPIC/rss", error); throw error; }
+        },(url,count,chars,status)->Log.i("LokiTopicData","TOPIC/rss source="+url
+                +" rawResponseCount="+count+" parsedChars="+chars+" status="+status))) result.put(bindNewsArticle(article));
+        Log.i(TAG, "TOPIC RSS articles=" + result.length());
         return result;
     }
-
+    private static JSONObject bindNewsArticle(NewsRssFallback.Article article) throws Exception {
+        return new JSONObject().put("title", shortText(article.title, 110))
+                .put("source", shortText(article.source, 40)).put("published", article.published)
+                .put("link", article.link).put("description", shortText(article.description, 500));
+    }
     private static JSONArray filterUpcomingEvents(JSONArray source, LocalDate today,
                                                    int daysAhead, int max) throws Exception {
         JSONArray result = new JSONArray();
@@ -826,79 +915,9 @@ final class MorningBriefingManager {
                 + (localEvents == null ? 0 : localEvents.length());
         if (contentCount >= 6) return result;
 
-        StringBuilder contextText = new StringBuilder();
-        appendTitles(contextText, topNews);
-        appendTitles(contextText, localNews);
-        appendTitles(contextText, localEvents);
-        String topics = contextText.toString();
-        ArrayList<String[]> candidates = new ArrayList<String[]>();
-
-        if (containsAnyKeyword(topics, "雨", "台風", "猛暑", "気温", "天気", "地震")) {
-            candidates.add(new String[]{"降水確率の読み方",
-                    "降水確率は雨の強さや降る時間の長さではなく、予報区域内で一定量以上の雨が降る可能性を示します"});
-            candidates.add(new String[]{"予報円の意味",
-                    "台風の予報円は台風そのものの大きさではなく、予報時刻に中心が入る可能性のある範囲です"});
-            candidates.add(new String[]{"猛暑日の基準",
-                    "気象庁では一日の最高気温が35度以上の日を猛暑日と呼びます"});
-        }
-        if (containsAnyKeyword(topics, "円", "株", "物価", "経済", "金利", "市場")) {
-            candidates.add(new String[]{"円高と円安の基準",
-                    "円高と円安は円そのものの値段ではなく、ほかの通貨と交換できる量が増えたか減ったかで表します"});
-            candidates.add(new String[]{"物価指数の仕組み",
-                    "消費者物価指数は同じ商品を単純平均せず、家計での支出割合に応じて重みを付けて計算します"});
-            candidates.add(new String[]{"金利と債券価格",
-                    "一般に市場金利が上がると、すでに発行された固定金利の債券価格は下がりやすくなります"});
-        }
-        if (containsAnyKeyword(topics, "AI", "人工知能", "半導体", "スマホ", "宇宙", "科学")) {
-            candidates.add(new String[]{"生成AIの確率性",
-                    "生成AIは文章をデータベースからそのまま取り出すのではなく、次に続く表現の確率を使って回答を組み立てます"});
-            candidates.add(new String[]{"QRコードの出身地",
-                    "QRコードは自動車部品の管理を目的に日本で開発され、素早く読めることからQRと名付けられました"});
-            candidates.add(new String[]{"静止衛星の高さ",
-                    "静止衛星は赤道上空およそ3万6千キロを地球の自転と同じ周期で回っています"});
-        }
-        if (containsAnyKeyword(topics, "電車", "鉄道", "駅", "新幹線", "交通", "バス")) {
-            candidates.add(new String[]{"日本で多い線路幅",
-                    "日本の在来線では左右のレール間が1067ミリの狭軌が広く使われています"});
-            candidates.add(new String[]{"駅ナンバリングの役割",
-                    "駅ナンバリングは言語に頼らず路線と駅順を伝えやすくするために導入されています"});
-            candidates.add(new String[]{"新幹線の線路幅",
-                    "新幹線は多くの在来線より広い1435ミリの標準軌を採用しています"});
-        }
-        if (containsAnyKeyword(topics, "医療", "病院", "健康", "薬", "感染", "睡眠")) {
-            candidates.add(new String[]{"体内時計と朝の光",
-                    "朝の光は体内時計を整える重要な手掛かりになり、夜の眠気が訪れる時刻にも関係します"});
-            candidates.add(new String[]{"薬の血中濃度",
-                    "薬を決められた間隔で使う理由の一つは、効果と安全性の範囲内に血中濃度を保つためです"});
-            candidates.add(new String[]{"発熱と体温の日内変動",
-                    "体温は健康なときも一日の中で変動し、一般に早朝は低く夕方に高くなる傾向があります"});
-        }
-
-        Collections.addAll(candidates,
-                new String[]{"七曜の名前", "日本語の曜日名は太陽と月、そして肉眼で見える五つの惑星に由来します"},
-                new String[]{"地球の恒星日", "地球が遠い星を基準に一回転する時間は24時間より少し短い約23時間56分です"},
-                new String[]{"落語の小道具", "落語では扇子と手ぬぐいを使い、箸や手紙など多くの物を表現します"},
-                new String[]{"博物館の照明", "博物館で照明を暗くするのは、光による退色や資料の劣化を抑える目的があります"},
-                new String[]{"ニュースの日付確認", "同じニュースでも発表日と出来事が起きた日は異なることがあるため、二つの日付を分けて見ると理解しやすくなります"},
-                new String[]{"地図の北", "一般的な地図は北を上にしますが、地図そのものに上と下の絶対的な決まりがあるわけではありません"},
-                new String[]{"うるう年の調整", "うるう年は暦と季節のずれを抑えるための仕組みで、西暦が100で割り切れる年には例外があります"},
-                new String[]{"音速と気温", "空気中の音速は気温によって変わり、暖かい空気では速くなります"});
-
-        JSONArray seen = readSeenItems(context, System.currentTimeMillis());
-        int start = Math.floorMod((date.toString() + "-" + slot).hashCode(), candidates.size());
-        for (int offset = 0; offset < candidates.size(); offset++) {
-            String[] candidate = candidates.get((start + offset) % candidates.size());
-            String normalized = normalizeHeadline(candidate[0]);
-            if (findSimilarSeenItem(seen, "trivia", normalized) != null) continue;
-            JSONObject item = new JSONObject();
-            item.put("title", candidate[0]);
-            item.put("text", candidate[1]);
-            result.put(item);
-            break;
-        }
+        result.put(TopicFallbackContent.local(context));
         return result;
     }
-
     private static void appendTitles(StringBuilder target, JSONArray source) {
         if (source == null) return;
         for (int index = 0; index < source.length(); index++) {
@@ -1173,7 +1192,7 @@ final class MorningBriefingManager {
 
         appendNewsSection(out, "ここからは主なニュースです。", topNews);
         appendNewsSection(out, region + "周辺の地域ニュースです。", localNews);
-        appendEventSection(out, "今日から7日以内の周辺イベント情報です。", localEvents);
+        appendEventSection(out, "今日から30日以内の周辺イベント情報です。", localEvents);
         appendTriviaSection(out, trivia);
 
         out.append("以上、").append(slotLabel)
@@ -1192,6 +1211,9 @@ final class MorningBriefingManager {
             JSONObject article = articles.optJSONObject(i);
             if (article == null) continue;
             out.append(i + 1).append("、").append(article.optString("title", ""));
+            String description = article.optString("description", "");
+            if (!description.isEmpty() && !description.equals(article.optString("title", "")))
+                out.append("。").append(shortText(description, 180));
             out.append("。\n");
         }
     }
@@ -1219,7 +1241,7 @@ final class MorningBriefingManager {
         if (trivia == null || trivia.length() == 0) return;
         JSONObject item = trivia.optJSONObject(0);
         if (item == null) return;
-        out.append("\n新着トピックが少なめなので、時事に関連するロキの小話です。\n")
+        out.append("\n新着トピックが少なめなので、ロキの知識コラムをお届けします。\n")
                 .append(item.optString("title", "今日の雑学")).append("。")
                 .append(item.optString("text", "")).append("。\n");
     }
@@ -1312,16 +1334,17 @@ final class MorningBriefingManager {
 
     private static String fetchText(String urlText) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(urlText).openConnection();
-        connection.setConnectTimeout(8000);
-        connection.setReadTimeout(10000);
+        connection.setConnectTimeout(urlText.contains("rss") ? 2500 : 8000);
+        connection.setReadTimeout(urlText.contains("rss") ? 3000 : 10000);
         connection.setRequestProperty("User-Agent", "DennoHishoLoki/1.0");
+        try {
         int code = connection.getResponseCode();
         InputStream stream = code >= 200 && code < 300
                 ? connection.getInputStream() : connection.getErrorStream();
         String text = readAll(stream);
-        connection.disconnect();
         if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
         return text;
+        } finally { connection.disconnect(); }
     }
 
     private static String readAll(InputStream stream) throws Exception {

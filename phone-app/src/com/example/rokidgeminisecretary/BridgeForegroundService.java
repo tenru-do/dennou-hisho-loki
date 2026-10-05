@@ -16,18 +16,23 @@ import android.os.Looper;
 public final class BridgeForegroundService extends Service {
     private static final String CHANNEL_ID = "rokid_secretary_bridge";
     private static final int NOTIFICATION_ID = 8765;
+    private RadioModeManager radioMode;
+    private DailyContextSync dailyContext;
+    private HirokidLogMonitor hirokidLogMonitor;
     private final Handler morningHandler = new Handler(Looper.getMainLooper());
     private final Handler proactiveHandler = new Handler(Looper.getMainLooper());
     private final Runnable morningCheck = new Runnable() {
         @Override public void run() {
-            MorningBriefingManager.ensureFreshAsync(
-                    BridgeForegroundService.this, false);
+            ContextSyncPolicy.attempt("TOPIC/briefing", () -> {
+                MorningBriefingManager.ensureFreshAsync(BridgeForegroundService.this, false);
+                return true;
+            }, false, DailyContextSync.LOG);
             morningHandler.postDelayed(this, 10L * 60L * 1000L);
         }
     };
     private final Runnable proactiveCheck = new Runnable() {
         @Override public void run() {
-            ProactiveAssistantManager.runAsync(BridgeForegroundService.this);
+            ContextSyncPolicy.attempt("proactive", () -> { ProactiveAssistantManager.runAsync(BridgeForegroundService.this); return true; }, false, DailyContextSync.LOG);
             proactiveHandler.postDelayed(this, 60L * 1000L);
         }
     };
@@ -36,7 +41,10 @@ public final class BridgeForegroundService extends Service {
     public void onCreate() {
         super.onCreate();
         startBridgeForeground();
-        TransitLocationTracker.start(this);
+        dailyContext = new DailyContextSync(this);
+        hirokidLogMonitor = new HirokidLogMonitor(this);
+        radioMode = new RadioModeManager(this);
+        ContextSyncPolicy.attempt("LOCATION/tracker", () -> { TransitLocationTracker.start(this); return true; }, false, DailyContextSync.LOG);
         morningHandler.postDelayed(morningCheck, 3000L);
         proactiveHandler.postDelayed(proactiveCheck, 5000L);
     }
@@ -44,12 +52,15 @@ public final class BridgeForegroundService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startBridgeForeground();
-        TransitLocationTracker.start(this);
+        ContextSyncPolicy.attempt("LOCATION/tracker", () -> { TransitLocationTracker.start(this); return true; }, false, DailyContextSync.LOG);
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        if (dailyContext != null) dailyContext.close();
+        if (hirokidLogMonitor != null) hirokidLogMonitor.close();
+        if (radioMode != null) radioMode.close();
         morningHandler.removeCallbacks(morningCheck);
         proactiveHandler.removeCallbacks(proactiveCheck);
         TransitLocationTracker.stop();

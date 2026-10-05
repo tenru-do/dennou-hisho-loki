@@ -7,4 +7,12 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorAccent">#5AFF82</item>
     </style>
+    <style name="NavigationDialogTheme" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="android:colorAccent">#00FFFF</item>
+        <item name="android:colorControlHighlight">#000000</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>

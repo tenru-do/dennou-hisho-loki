@@ -1,0 +1,28 @@
+plugins { id 'com.android.library' version '8.13.2' }
+
+android {
+    namespace 'com.example.lokinavigation'
+    compileSdk 36
+    defaultConfig { minSdk 26 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.libraries.navigation:navigation:7.9.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// Command-line javac avoids Gradle failing on this Windows JDK's post-compile
+// ZipFS close exception. The diagnostic may remain; compiler errors still fail.
+tasks.withType(JavaCompile).configureEach {
+    options.incremental = false
+    options.encoding = 'UTF-8'
+    options.fork = true
+    options.forkOptions.executable = new File(System.getProperty('java.home'),
+            System.getProperty('os.name').startsWith('Windows') ? 'bin/javac.exe' : 'bin/javac').path
+}
