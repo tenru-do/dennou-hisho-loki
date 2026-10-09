@@ -1,4 +1,4 @@
-param([ValidateSet('glass','phone','camera')][string]$App)
+﻿param([ValidateSet('glass','phone','camera')][string]$App)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $sdk=Join-Path $env:LOCALAPPDATA 'Android/Sdk'
@@ -26,12 +26,25 @@ $link+=@('--java',"$build/generated")
 if(Test-Path "$source/assets") {$link+=@('-A',"$source/assets")}
 & "$bt/aapt2.exe" @link
 Check-Exit
+New-Item -ItemType Directory -Force "$build/compiler" | Out-Null
 $ErrorActionPreference='Continue'
-$output=& "$env:JAVA_HOME/bin/javac.exe" '-J-Duser.language=en' -encoding UTF-8 -source 8 -target 8 -classpath $android -d "$build/classes" @((Get-ChildItem "$source/src" -Recurse -Filter *.java).FullName + (Get-ChildItem "$build/generated" -Recurse -Filter *.java).FullName) 2>&1
+$bootstrap=& "$env:JAVA_HOME/bin/javac.exe" '-J-Duser.language=en' -encoding UTF-8 -d "$build/compiler" "$root/tools/CompileAndroid.java" 2>&1
+$bootstrapExit=$LASTEXITCODE
+$ErrorActionPreference='Stop'
+foreach($entry in $bootstrap){Write-Output ([string]$entry)}
+if($bootstrapExit -ne 0){throw "compiler bootstrap failed: $bootstrapExit"}
+if($App -eq 'glass') {
+    & "$root/tools/generate-fullbody-scenes.ps1" -OutputDirectory "$build/generated"
+}
+$sourceFiles=@((Get-ChildItem "$source/src" -Recurse -Filter *.java).FullName)+(Get-ChildItem "$build/generated" -Recurse -Filter *.java).FullName
+$sourceList=Join-Path $build 'java-sources.txt'
+[IO.File]::WriteAllLines($sourceList,[string[]]$sourceFiles,(New-Object Text.UTF8Encoding($false)))
+$ErrorActionPreference='Continue'
+$output=& "$env:JAVA_HOME/bin/java.exe" '-Duser.language=en' -cp "$build/compiler" CompileAndroid $android "$build/classes" $sourceList "$build/compiler-diagnostics.log" 2>&1
 $exitCode=$LASTEXITCODE
 $ErrorActionPreference='Stop'
-$output | Select-Object -First 14
-if($exitCode -ne 0) {throw "javac failed: $exitCode"}
+foreach($entry in $output){Write-Output ([string]$entry)}
+if($exitCode -ne 0){throw "Android compilation failed: $exitCode"}
 & "$env:JAVA_HOME/bin/jar.exe" cf "$build/program.jar" -C "$build/classes" .
 Check-Exit
 & "$bt/d8.bat" --lib $android --min-api 28 --output "$build/dex" "$build/program.jar"

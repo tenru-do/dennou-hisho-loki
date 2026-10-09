@@ -43,6 +43,8 @@ public final class SharedMemoryManager {
     private final CountDownLatch cacheLoaded = new CountDownLatch(1);
     private SharedPreferences cache; // Accessed only by worker.
     private volatile String contextText = "";
+    private volatile long contextFetchedAt;
+    static final String CACHE_FETCHED_AT = "cache_fetched_at";
 
     public static synchronized SharedMemoryManager getInstance(Context context) {
         if (instance == null) instance = new SharedMemoryManager(context.getApplicationContext());
@@ -59,7 +61,14 @@ public final class SharedMemoryManager {
             try {
                 cache = context.getSharedPreferences("loki_shared_memory", Context.MODE_PRIVATE);
                 String json = cache.getString(FILE_ID, "");
-                if (!json.isEmpty()) contextText = buildContext(json);
+                long at = cache.getLong(CACHE_FETCHED_AT, 0L);
+                if (!json.isEmpty() && CacheFreshnessPolicy.fresh(at, System.currentTimeMillis(),
+                        CacheFreshnessPolicy.SHARED_MEMORY_TTL_MS)) {
+                    contextFetchedAt = at;
+                    contextText = buildContext(json);
+                } else if (!json.isEmpty()) {
+                    cache.edit().remove(FILE_ID).remove(CACHE_FETCHED_AT).commit();
+                }
             } catch (Exception error) {
                 Log.w("SharedMemoryManager", "Shared memory cache unavailable");
             } finally {
@@ -75,9 +84,11 @@ public final class SharedMemoryManager {
             try {
                 String json = source.download();
                 String updated = buildContext(json); // Validate before replacing last success.
-                if (!cache.edit().putString(FILE_ID, json).commit()) {
+                long fetchedAt = System.currentTimeMillis();
+                if (!cache.edit().putString(FILE_ID, json).putLong(CACHE_FETCHED_AT, fetchedAt).commit()) {
                     throw new IOException("Shared memory cache write failed");
                 }
+                contextFetchedAt = fetchedAt;
                 contextText = updated;
             } catch (Exception error) {
                 // Never log personal memory, response bodies, or credentials.
@@ -89,7 +100,10 @@ public final class SharedMemoryManager {
         });
     }
 
-    public String getContext() { return contextText; }
+    public String getContext() {
+        return CacheFreshnessPolicy.fresh(contextFetchedAt, System.currentTimeMillis(),
+                CacheFreshnessPolicy.SHARED_MEMORY_TTL_MS) ? contextText : "";
+    }
 
     private static String download() throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(DOWNLOAD_URL).openConnection();
@@ -172,7 +186,7 @@ public final class SharedMemoryManager {
             try { cacheLoaded.await(2, TimeUnit.SECONDS); }
             catch (InterruptedException error) { Thread.currentThread().interrupt(); }
         }
-        String snapshot = contextText;
+        String snapshot = getContext();
         if (snapshot.isEmpty()) return;
         JSONObject system = request.optJSONObject("systemInstruction");
         if (system == null) system = new JSONObject();

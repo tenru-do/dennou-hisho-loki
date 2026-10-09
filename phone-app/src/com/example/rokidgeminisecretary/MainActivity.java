@@ -475,8 +475,18 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         View scrollContainer = (View) root.getParent();
         scrollContainer.setOnApplyWindowInsetsListener((view, insets) -> {
-            view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars());
+                android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
+                view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+            } else {
+                view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
+                        insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            }
+            if (commandInput != null && commandInput.hasFocus()) {
+                view.post(() -> commandInput.requestRectangleOnScreen(
+                        new android.graphics.Rect(0, 0, commandInput.getWidth(), commandInput.getHeight()), false));
+            }
             return insets;
         });
         scrollContainer.requestApplyInsets();

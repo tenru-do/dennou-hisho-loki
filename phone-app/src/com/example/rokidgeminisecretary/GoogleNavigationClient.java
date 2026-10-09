@@ -111,7 +111,7 @@ final class GoogleNavigationClient {
                     } catch (Exception unreadable) { errorBody = "[body read failed: " + unreadable.getClass().getSimpleName() + "]"; }
                     String safeBody = RoutesRequestPolicy.redact(errorBody, key, destination);
                     android.util.Log.e("LokiRoutesApi", "HTTP=" + code + " mode=" + body.optString("travelMode") + " mask=" + mask);
-                    for (int i=0;i<safeBody.length();i+=2000) android.util.Log.e("LokiRoutesApi", "body=" + safeBody.substring(i,Math.min(i+2000,safeBody.length())));
+                    android.util.Log.e("LokiRoutesApi", "error body omitted chars=" + safeBody.length());
                 }
                 throw new Exception("google_http_" + code);
             }
@@ -210,12 +210,10 @@ final class GoogleNavigationClient {
             body.put("departureTime", java.time.Instant.now().toString());
             // Omit transitPreferences: no mode filter or walking/transfer preference.
         }
-        android.util.Log.d("LokiRoutesApi", "request=" + body.toString());
+        android.util.Log.d("LokiRoutesApi", "request mode=" + travel);
         Response response = request(c, "https://routes.googleapis.com/directions/v2:computeRoutes", body, fields);
         String responseBody = new String(response.bytes, StandardCharsets.UTF_8);
-        // Split long responses to avoid Android log-entry truncation.
-        for (int offset = 0; offset < responseBody.length(); offset += 1000)
-            android.util.Log.d("LokiRoutesApi", "raw_response=" + responseBody.substring(offset, Math.min(offset + 1000, responseBody.length())));
+        // Do not log route response bodies containing private coordinates and places.
         JSONObject root = new JSONObject(responseBody);
         JSONArray routes = root.optJSONArray("routes");
         android.util.Log.d("LokiRoutesApi", "response routes=" + (routes == null ? "missing" : routes.length()));

@@ -115,9 +115,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                         if (queued) {
                             generated.put("at", System.currentTimeMillis());
                             topicHistory.put(generated);
-                            JSONArray retained = new JSONArray();
-                            for (int i = Math.max(0, topicHistory.length() - 32); i < topicHistory.length(); i++) retained.put(topicHistory.getJSONObject(i));
-                            topicHistory = retained;
+                            topicHistory = TopicHistoryPolicy.retain(topicHistory, System.currentTimeMillis());
                             prefs.edit().putString("radio_topic_history_v1", topicHistory.toString())
                                     .putInt("radio_topic_turn", prefs.getInt("radio_topic_turn", 0) + 1).apply();
                         }
@@ -175,6 +173,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
         prefs = context.getSharedPreferences("phone_secretary", Context.MODE_PRIVATE);
         try { topicHistory = new JSONArray(prefs.getString("radio_topic_history_v1", "[]")); }
         catch (Exception ignored) { topicHistory = new JSONArray(); }
+        pruneTopicHistory();
         prefs.registerOnSharedPreferenceChangeListener(this);
         instance = this;
         schedule();
@@ -339,20 +338,30 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
         data.put("memory_reference", limited);
         } catch (Exception error) { DailyContextSync.LOG.failed("TOPIC/memory", error); }
         data.put("topic_mode", TopicMode.normalize(prefs.getString(MODE, "scheduled")));
-        JSONArray recent = new JSONArray(), covered = new JSONArray();
+        pruneTopicHistory();
+        JSONArray covered = new JSONArray();
         for (int i = 0; i < topicHistory.length(); i++) {
             JSONObject past = topicHistory.optJSONObject(i);
             if (past == null) continue;
             covered.put(new JSONObject().put("topicKey", past.optString("topicKey"))
                     .put("coveredPoints", past.optJSONArray("coveredPoints")));
-            if (i >= topicHistory.length() - 6) recent.put(past.optString("message"));
         }
-        data.put("recent_topics", recent).put("already_covered", covered);
+        // Titles/claims are exclusions only. Do not reattach entire past spoken scripts.
+        data.put("recent_topics", new JSONArray()).put("already_covered", covered);
         String[] fields = {"科学・自然のしくみ", "歴史・意外な由来", "文化・言葉", "技術・ものづくり", "生き物", "地理・世界の暮らし", "日常の雑学", "宇宙・地球"};
         data.put("next_angle_hint", fields[Math.floorMod(prefs.getInt("radio_topic_turn", 0), fields.length)]);
         return data.toString();
     }
+    private void pruneTopicHistory() {
+        JSONArray retained = TopicHistoryPolicy.retain(topicHistory, System.currentTimeMillis());
+        if (retained.length() != topicHistory.length()) {
+            topicHistory = retained;
+            prefs.edit().putString("radio_topic_history_v1", retained.toString()).apply();
+        }
+    }
+
     private boolean repeated(JSONObject candidate) {
+        pruneTopicHistory();
         String key = TopicNoveltyPolicy.normalize(candidate.optString("topicKey"));
         JSONArray claims = candidate.optJSONArray("coveredPoints");
         boolean sameTopic = false;

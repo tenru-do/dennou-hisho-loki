@@ -25,15 +25,18 @@ public final class SharedMemoryRegressionTest {
         ((ExecutorService) field.get(manager)).submit(() -> {}).get(5, TimeUnit.SECONDS);
     }
     public static void main(String[] args) throws Exception {
-        Map<String, String> store = new HashMap<>();
-        Map<String, String> pending = new HashMap<>();
+        Map<String, Object> store = new HashMap<>();
+        Map<String, Object> pending = new HashMap<>();
         AtomicBoolean writable = new AtomicBoolean(true);
         SharedPreferences.Editor editor = (SharedPreferences.Editor) Proxy.newProxyInstance(
                 SharedPreferences.Editor.class.getClassLoader(), new Class[]{SharedPreferences.Editor.class},
                 (proxy, method, values) -> {
-                    if (method.getName().equals("putString")) {
-                        pending.put((String) values[0], (String) values[1]);
+                    if (method.getName().equals("putString") || method.getName().equals("putLong")) {
+                        pending.put((String) values[0], values[1]);
                         return proxy;
+                    }
+                    if (method.getName().equals("remove")) {
+                        pending.put((String) values[0], null); return proxy;
                     }
                     if (method.getName().equals("commit")) {
                         if (writable.get()) store.putAll(pending);
@@ -46,7 +49,7 @@ public final class SharedMemoryRegressionTest {
                 SharedPreferences.class.getClassLoader(), new Class[]{SharedPreferences.class},
                 (proxy, method, values) -> {
                     if (method.getName().equals("edit")) return editor;
-                    if (method.getName().equals("getString")) {
+                    if (method.getName().equals("getString") || method.getName().equals("getLong")) {
                         return store.containsKey(values[0]) ? store.get(values[0]) : values[1];
                     }
                     throw new UnsupportedOperationException(method.getName());
@@ -90,6 +93,25 @@ public final class SharedMemoryRegressionTest {
                 .getJSONObject(0).getString("text").contains("固定チャット"), "first API worker request loads cache");
         drain(restarted);
         check(first.equals(restarted.getContext()), "restart loads cache without network");
+        Field fetchedAt = SharedMemoryManager.class.getDeclaredField("contextFetchedAt");
+        fetchedAt.setAccessible(true);
+        fetchedAt.setLong(restarted, System.currentTimeMillis() - CacheFreshnessPolicy.SHARED_MEMORY_TTL_MS);
+        check(restarted.getContext().isEmpty(), "expired RAM cache is not referenced");
+        JSONObject expiredRequest = new JSONObject();
+        restarted.appendToRequest(expiredRequest);
+        check(!expiredRequest.has("systemInstruction"), "expired cache omitted from API");
+        store.put(SharedMemoryManager.CACHE_FETCHED_AT, System.currentTimeMillis() - CacheFreshnessPolicy.SHARED_MEMORY_TTL_MS);
+        store.put("unrelated_setting", "preserved");
+        SharedMemoryManager expired = new SharedMemoryManager(context, source); drain(expired);
+        check(expired.getContext().isEmpty(), "expired disk cache is not restored");
+        check(store.get(SharedMemoryManager.FILE_ID) == null && "preserved".equals(store.get("unrelated_setting")),
+                "expiration removes only shared cache keys");
+        store.put(SharedMemoryManager.FILE_ID, good);
+        store.remove(SharedMemoryManager.CACHE_FETCHED_AT);
+        SharedMemoryManager undated = new SharedMemoryManager(context, source); drain(undated);
+        check(undated.getContext().isEmpty(), "legacy undated cache is not restored");
+        store.put(SharedMemoryManager.FILE_ID, good);
+        store.put(SharedMemoryManager.CACHE_FETCHED_AT, System.currentTimeMillis());
         offline.set(false); response.set(good.replace("旅行", "散歩"));
         writable.set(false); manager.refreshAsync(); drain(manager);
         check(first.equals(manager.getContext()) && good.equals(store.get(SharedMemoryManager.FILE_ID)),

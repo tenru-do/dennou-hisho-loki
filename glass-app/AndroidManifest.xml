@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.rokidkeyboardbridge"
-    android:versionCode="385"
-    android:versionName="0.9.206">
+    android:versionCode="446"
+    android:versionName="0.9.267-portrait-semantic-reactions">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -13,6 +13,8 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
     <queries>
         <package android:name="com.rokid.os.sprite.assistserver" />
@@ -20,11 +22,13 @@
     </queries>
 
     <application
+        android:debuggable="true"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="電脳秘書ロキ"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        <service android:name=".PhotoRecorderService" android:exported="false" android:foregroundServiceType="camera" />
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
@@ -49,3 +53,6 @@
         </service>
     </application>
 </manifest>
+
+
+

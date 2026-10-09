@@ -34,7 +34,7 @@ final class TopicObservationCapture {
         if ("sound".equals(mode) || "both".equals(mode)) {
             try {
                 if (context.checkSelfPermission("android.permission.RECORD_AUDIO") != 0) throw new IllegalStateException();
-                result.put("audio", Base64.encodeToString(sharedAudio == null ? audio(cancelled) : wav(sharedAudio.read(cancelled)), Base64.NO_WRAP));
+                result.put("audio", Base64.encodeToString(sharedAudio == null ? audio(context, cancelled) : wav(sharedAudio.read(cancelled)), Base64.NO_WRAP));
                 if (sharedAudio != null) result.put("audioDuringAssistantSpeech", true);
             } catch (Exception error) { result.put("audioUnavailable", true); }
         }
@@ -49,13 +49,14 @@ final class TopicObservationCapture {
         return result;
         }
     }
-    private static byte[] audio(BooleanSupplier cancelled) throws Exception {
+    private static byte[] audio(Context context, BooleanSupplier cancelled) throws Exception {
         try (CaptureLease lease = CaptureLease.acquire(CaptureLease.MICROPHONE, cancelled)) {
         int minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         if (minimum <= 0) throw new IllegalStateException("microphone unavailable");
-        AudioRecord recorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
+        AudioRecord recorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, 16000,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(minimum, 6400));
-        try (RecognitionNoiseControl noise = new RecognitionNoiseControl(recorder)) {
+        MicrophoneRouting.preferUsb(context, recorder);
+        try {
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException();
             recorder.startRecording();
             android.util.Log.i("CameraTopic","audio recording started");
@@ -66,7 +67,7 @@ final class TopicObservationCapture {
             while (!cancelled.getAsBoolean() && SystemClock.elapsedRealtime() < until && pcm.size() < 128000) {
                 int count = recorder.read(frame, 0, Math.min(frame.length, 128000 - pcm.size()), AudioRecord.READ_NON_BLOCKING);
                 if (count < 0) throw new IllegalStateException();
-                if (count > 0) pcm.write(frame, 0, count); else Thread.sleep(5L);
+                if (count > 0) { MicrophoneRouting.boostAndLog(frame, count, "TOPIC", MediaRecorder.AudioSource.DEFAULT); pcm.write(frame, 0, count); } else Thread.sleep(5L);
             }
             if (cancelled.getAsBoolean() || pcm.size() < 3200) throw new InterruptedException();
             return wav(pcm.toByteArray());
@@ -80,7 +81,9 @@ final class TopicObservationCapture {
             wav.putShort((short) 2).putShort((short) 16).put(new byte[]{'d','a','t','a'}).putInt(data.length).put(data);
             return wav.array();
     }
-    private static byte[] photo(Context context, BooleanSupplier cancelled) throws Exception {
+    static byte[] recorderPhoto(Context context, BooleanSupplier cancelled) throws Exception {return photo(context,cancelled,true);}
+    private static byte[] photo(Context context, BooleanSupplier cancelled) throws Exception {return photo(context,cancelled,false);}
+    private static byte[] photo(Context context, BooleanSupplier cancelled, boolean recorder) throws Exception {
         try (CaptureLease lease = CaptureLease.acquire(CaptureLease.CAMERA, cancelled)) {
         HandlerThread thread = new HandlerThread("TopicCamera");thread.start();
         Handler cameraHandler=new Handler(thread.getLooper());
@@ -98,7 +101,7 @@ final class TopicObservationCapture {
                     Integer rotation=characteristics.get(android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION);orientation[0]=rotation==null?0:rotation;
                     android.hardware.camera2.params.StreamConfigurationMap streams=characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
                     android.util.Size[] sizes=streams.getOutputSizes(android.graphics.ImageFormat.JPEG);android.util.Size chosen=null;
-                    for(android.util.Size size:sizes)if(size.getWidth()<=640&&size.getHeight()<=480
+                    for(android.util.Size size:sizes)if(size.getWidth()<=(recorder?1920:640)&&size.getHeight()<=(recorder?1080:480)
                             &&(chosen==null||size.getWidth()*size.getHeight()>chosen.getWidth()*chosen.getHeight()))chosen=size;
                     if(chosen==null)for(android.util.Size size:sizes)if(chosen==null||size.getWidth()*size.getHeight()<chosen.getWidth()*chosen.getHeight())chosen=size;
                     if(chosen==null)throw new IllegalStateException("No bounded JPEG size");
@@ -108,7 +111,7 @@ final class TopicObservationCapture {
                         try(android.media.Image image=source.acquireLatestImage()) {
                             if(image!=null&&!closing.get()){
                                 java.nio.ByteBuffer buffer=image.getPlanes()[0].getBuffer();
-                                if(buffer.remaining()>1000000)throw new IllegalStateException("TOPIC JPEG buffer too large");
+                                if(buffer.remaining()>(recorder?8000000:1000000))throw new IllegalStateException("JPEG buffer too large");
                                 byte[] bytes=new byte[buffer.remaining()];buffer.get(bytes);jpeg[0]=bytes;
                             }
                         }catch(Throwable error){failure[0]=error;}
@@ -123,8 +126,8 @@ final class TopicObservationCapture {
                                 public void onConfigured(android.hardware.camera2.CameraCaptureSession configured){
                                     session[0]=configured;if(closing.get()){configured.close();return;}
                                     try{android.hardware.camera2.CaptureRequest.Builder request=camera.createCaptureRequest(android.hardware.camera2.CameraDevice.TEMPLATE_STILL_CAPTURE);
-                                        request.addTarget(reader[0].getSurface());request.set(android.hardware.camera2.CaptureRequest.JPEG_QUALITY,(byte)70);
-                                        request.set(android.hardware.camera2.CaptureRequest.JPEG_ORIENTATION,0);
+                                        request.addTarget(reader[0].getSurface());request.set(android.hardware.camera2.CaptureRequest.JPEG_QUALITY,(byte)(recorder?85:70));
+                                        request.set(android.hardware.camera2.CaptureRequest.JPEG_ORIENTATION,recorder?orientation[0]:0);
                                         configured.capture(request.build(),new android.hardware.camera2.CameraCaptureSession.CaptureCallback(){
                                             public void onCaptureFailed(android.hardware.camera2.CameraCaptureSession s,android.hardware.camera2.CaptureRequest r,android.hardware.camera2.CaptureFailure reason){failure[0]=new IllegalStateException("TOPIC capture failed: "+reason.getReason());done.countDown();}
                                         },cameraHandler);
@@ -143,19 +146,22 @@ final class TopicObservationCapture {
             while(!cancelled.getAsBoolean()&&SystemClock.elapsedRealtime()<until&&!done.await(100,TimeUnit.MILLISECONDS)){}
             if(cancelled.getAsBoolean())throw new InterruptedException("TOPIC camera cancelled");
             if(jpeg[0]==null)throw new IllegalStateException("TOPIC camera unavailable",failure[0]);
+            // Recorder keeps the hardware JPEG and its orientation metadata. Avoid
+            // full-resolution decode/rotate/re-encode allocations beside the HUD.
+            if(recorder)return jpeg[0];
             BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeByteArray(jpeg[0], 0, jpeg[0].length, bounds);
             BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inSampleSize = Math.max(1, Math.max(bounds.outWidth, bounds.outHeight) / 640);
+            options.inSampleSize = recorder?1:Math.max(1, Math.max(bounds.outWidth, bounds.outHeight) / 640);
             Bitmap bitmap = BitmapFactory.decodeByteArray(jpeg[0], 0, jpeg[0].length, options);
             if (bitmap == null) throw new IllegalStateException();
             try {
                 android.graphics.Matrix rotation = new android.graphics.Matrix(); rotation.postRotate(orientation[0]);
                 Bitmap oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), rotation, true);
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                try { oriented.compress(Bitmap.CompressFormat.JPEG, 65, out); }
+                try { oriented.compress(Bitmap.CompressFormat.JPEG, recorder?85:65, out); }
                 finally { if (oriented != bitmap) oriented.recycle(); }
-                if (out.size() > 250000) throw new IllegalStateException("image too large");
+                if (out.size() > (recorder?8000000:250000)) throw new IllegalStateException("image too large");
                 return out.toByteArray();
             } finally { bitmap.recycle(); }
         }finally{
