@@ -840,6 +840,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     @Override // android.app.Activity
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
+        new Thread(()->{try{PhotoExportProvider.prune(this);PhotoArchiveStore.get(this).encryptLegacy();}catch(Exception e){handler.post(()->{if(!isDestroyed())setStatus("既存写真の暗号化が未完了です。元写真を保持しています",Color.YELLOW);});}},"PhotoVaultMigration").start();
         recorderHost=new java.lang.ref.WeakReference<>(this);
         this.sharedMemoryManager = SharedMemoryManager.getInstance(this);
         this.sharedMemoryManager.refreshAsync();
@@ -2145,13 +2146,28 @@ public final class MainActivity extends Activity implements SensorEventListener 
         catch(Exception e){setStatus("連続撮影を開始できません："+e.getClass().getSimpleName(),Color.YELLOW);}
     }
     private void showPhotoRecorder(){
+        PhotoExportProvider.prune(this);
         showControlsTemporarily();
         NavigationChoiceDialog.show(this,"REC："+(PhotoRecorderService.active!=null?PhotoRecorderService.status:"停止中"),
-            new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","KEEP：前2分＋後1分を保護","撮影を停止"},-1,(d,which)->{
+            new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","KEEP：前2分＋後1分を保護","撮影を停止","記録写真を復号して共有"},-1,(d,which)->{
                 if(which==0||which==1)startPhotoRecorder(which==0?5000:10000);
                 else if(which==2)setStatus(PhotoRecorderService.active!=null?PhotoRecorderService.active.protect():"連続撮影を開始してください",Color.GREEN);
-                else{stopService(new Intent(this,PhotoRecorderService.class));setStatus("連続撮影停止",Color.GREEN);}
+                else if(which==3){stopService(new Intent(this,PhotoRecorderService.class));setStatus("連続撮影停止",Color.GREEN);}
+                else showPhotoExports();
             });
+    }
+    private void showPhotoExports(){
+        if(PhotoRecorderService.active!=null){setStatus("撮影を停止してから書き出してください",Color.YELLOW);return;}
+        new Thread(()->{try{
+            PhotoArchive archive=PhotoArchiveStore.get(this);
+            java.io.File[] photos=archive.entries();int count=photos.length;String[] labels=new String[count];java.io.File[] selected=new java.io.File[count];
+            for(int i=0;i<count;i++){selected[i]=photos[photos.length-1-i];labels[i]=new java.text.SimpleDateFormat("MM/dd HH:mm:ss",java.util.Locale.JAPAN).format(new java.util.Date(Long.parseLong(selected[i].getName().substring(0,13))));}
+            handler.post(()->{if(isDestroyed())return;if(count==0){setStatus("保存写真がありません",Color.YELLOW);return;}
+                NavigationChoiceDialog.show(this,"記録写真：共有先に写真を渡します",labels,-1,(dialog,index)->new Thread(()->{try{
+                    android.net.Uri uri=PhotoExportProvider.write(this,archive.read(selected[index]));
+                    handler.post(()->{Intent share=new Intent(Intent.ACTION_SEND).setType("image/jpeg").putExtra(Intent.EXTRA_STREAM,uri);share.setClipData(android.content.ClipData.newRawUri("photo",uri));share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);try{startActivity(Intent.createChooser(share,"写真の共有先を選択"));}catch(Exception unavailable){setStatus("写真を受け取れるアプリがありません",Color.YELLOW);}handler.postDelayed(()->PhotoExportProvider.prune(this),3601000L);});
+                }catch(Exception error){handler.post(()->setStatus("写真を書き出せません",Color.YELLOW));}},"PhotoExport").start());});
+        }catch(Exception error){handler.post(()->setStatus("記録写真を開けません",Color.YELLOW));}},"PhotoExportList").start();
     }
     private boolean handlePhotoRecorderCommand(String text){
         int action=PhotoRecorderCommands.action(text);if(action==0)return false;
@@ -6738,7 +6754,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         for (String endpoint : buildPhoneEndpointUrls(path)) {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(endpoint).openConnection();
+                connection = (HttpURLConnection) openSecureConnection(new URL(endpoint));
                 connection.setConnectTimeout(1800); connection.setReadTimeout(5000);
                 connection.setRequestMethod("POST"); connection.setDoOutput(true); addBridgeAuthorization(connection);
                 connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
@@ -8283,6 +8299,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
+                                if(MainActivity.this.ambientMode)MainActivity.this.setAmbientMode(false);
                                 MainActivity.this.ambientInputMode =
                                         which<3?which+3:which-3;
                                 MainActivity.this.getPreferences().edit().putInt(
@@ -8344,6 +8361,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void setAmbientMode(boolean enabled) {
+        if(enabled&&AmbientScenePolicy.scene(this.ambientInputMode)&&AmbientScenePolicy.camera(this.ambientInputMode)&&!getPreferences().getBoolean("amb_camera_cloud_consent_v447",false)){
+            new AlertDialog.Builder(this).setTitle("AMB画像をGeminiへ送信").setMessage("景色のほか、周囲の人や画面・文書が映る場合があります。カメラAMBを使う場面を確認してください。RECだけの撮影写真は送信しません。").setPositiveButton("理解して開始",(d,w)->{getPreferences().edit().putBoolean("amb_camera_cloud_consent_v447",true).apply();setAmbientMode(true);}).setNegativeButton("キャンセル",(d,w)->setAmbientMode(false)).show();return;
+        }
+
         if (enabled && this.voiceLoopMode) {
             this.voiceLoopMode = false;
             this.setVoiceRecording(false);
@@ -8648,7 +8669,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         body.put("contents",new JSONArray().put(new JSONObject().put("role","user").put("parts",parts)));
         body.put("generationConfig",new JSONObject().put("maxOutputTokens",350).put("temperature",.4));
         appendGeminiRuntimeContext(body,false);
-        HttpURLConnection connection=(HttpURLConnection)new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent").openConnection();
+        HttpURLConnection connection=(HttpURLConnection)openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"));
         activeAmbientConnection=connection;
         connection.setRequestMethod("POST");connection.setConnectTimeout(8000);connection.setReadTimeout(45000);connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type","application/json; charset=UTF-8");connection.setRequestProperty("x-goog-api-key",getPreferences().getString(KEY_API_KEY,""));
@@ -10734,7 +10755,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         String path = "imported_memory?q=" + URLEncoder.encode(limitText(query, 300), "UTF-8");
         String[] urls = buildPhoneEndpointUrls(path);
         if (urls.length == 0) return new JSONObject();
-        HttpURLConnection connection = (HttpURLConnection) new URL(urls[0]).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) openSecureConnection(new URL(urls[0]));
         connection.setConnectTimeout(350);
         connection.setReadTimeout(450);
         addBridgeAuthorization(connection);
@@ -12132,7 +12153,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         Exception e = null;
         for (String str3 : buildPhoneEndpointUrls("log")) {
             try {
-                HttpURLConnection httpURLConnection = (HttpURLConnection) new URL(str3).openConnection();
+                HttpURLConnection httpURLConnection = (HttpURLConnection) openSecureConnection(new URL(str3));
                 httpURLConnection.setRequestMethod("POST");
                 httpURLConnection.setConnectTimeout(1800);
                 httpURLConnection.setReadTimeout(2500);
@@ -12183,7 +12204,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         for (String endpoint : buildPhoneEndpointUrls("dynamic_memories_state")) {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection)new URL(endpoint).openConnection();
+                connection = (HttpURLConnection)openSecureConnection(new URL(endpoint));
                 connection.setRequestMethod("POST"); connection.setConnectTimeout(1800); connection.setReadTimeout(2500);
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
@@ -12234,7 +12255,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         for (String endpointUrl : buildPhoneEndpointUrls("custom_state")) {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(endpointUrl).openConnection();
+                connection = (HttpURLConnection) openSecureConnection(new URL(endpointUrl));
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(1800);
                 connection.setReadTimeout(2500);
@@ -12291,7 +12312,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         for (String endpointUrl : buildPhoneEndpointUrls("state")) {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(endpointUrl).openConnection();
+                connection = (HttpURLConnection) openSecureConnection(new URL(endpointUrl));
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(1800);
                 connection.setReadTimeout(2500);
@@ -12363,7 +12384,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         for (int i = 0; i < urls.length; i++) {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(urls[i]).openConnection();
+                connection = (HttpURLConnection) openSecureConnection(new URL(urls[i]));
                 connection.setRequestMethod("POST");
                 // Same-subnet hosts either answer quickly or are stale. Keeping
                 // this short avoids a long delay after the phone's DHCP address
@@ -12595,7 +12616,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private String fetchUrl(String str) throws Exception {
-        HttpURLConnection httpURLConnection = (HttpURLConnection) new URL(str).openConnection();
+        HttpURLConnection httpURLConnection = (HttpURLConnection) openSecureConnection(new URL(str));
         httpURLConnection.setRequestMethod("GET");
         addBridgeAuthorization(httpURLConnection);
         // All bridge candidates are local-LAN addresses. A stale DHCP address
@@ -12612,7 +12633,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return all;
     }
 
+    private java.net.URLConnection openSecureConnection(URL url) throws Exception {
+        return BridgeTls.open(url,getPreferences().getString(KEY_BRIDGE_TOKEN,""),getPreferences().getString("bridge_tls_pin",""));
+    }
+
     private void addBridgeAuthorization(HttpURLConnection connection) {
+        if(!"https".equals(connection.getURL().getProtocol()))throw new SecurityException("平文へのトークン送信は禁止されています");
         String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
         if (token.length() > 0) {
             connection.setRequestProperty("X-Roki-Token", token);
@@ -12620,25 +12646,33 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void pairWithPhone() {
+        if(getPreferences().getString(KEY_BRIDGE_TOKEN,"").length()<16 && getPreferences().getString("bridge_tls_pin","").isEmpty()){
+            final android.widget.EditText pin=new android.widget.EditText(this);pin.setHint("スマホに表示した証明書SHA256");
+            new android.app.AlertDialog.Builder(this).setTitle("スマホの証明書を確認").setMessage("スマホのペアリング画面に表示されたSHA256を入力してください。ネットワークから取得した値をそのまま信用しないでください。").setView(pin).setPositiveButton("登録",(d,w)->{try{getPreferences().edit().putString("bridge_tls_pin",BridgeCertificatePolicy.normalize(pin.getText().toString())).apply();pairWithPhone();}catch(Exception e){setStatus("証明書の入力が不正です",Color.YELLOW);}}).setNegativeButton("キャンセル",null).show();return;
+        }
+
         setStatus("スマホを検索中…", Color.YELLOW);
         new Thread(new Runnable() {
             @Override public void run() {
                 Exception last = null;
+                final String pairCode=String.format(java.util.Locale.US,"%06d",new java.security.SecureRandom().nextInt(1000000));
+                handler.post(()->setStatus("スマホで接続コード "+pairCode+" を確認・許可してください",Color.YELLOW));
                 String[] urls = buildPhoneEndpointUrls("pair");
                 for (int i = 0; i < urls.length; i++) {
                     HttpURLConnection connection = null;
                     try {
-                        connection = (HttpURLConnection) new URL(urls[i]).openConnection();
+                        connection = (HttpURLConnection) openSecureConnection(new URL(urls[i]));
+                        connection.setRequestProperty("X-Roki-Pair-Code",pairCode);
                         connection.setRequestMethod("GET");
                         connection.setConnectTimeout(1200);
-                        connection.setReadTimeout(1800);
+                        connection.setReadTimeout(35000);
                         int code = connection.getResponseCode();
                         String response = readAll((code >= 200 && code < 300)
                                 ? connection.getInputStream() : connection.getErrorStream());
                         if (code != 200) throw new IllegalStateException("HTTP " + code);
                         final String token = new JSONObject(response).optString("token", "").trim();
                         if (token.length() < 16) throw new IllegalStateException("token missing");
-                        getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
+                        getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).remove("bridge_tls_pin").apply();
                         rememberPhoneHostFromUrl(urls[i]);
                         handler.post(new Runnable() {
                             @Override public void run() {
@@ -13289,7 +13323,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if (Thread.currentThread().isInterrupted()) break;
                 HttpURLConnection connection = null;
                 try {
-                    connection = (HttpURLConnection) new URL(url).openConnection();
+                    connection = (HttpURLConnection) openSecureConnection(new URL(url));
                     addBridgeAuthorization(connection);
                     connection.setConnectTimeout(400); connection.setReadTimeout(600);
                     if (connection.getResponseCode() != 200) continue;
@@ -13342,7 +13376,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private String postGeminiJson(String str, String str3, JSONObject jSONObject3,
             boolean groundedSearchRequested) throws Exception {
-        HttpURLConnection httpURLConnection = (HttpURLConnection) new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str3 + ":generateContent").openConnection();
+        HttpURLConnection httpURLConnection = (HttpURLConnection) openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str3 + ":generateContent"));
         this.activeGeminiConnection = httpURLConnection;
         httpURLConnection.setRequestMethod("POST");
         httpURLConnection.setConnectTimeout(8000);
@@ -13405,7 +13439,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         str = getPreferences().getString(KEY_API_KEY, str).trim();
         String strBuildTodayScheduleText;
         String strBuildRecentMailText;
-        HttpURLConnection httpURLConnection = (HttpURLConnection) new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str2 + ":generateContent").openConnection();
+        HttpURLConnection httpURLConnection = (HttpURLConnection) openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str2 + ":generateContent"));
         this.activeGeminiConnection = httpURLConnection;
         httpURLConnection.setRequestMethod("POST");
         httpURLConnection.setConnectTimeout(8000);

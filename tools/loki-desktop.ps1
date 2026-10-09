@@ -1,3 +1,5 @@
+﻿
+. (Join-Path $PSScriptRoot 'secure-bridge.ps1')
 ﻿param([string]$Adb = '', [switch]$SmokeTest)
 if (!$Adb) {
     $adbCommand = Get-Command adb.exe -ErrorAction SilentlyContinue
@@ -19,7 +21,7 @@ $script:serial = ''
 $script:seen = New-Object 'System.Collections.Generic.HashSet[string]'
 function Request-Loki([string]$Path, $Body = $null) {
     if (!$script:token) { throw '先に接続してください' }
-    $request = [System.Net.HttpWebRequest]::Create($script:bridge + $Path)
+    $request = (New-LokiSecureRequest ($script:bridge + $Path) $script:token)
     $request.Timeout = 2500
     $request.ReadWriteTimeout = 2500
     $request.Headers.Add('X-Roki-Token', $script:token)
@@ -73,7 +75,8 @@ $connect.Add_Click({
             $package = & $Adb -s $serial shell pm path com.example.rokidgeminisecretary 2>$null
             if (!$package -or $package -notmatch 'package:') { continue }
             & $Adb -s $serial forward tcp:18765 tcp:8765 | Out-Null
-            $paired = Invoke-RestMethod -Uri 'http://127.0.0.1:18765/pc_pair' -TimeoutSec 3
+            & $Adb -s $serial forward tcp:18766 tcp:8766 | Out-Null
+            $paired = Invoke-LokiSecureRest -Uri 'http://127.0.0.1:18765/pc_pair' -TimeoutSec 3
             $token = $paired.token
             if ($token.Length -lt 16) { throw 'スマホの「PC接続」を押してから再度USB接続してください' }
             $script:serial = $serial; $script:token = $token
@@ -141,7 +144,7 @@ $timer.Add_Tick({
         }
     } catch { $status.Text = '接続待ち。スマホとグラスの起動・通信を確認してください。' }
 })
-$form.Add_FormClosed({ $timer.Stop(); $script:token = ''; if ($script:serial) { & $Adb -s $script:serial forward --remove tcp:18765 | Out-Null } })
+$form.Add_FormClosed({ $timer.Stop(); $script:token = ''; if ($script:serial) { & $Adb -s $script:serial forward --remove tcp:18765 | Out-Null; & $Adb -s $script:serial forward --remove tcp:18766 | Out-Null } })
 if ($SmokeTest) {
     Write-Output "PC form created: $($form.Controls.Count) root controls"
     $timer.Dispose(); $form.Dispose(); return

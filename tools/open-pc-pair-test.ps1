@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Serial)
+﻿param([Parameter(Mandatory=$true)][string]$Serial)
 $ErrorActionPreference='Stop'
 $adb=Join-Path $env:USERPROFILE 'Documents\Rokid_Zoom_Camera\android-sdk\platform-tools\adb.exe'
 function Tap-Text([string]$label) {
@@ -18,4 +18,5 @@ if (!(Tap-Text $pair)) {
     if (!(Tap-Text $operations) -or !(Tap-Text $pair)) { throw 'Unlock phone and open Loki Operations.' }
 }
 & $adb -s $Serial forward tcp:18765 tcp:8765 | Out-Null
+& $adb -s $Serial forward tcp:18766 tcp:8766 | Out-Null
 & "$PSScriptRoot/check-imported-live.ps1" -SendTest

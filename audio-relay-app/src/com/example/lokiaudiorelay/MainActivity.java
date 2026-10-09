@@ -265,6 +265,11 @@ public final class MainActivity extends Activity {
     }
 
     private void discoverGalaxy() {
+        if(getPreferences().getString(KEY_RELAY_TOKEN,"").length()<16&&getPreferences().getString("bridge_tls_pin","").isEmpty()){
+            android.widget.EditText input=new android.widget.EditText(this);input.setHint("スマホに表示した証明書SHA256");
+            new android.app.AlertDialog.Builder(this).setTitle("スマホの証明書を確認").setView(input).setPositiveButton("登録",(dialog,which)->{try{getPreferences().edit().putString("bridge_tls_pin",BridgeCertificatePolicy.normalize(input.getText().toString())).apply();discoverGalaxy();}catch(Exception e){setStatus("証明書を確認してください",true);}}).setNegativeButton("キャンセル",null).show();return;
+        }
+
         setStatus("Galaxyを検索中…", false);
         new Thread(new Runnable() {
             @Override public void run() {
@@ -277,7 +282,7 @@ public final class MainActivity extends Activity {
                             final String foundToken = token;
                             getPreferences().edit()
                                     .putString(KEY_RELAY_HOST, foundHost)
-                                    .putString(KEY_RELAY_TOKEN, foundToken)
+                                    .putString(KEY_RELAY_TOKEN, foundToken).remove("bridge_tls_pin")
                                     .apply();
                             runOnUiThread(new Runnable() {
                                 @Override public void run() {
@@ -305,9 +310,12 @@ public final class MainActivity extends Activity {
 
     private String requestPair(String host) throws Exception {
         HttpURLConnection connection = (HttpURLConnection)
-                new URL("http://" + host + ":" + PORT + "/pair").openConnection();
+                BridgeTls.open(new URL("http://"+host+":"+PORT+"/pair"),getPreferences().getString(KEY_RELAY_TOKEN,""),getPreferences().getString("bridge_tls_pin",""));
         connection.setConnectTimeout(500);
-        connection.setReadTimeout(900);
+        String pairCode=String.format(java.util.Locale.US,"%06d",new java.security.SecureRandom().nextInt(1000000));
+        runOnUiThread(()->setStatus("スマホで接続コード "+pairCode+" を確認してください",false));
+        connection.setRequestProperty("X-Roki-Pair-Code",pairCode);
+        connection.setReadTimeout(35000);
         int code = connection.getResponseCode();
         String response = readAll(code >= 200 && code < 300
                 ? connection.getInputStream() : connection.getErrorStream());

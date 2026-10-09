@@ -10,7 +10,7 @@ public final class PhotoRecorderService extends Service {
  private int interval=5000;private PowerManager.WakeLock wake;
  public IBinder onBind(Intent intent){return null;}
  public void onCreate(){super.onCreate();
-  try{archive=new PhotoArchive(new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES),"loki-recorder"));}
+  try{archive=PhotoArchiveStore.get(this);}
   catch(Exception e){status=e.getMessage();stopSelf();return;}
   NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);manager.createNotificationChannel(new NotificationChannel("loki_recorder","連続撮影",NotificationManager.IMPORTANCE_LOW));
   wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"loki:recorder");
@@ -30,7 +30,7 @@ public final class PhotoRecorderService extends Service {
   return START_NOT_STICKY;
  }
  synchronized String protect(){try{int count=archive.protect(System.currentTimeMillis());status="保護：直前"+count+"枚＋次の1分";return status;}catch(Exception e){status="保護失敗："+e.getMessage();return status;}}
- private void loop(){int failures=0;long next=SystemClock.elapsedRealtime();
+ private void loop(){try{archive.encryptLegacy();}catch(Exception e){status="既存写真の暗号化を完了できません。撮影停止";stopSelf();return;}int failures=0;long next=SystemClock.elapsedRealtime();
   while(!stopped){try{
    long wait=next-SystemClock.elapsedRealtime();if(wait>0)Thread.sleep(wait);if(stopped)break;next=SystemClock.elapsedRealtime()+interval;
    // Other local camera features take priority; missed slots are never queued.

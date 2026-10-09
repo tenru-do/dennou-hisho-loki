@@ -1,4 +1,6 @@
-# 運用・更新手順（v446）
+# 運用・更新手順（v447）
+
+v447はTLSへの移行、双方の同時更新、暗号化写真の書き出しが必要です。[セキュリティ対策と移行手順](SECURITY-v447.md) を先に確認してください。
 
 ## ビルド
 
@@ -6,7 +8,7 @@
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-integration.ps1 -App glass
-# スマホは必要な場合だけ別途ビルド
+# v447への通信移行ではスマホも必ず同時に更新
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-integration.ps1 -App phone
 ```
 

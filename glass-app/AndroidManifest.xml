@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.rokidkeyboardbridge"
-    android:versionCode="446"
-    android:versionName="0.9.267-portrait-semantic-reactions">
+    android:versionCode="447"
+    android:versionName="0.9.268-secure-bridge">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -22,12 +22,13 @@
     </queries>
 
     <application
-        android:debuggable="true"
+        android:debuggable="false"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="電脳秘書ロキ"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        <provider android:name=".PhotoExportProvider" android:authorities="com.example.rokidkeyboardbridge.photoexports" android:exported="false" android:grantUriPermissions="true" />
         <service android:name=".PhotoRecorderService" android:exported="false" android:foregroundServiceType="camera" />
         <activity
             android:name=".MainActivity"

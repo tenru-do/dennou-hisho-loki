@@ -218,8 +218,8 @@ public final class MainActivity extends Activity {
     private boolean customStateWaiting;
     private static volatile boolean running;
     // The bridge server outlives Activity recreation; its pairing windows must too.
-    private static volatile long pairingUntilMs;
-    private static volatile long pcPairingUntilMs;
+    private static final PairingWindow glassPairingWindow=new PairingWindow();
+    private static final PairingWindow pcPairingWindow=new PairingWindow();
     private static ServerSocket serverSocket;
     private final Handler healthHandler = new Handler(Looper.getMainLooper());
     private final Handler weatherHandler = new Handler(Looper.getMainLooper());
@@ -505,6 +505,7 @@ public final class MainActivity extends Activity {
         root.addView(status);
 
         details = new TextView(this);
+        details.setTextIsSelectable(true);
         details.setTextSize(11);
         details.setTextColor(Color.DKGRAY);
         details.setMaxLines(2);
@@ -1115,8 +1116,8 @@ public final class MainActivity extends Activity {
         pcPair.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 ensureBridgeToken();
-                pcPairingUntilMs = System.currentTimeMillis() + 60000L;
-                updateStatus("PC接続待ち", "PCのロキでUSB接続を押してください。");
+                pcPairingWindow.open(android.os.SystemClock.elapsedRealtime());
+                updateStatus("PC接続待ち", "PCのロキでUSB接続を押し、接続コードを確認してください。"+tlsFingerprintNotice());
             }
         });
         toolsPanel.addView(pcPair);
@@ -2444,6 +2445,7 @@ public final class MainActivity extends Activity {
         updateStatus("指示を取得中", "グラスの現在値を待っています。");
     }
 
+    private String tlsFingerprintNotice(){try{return "\n証明書SHA256: "+BridgeTlsServer.fingerprint();}catch(Exception e){throw new IllegalStateException("TLS証明書を準備できません",e);}}
     private void beginGlassPairing() {
         String token = getPreferences().getString(KEY_BRIDGE_TOKEN, "").trim();
         if (token.length() < 16) {
@@ -2453,8 +2455,8 @@ public final class MainActivity extends Activity {
                 bridgeTokenInput.setText(token);
             }
         }
-        pairingUntilMs = System.currentTimeMillis() + 60000L;
-        updateStatus("ペアリング待機中", "60秒以内にグラスのSETを押してください。");
+        glassPairingWindow.open(android.os.SystemClock.elapsedRealtime());
+        updateStatus("ペアリング待機中", "60秒以内にグラスのSETを押し、接続コードを確認してください。"+tlsFingerprintNotice());
     }
 
     private void beginAudioSourcePairing() {
@@ -2463,9 +2465,9 @@ public final class MainActivity extends Activity {
             token = createBridgeToken();
             getPreferences().edit().putString(KEY_BRIDGE_TOKEN, token).apply();
         }
-        pairingUntilMs = System.currentTimeMillis() + 60000L;
+        glassPairingWindow.open(android.os.SystemClock.elapsedRealtime());
         updateStatus("音声端末を待機中",
-                "60秒以内にタブレットまたはGalaxyのロキ Audio Relayで「Galaxyを検索」を押してください。");
+                "60秒以内にAudio Relayで接続し、コードを確認してください。"+tlsFingerprintNotice());
     }
 
     private void saveCustomInstructionsFromPhone(String value) {
@@ -2577,27 +2579,23 @@ public final class MainActivity extends Activity {
             @Override
             public void run() {
                 try {
-                    serverSocket = new ServerSocket(PORT, 20, InetAddress.getByName("0.0.0.0"));
+                    serverSocket = BridgeTlsServer.listen();
+                    startTlsDiscovery();
                     final String ip = getWifiIp();
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
                             updateStatus("起動中",
-                                    "グラスから接続できます。\nhttp://" + ip + ":" + PORT + "/today");
+                                    "グラスからTLS接続できます。\nhttps://" + ip + ":8766/today");
                         }
                     });
                     while (running) {
                         final Socket client = serverSocket.accept();
-                        new Thread(new Runnable() {
-                            @Override
-                            public void run() {
-                                MainActivity current = activeActivity;
-                                (current == null ? MainActivity.this : current).handleClient(client);
-                            }
-                        }, "CalendarServerClient").start();
+                        try{bridgeWorkers.execute(()->{MainActivity current=activeActivity;(current==null?MainActivity.this:current).handleClient(client);});}catch(java.util.concurrent.RejectedExecutionException busy){client.close();}
                     }
                 } catch (final Exception error) {
-                    if (running) {
+                    running=false;try{if(serverSocket!=null)serverSocket.close();}catch(Exception ignored){}try{if(tlsDiscovery!=null)tlsDiscovery.close();}catch(Exception ignored){}
+                    if (!isDestroyed()) {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
@@ -2610,10 +2608,34 @@ public final class MainActivity extends Activity {
         }, "CalendarServer").start();
     }
 
+    private static final java.util.concurrent.ThreadPoolExecutor bridgeWorkers=new java.util.concurrent.ThreadPoolExecutor(4,4,30,java.util.concurrent.TimeUnit.SECONDS,new java.util.concurrent.ArrayBlockingQueue<>(8));
+    private static class BoundedReader extends BufferedReader {
+        BoundedReader(java.io.Reader reader){super(reader);}
+        @Override public String readLine()throws java.io.IOException{StringBuilder line=new StringBuilder();long deadline=System.nanoTime()+5000000000L;int ch;while((ch=read())!=-1){if(System.nanoTime()>deadline)throw new java.io.IOException("bridge line deadline");if(ch=='\n')break;if(ch!='\r')line.append((char)ch);if(line.length()>8192)throw new java.io.IOException("bridge line too large");}return ch==-1&&line.length()==0?null:line.toString();}
+    }
+    private volatile ServerSocket tlsDiscovery;
+    private void startTlsDiscovery() throws Exception {
+        tlsDiscovery=new ServerSocket(PORT,8,InetAddress.getByName("0.0.0.0"));
+        new Thread(()->{while(running){try(Socket client=tlsDiscovery.accept()){client.setSoTimeout(1500);BufferedReader in=new BoundedReader(new InputStreamReader(client.getInputStream(),StandardCharsets.US_ASCII));String request=in.readLine();
+            if("GET /tls-auth HTTP/1.1".equals(request)||"GET /tls-auth HTTP/1.0".equals(request)){
+                String fp=BridgeTlsServer.fingerprint();JSONObject proof=new JSONObject().put("fingerprint",fp).put("proof",BridgeCertificatePolicy.proof(getPreferences().getString(KEY_BRIDGE_TOKEN,""),fp));writeJsonResponse(client,200,proof.toString());
+            }else writeJsonResponse(client,426,"{\"error\":\"TLS required; update client\"}");
+        }catch(Exception e){if(!running)break;}}},"LokiTlsDiscovery").start();
+    }
+
+    private boolean confirmPairing(Socket socket,String code) throws Exception {
+        if(!code.matches("[0-9]{6}"))return false;
+        MainActivity owner=activeActivity;if(owner==null||owner.isFinishing()||owner.isDestroyed())return false;
+        java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean allowed=new java.util.concurrent.atomic.AtomicBoolean(false);java.util.concurrent.atomic.AtomicBoolean live=new java.util.concurrent.atomic.AtomicBoolean(true);
+        final android.app.AlertDialog[] dialog=new android.app.AlertDialog[1];
+        owner.runOnUiThread(()->{if(!live.get())return;dialog[0]=new android.app.AlertDialog.Builder(owner).setTitle("ロキへの接続を許可？").setMessage("相手側に表示された接続コードが "+code+" と一致することを確認してください。\n接続元: "+socket.getInetAddress().getHostAddress()).setPositiveButton("一致・許可",(d,w)->{if(live.get())allowed.set(true);done.countDown();}).setNegativeButton("拒否",(d,w)->done.countDown()).setOnCancelListener(d->done.countDown()).show();});
+        boolean completed=done.await(30,java.util.concurrent.TimeUnit.SECONDS);live.set(false);owner.runOnUiThread(()->{if(dialog[0]!=null)dialog[0].dismiss();});return completed&&allowed.get();
+    }
+
     private void handleClient(Socket socket) {
         try {
             socket.setSoTimeout(20000);
-            BufferedReader reader = new BufferedReader(
+            BufferedReader reader = new BoundedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.ISO_8859_1));
             String request = reader.readLine();
             boolean today = request != null && request.startsWith("GET /today");
@@ -2648,12 +2670,8 @@ public final class MainActivity extends Activity {
             RequestPayload payload = readRequestPayload(reader);
             String bodyText = payload.body;
             if (pair) {
-                if (System.currentTimeMillis() > (pcPair ? pcPairingUntilMs : pairingUntilMs)) {
-                    writeJsonResponse(socket, 403, "{\"ok\":false,\"error\":\"pairing_closed\"}");
-                    return;
-                }
-                if (pcPair) pcPairingUntilMs = 0L;
-                else pairingUntilMs = 0L;
+                if(!(pcPair?pcPairingWindow:glassPairingWindow).claim(android.os.SystemClock.elapsedRealtime(),payload.pairCode)){writeJsonResponse(socket,403,"{\"error\":\"pairing_closed_or_invalid_code\"}");return;}
+                if(!confirmPairing(socket,payload.pairCode)){writeJsonResponse(socket,403,"{\"error\":\"pairing_rejected\"}");return;}
                 JSONObject paired = new JSONObject();
                 paired.put("ok", true);
                 paired.put("token", getPreferences().getString(KEY_BRIDGE_TOKEN, ""));
@@ -2662,7 +2680,7 @@ public final class MainActivity extends Activity {
                     @Override public void run() {
                         updateStatus(pcPair ? "PC接続できました" : "ペアリング完了",
                                 pcPair ? "PCの認証が完了しました。指示の同期完了とは別の状態です。"
-                                        : "グラスへ認証情報を安全に転送しました。");
+                                        : "確認したグラスへTLSで認証情報を転送しました。");
                         android.widget.Toast.makeText(MainActivity.this,
                                 pcPair ? "PC接続できました" : "グラスとペアリングしました",
                                 android.widget.Toast.LENGTH_LONG).show();
@@ -3778,6 +3796,7 @@ public final class MainActivity extends Activity {
     private static final class RequestPayload {
         final String body;
         final String token;
+        String pairCode="";
         RequestPayload(String body, String token) {
             this.body = body;
             this.token = token;
@@ -3787,20 +3806,25 @@ public final class MainActivity extends Activity {
     private RequestPayload readRequestPayload(BufferedReader reader) throws Exception {
         int contentLength = 0;
         String token = "";
+        String pairCode="";
+        int headerChars=0;
         String line;
         while ((line = reader.readLine()) != null && line.length() > 0) {
+            headerChars+=line.length();if(headerChars>16384)throw new java.io.IOException("headers too large");
             String lower = line.toLowerCase(Locale.US);
             if (lower.startsWith("content-length:")) {
                 try {
                     contentLength = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
                 } catch (Exception ignored) {
                 }
+            } else if (lower.startsWith("x-roki-pair-code:")) {
+                pairCode=line.substring(line.indexOf(':')+1).trim();
             } else if (lower.startsWith("x-roki-token:")) {
                 token = line.substring(line.indexOf(':') + 1).trim();
             }
         }
         if (contentLength <= 0) {
-            return new RequestPayload("", token);
+            RequestPayload result=new RequestPayload("", token);result.pairCode=pairCode;return result;
         }
         if (contentLength > MAX_REQUEST_BODY_CHARS) {
             throw new IllegalArgumentException("request body too large");
@@ -3813,8 +3837,8 @@ public final class MainActivity extends Activity {
             offset += read;
         }
         if (offset != contentLength) throw new IllegalArgumentException("incomplete request body");
-        return new RequestPayload(new String(new String(chars, 0, offset)
-                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8), token);
+        RequestPayload result=new RequestPayload(new String(new String(chars, 0, offset)
+                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8), token);result.pairCode=pairCode;return result;
     }
 
     private void writeJsonResponse(Socket socket, int statusCode, String body) throws Exception {
