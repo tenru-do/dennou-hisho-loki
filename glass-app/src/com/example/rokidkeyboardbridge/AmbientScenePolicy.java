@@ -11,9 +11,14 @@ final class AmbientScenePolicy {
  static final int MAX_COMMENT_CHARS=220;
  static int intensity(int value){return Math.max(0,Math.min(3,value));}
  static String comment(String text,String emotion,int strength){
-  String value=text==null?"":text.trim();if(value.length()>MAX_COMMENT_CHARS)value=value.substring(0,MAX_COMMENT_CHARS);
+  String value=text==null?"":text.trim();if(emptyReport(value))return "";if(value.length()>MAX_COMMENT_CHARS)value=value.substring(0,MAX_COMMENT_CHARS);
   FullBodyPoseCatalog.Kind k=kind(emotion);String action=k==FullBodyPoseCatalog.Kind.NEUTRAL?"REST":k==FullBodyPoseCatalog.Kind.REFUSE?"PROTECT":k==FullBodyPoseCatalog.Kind.SURPRISE?"STARTLE":k==FullBodyPoseCatalog.Kind.THINK?"THINK":"DEFAULT";
   return FullBodySemanticReaction.decode(value+"\n[[LOKI_REACTION:"+k.name()+":"+intensity(strength)+":"+action+"]]");
+ }
+ static boolean emptyReport(String text){
+  if(text==null||text.trim().isEmpty())return true;
+  for(String phrase:new String[]{"情報がございません","情報はございません","コメントを生成することができません","コメントを生成できません","特筆すべきコメントは","特筆すべき情報は","特筆すべき変化はありません","反応する対象がありません"})if(text.contains(phrase))return true;
+  return false;
  }
  static int expression(String emotion){return "joy".equals(emotion)?1:"surprise".equals(emotion)?37:"sad".equals(emotion)?10:"think".equals(emotion)?2:"worry".equals(emotion)?43:"anger".equals(emotion)?3:"refuse".equals(emotion)?55:4;}
  static FullBodyPoseCatalog.Kind kind(String emotion){return "joy".equals(emotion)?FullBodyPoseCatalog.Kind.JOY:"surprise".equals(emotion)?FullBodyPoseCatalog.Kind.SURPRISE:"sad".equals(emotion)?FullBodyPoseCatalog.Kind.SAD:"think".equals(emotion)?FullBodyPoseCatalog.Kind.THINK:"worry".equals(emotion)?FullBodyPoseCatalog.Kind.WORRY:"anger".equals(emotion)?FullBodyPoseCatalog.Kind.ANGER:"refuse".equals(emotion)?FullBodyPoseCatalog.Kind.REFUSE:"recovery".equals(emotion)?FullBodyPoseCatalog.Kind.RECOVERY:FullBodyPoseCatalog.Kind.NEUTRAL;}

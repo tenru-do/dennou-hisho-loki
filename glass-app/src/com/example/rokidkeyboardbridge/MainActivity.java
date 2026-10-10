@@ -8475,7 +8475,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.answer.setText("AMBIENT ON：" + ambientInputModeLabel()
                     + (ambientUsesPlayback()
                     ? "\n音源端末のロキ Audio RelayをONにしてください。"
-                    : "\n録音・全文ログは保存せず、解説・検証・論理確認を無音で表示します。"));
+                    : (AmbientScenePolicy.scene(ambientInputMode)?"\n取得した場面に合わせてコメント・表情・動作で反応します。":"\n録音・全文ログは保存せず、解説・検証・論理確認を無音で表示します。")));
         }
         setStatus("AMBIENT " + ambientInputModeLabel() + " ON",
                 Color.rgb(90, 220, 120));
@@ -8641,7 +8641,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if(cancelled.getAsBoolean())continue;
                 if(!raw.trim().equals("NONE")){
                     JSONObject response=new JSONObject(raw.replaceAll("(?s)^```(?:json)?\\s*|\\s*```$", "").trim());
-                    final String reaction=AmbientScenePolicy.comment(response.optString("reaction"),response.optString("emotion"),response.optInt("intensity",1));
+                    final String reaction=response.optBoolean("hasEvent",true)?AmbientScenePolicy.comment(response.optString("reaction"),response.optString("emotion"),response.optInt("intensity",1)):"";
                     final String sceneEmotion=response.optString("emotion");
 
                     final int sceneIntensity=AmbientScenePolicy.intensity(response.optInt("intensity",1));
@@ -8659,18 +8659,26 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 Thread.sleep(15000);
             }catch(InterruptedException e){if(!ambientMode||generation!=ambientGeneration)break;}
             catch(GeminiHttpException e){ambientBackoffUntil=System.currentTimeMillis()+Math.max(30000,e.cooldownMs());postAmbientStatus("AMB：API待機 "+e.diagnosticSummary(),Color.YELLOW);}
-            catch(Exception e){Log.w(TAG,"AMB scene skipped",e);postAmbientStatus("AMB：取得・解析を再試行",Color.YELLOW);try{Thread.sleep(10000);}catch(InterruptedException ignored){}}
+            catch(Exception e){Log.w(TAG,"AMB scene skipped type="+e.getClass().getSimpleName());postAmbientStatus("AMB：取得・解析を再試行",Color.YELLOW);try{Thread.sleep(10000);}catch(InterruptedException ignored){}}
             finally{ambientRequestActive=false;disconnectActiveAmbient();}
         }
     }
 
     private String requestAmbientScene(JSONObject observation,String previous)throws Exception{
         JSONObject body=new JSONObject();JSONArray parts=new JSONArray();
-        parts.put(new JSONObject().put("text",AmbientScenePolicy.prompt()+"\n前回の反応（繰り返さない）："+previous));
+        parts.put(new JSONObject().put("text",AmbientScenePolicy.prompt()+"\n構造化JSONで反応がない場合はreactionを空文字、emotionをneutral、intensityを0にする。\n前回の反応（繰り返さない）："+previous));
         for(String type:new String[]{"audio","image"})if(observation.has(type))parts.put(new JSONObject().put("inline_data",new JSONObject().put("mime_type",type.equals("audio")?"audio/wav":"image/jpeg").put("data",observation.getString(type))));
         body.put("contents",new JSONArray().put(new JSONObject().put("role","user").put("parts",parts)));
-        body.put("generationConfig",new JSONObject().put("maxOutputTokens",700).put("temperature",.4));
+        JSONObject schema=new JSONObject().put("type","OBJECT").put("properties",new JSONObject()
+                .put("hasEvent",new JSONObject().put("type","BOOLEAN"))
+                .put("reaction",new JSONObject().put("type","STRING"))
+                .put("emotion",new JSONObject().put("type","STRING").put("enum",new JSONArray(new String[]{"neutral","joy","surprise","sad","think","worry","anger","refuse","recovery"})))
+                .put("intensity",new JSONObject().put("type","INTEGER").put("minimum",0).put("maximum",3)))
+                .put("required",new JSONArray(new String[]{"hasEvent","reaction","emotion","intensity"}));
+        body.put("generationConfig",new JSONObject().put("maxOutputTokens",700).put("temperature",.4).put("responseMimeType","application/json").put("responseSchema",schema));
         appendGeminiRuntimeContext(body,false);
+        body.getJSONObject("systemInstruction").getJSONArray("parts").put(new JSONObject().put("text",
+            "この要求は質問への回答ではなく場面観察です。口調はロキのまま、最新入力で新しい意味のある出来事が確認できた場合だけhasEvent=trueとし、通常2〜4文で反応してください。無音・判断不能・変化なし・前回と同じ出来事・グラス自身の撮影音や通知音だけならhasEvent=false、reaction空文字、emotion=neutral、intensity=0にします。情報がないという報告は発言しません。音声のみの場合、見えている・様子が見受けられるとは言いません。JSON以外の文章を返しません。"));
         HttpURLConnection connection=(HttpURLConnection)openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"));
         activeAmbientConnection=connection;
         connection.setRequestMethod("POST");connection.setConnectTimeout(8000);connection.setReadTimeout(45000);connection.setDoOutput(true);

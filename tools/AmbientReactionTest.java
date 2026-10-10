@@ -12,6 +12,7 @@ public final class AmbientReactionTest {
   FullBodyPoseVariation variation=new FullBodyPoseVariation();
   for(int base:new int[]{4,168}){variation.reset();for(long time=0;time<600000;time+=100){int id=variation.target(base,0,time,null);FullBodyPoseCatalog.Pose p=FullBodyPoseCatalog.ALL[id];check(!p.supports(FullBodyPoseCatalog.Kind.SHY)&&!p.supports(FullBodyPoseCatalog.Kind.REFUSE)&&!p.supports(FullBodyPoseCatalog.Kind.JOY),"unprompted shy/refusal/laughter during idle");check(p.seated==FullBodyMotionPolicy.isSeated(base),"posture continuity");}}
   for(long time=0;time<600000;time+=100)check(!FullBodyPoseCatalog.ALL[FullBodySeatedPolicy.waitingPose(time)].supports(FullBodyPoseCatalog.Kind.REFUSE),"waiting must not cross arms in refusal");
+  check(AmbientScenePolicy.comment("マスター、特に音声や映像からの情報がございません。コメントを生成することができません。","neutral",0).isEmpty(),"actual empty-input report must stay silent");
   check(AmbientScenePolicy.comment("", "joy",1).isEmpty(),"empty observation creates no speech");
   check(AmbientScenePolicy.comment("あ".repeat(300),"neutral",0).length()==220,"bounded extended comments");
   System.out.println("PASS complete AMB comments, emotion/intensity across speech beats, same posture and no unprompted shy/refusal/laughter over ten minutes");
