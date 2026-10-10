@@ -35,11 +35,12 @@ public final class PhotoRecorderService extends Service {
    long wait=next-SystemClock.elapsedRealtime();if(wait>0)Thread.sleep(wait);if(stopped)break;next=SystemClock.elapsedRealtime()+interval;
    // Other local camera features take priority; missed slots are never queued.
    if(CaptureLease.CAMERA.availablePermits()==0){status="カメラ使用中・撮影待ち";continue;}
-   byte[] jpeg;MainActivity host=MainActivity.recorderHost.get();
+   long captureStarted=SystemClock.elapsedRealtime();byte[] jpeg;MainActivity host=MainActivity.recorderHost.get();
+   RecorderPhotoLocation.refresh(host);
    try(AutoCloseable pause=host!=null&&!host.isDestroyed()?host.pauseMascotForCamera():()->{}){
     jpeg=TopicObservationCapture.recorderPhoto(this,()->stopped);
    }
-   if(stopped)break;archive.save(jpeg,System.currentTimeMillis());failures=0;
+   if(stopped)break;long captureMs=SystemClock.elapsedRealtime()-captureStarted;long saveStarted=SystemClock.elapsedRealtime();long capturedAt=System.currentTimeMillis();java.io.File saved=archive.save(jpeg,capturedAt);archive.metadata(saved,RecorderPhotoLocation.snapshot(capturedAt));failures=0;android.util.Log.i("LokiRecorderTiming","capture_ms="+captureMs+" save_ms="+(SystemClock.elapsedRealtime()-saveStarted)+" interval_ms="+interval);
    long[] stats=archive.stats();status="REC "+stats[0]+"枚 / "+String.format(java.util.Locale.US,"%.2fGB",stats[1]/1e9)+" / 保護"+stats[2]+"枚";
   }catch(InterruptedException e){if(stopped)break;status="カメラ使用中・撮影待ち";}
    catch(IOException e){status=e.getMessage();stopSelf();break;}

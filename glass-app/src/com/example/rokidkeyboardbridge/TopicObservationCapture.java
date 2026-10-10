@@ -91,6 +91,7 @@ final class TopicObservationCapture {
         android.hardware.camera2.CameraDevice[] device={null};android.hardware.camera2.CameraCaptureSession[] session={null};
         android.media.ImageReader[] reader={null};byte[][] jpeg={null};int[] orientation={0};Throwable[] failure={null};
         java.util.concurrent.atomic.AtomicBoolean closing=new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable[] nextExposureFrame={null};int[] exposureFrames={0};long[] exposureStart={0};boolean[] aeStable={false};
         try {
             cameraHandler.post(()->{
                 try {
@@ -110,12 +111,18 @@ final class TopicObservationCapture {
                     reader[0].setOnImageAvailableListener(source->{
                         try(android.media.Image image=source.acquireLatestImage()) {
                             if(image!=null&&!closing.get()){
+                                // Warm-up JPEGs are closed without allocating/copying their buffers.
+                                // Only REC waits for auto-exposure; existing TOPIC capture stays unchanged.
+                                if(recorder&&exposureFrames[0]<6&&SystemClock.elapsedRealtime()-exposureStart[0]<1500L
+                                        &&(exposureFrames[0]<2||!aeStable[0])&&!cancelled.getAsBoolean()){
+                                    exposureFrames[0]++;cameraHandler.post(nextExposureFrame[0]);return;
+                                }
                                 java.nio.ByteBuffer buffer=image.getPlanes()[0].getBuffer();
                                 if(buffer.remaining()>(recorder?8000000:1000000))throw new IllegalStateException("JPEG buffer too large");
                                 byte[] bytes=new byte[buffer.remaining()];buffer.get(bytes);jpeg[0]=bytes;
                             }
                         }catch(Throwable error){failure[0]=error;}
-                        finally{android.util.Log.i("TopicCamera","ImageReader image.close completed");done.countDown();}
+                        finally{android.util.Log.i("TopicCamera","ImageReader image.close completed");if(!recorder||jpeg[0]!=null||failure[0]!=null||closing.get()||cancelled.getAsBoolean())done.countDown();}
                     },cameraHandler);
                     manager.openCamera(id,new android.hardware.camera2.CameraDevice.StateCallback(){
                         public void onOpened(android.hardware.camera2.CameraDevice camera){
@@ -128,9 +135,18 @@ final class TopicObservationCapture {
                                     try{android.hardware.camera2.CaptureRequest.Builder request=camera.createCaptureRequest(android.hardware.camera2.CameraDevice.TEMPLATE_STILL_CAPTURE);
                                         request.addTarget(reader[0].getSurface());request.set(android.hardware.camera2.CaptureRequest.JPEG_QUALITY,(byte)(recorder?85:70));
                                         request.set(android.hardware.camera2.CaptureRequest.JPEG_ORIENTATION,recorder?orientation[0]:0);
-                                        configured.capture(request.build(),new android.hardware.camera2.CameraCaptureSession.CaptureCallback(){
+                                        if(recorder)request.set(android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE_ON);
+                                        exposureStart[0]=SystemClock.elapsedRealtime();
+                                        android.hardware.camera2.CameraCaptureSession.CaptureCallback callback=new android.hardware.camera2.CameraCaptureSession.CaptureCallback(){
+                                            public void onCaptureCompleted(android.hardware.camera2.CameraCaptureSession s,android.hardware.camera2.CaptureRequest r,android.hardware.camera2.TotalCaptureResult result){
+                                                Integer state=result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE);
+                                                aeStable[0]=state!=null&&(state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_CONVERGED||state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED||state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_LOCKED);
+                                                if(recorder)android.util.Log.i("LokiRecorderExposure","warmup="+exposureFrames[0]+" ae="+state+" exposure_ns="+result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)+" iso="+result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY));
+                                            }
                                             public void onCaptureFailed(android.hardware.camera2.CameraCaptureSession s,android.hardware.camera2.CaptureRequest r,android.hardware.camera2.CaptureFailure reason){failure[0]=new IllegalStateException("TOPIC capture failed: "+reason.getReason());done.countDown();}
-                                        },cameraHandler);
+                                        };
+                                        nextExposureFrame[0]=()->{if(closing.get()||cancelled.getAsBoolean()){done.countDown();return;}try{configured.capture(request.build(),callback,cameraHandler);}catch(Throwable error){failure[0]=error;done.countDown();}};
+                                        nextExposureFrame[0].run();
                                     }catch(Throwable error){failure[0]=error;done.countDown();}
                                 }
                                 public void onConfigureFailed(android.hardware.camera2.CameraCaptureSession configured){session[0]=configured;configured.close();failure[0]=new IllegalStateException("TOPIC capture session unavailable");done.countDown();}

@@ -2141,6 +2141,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         handler.postDelayed(this,1000);
     }};
     private void startPhotoRecorder(int interval){
+        if(photoTransferRunning.get()){setStatus("写真転送の完了を待ってください",Color.YELLOW);return;}
+
         if(checkSelfPermission("android.permission.CAMERA")!=0){requestPermissions(new String[]{"android.permission.CAMERA"},20);setStatus("カメラを許可しRECから再度開始してください",Color.YELLOW);return;}
         try{startForegroundService(new Intent(this,PhotoRecorderService.class).putExtra("interval",interval));setStatus("連続撮影開始："+interval/1000+"秒間隔",Color.GREEN);}
         catch(Exception e){setStatus("連続撮影を開始できません："+e.getClass().getSimpleName(),Color.YELLOW);}
@@ -2149,12 +2151,41 @@ public final class MainActivity extends Activity implements SensorEventListener 
         PhotoExportProvider.prune(this);
         showControlsTemporarily();
         NavigationChoiceDialog.show(this,"REC："+(PhotoRecorderService.active!=null?PhotoRecorderService.status:"停止中"),
-            new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","KEEP：前2分＋後1分を保護","撮影を停止","記録写真を復号して共有"},-1,(d,which)->{
+            new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","KEEP：前2分＋後1分を保護","撮影を停止","記録写真を復号して共有","記録写真をすべてスマホへ移動"},-1,(d,which)->{
                 if(which==0||which==1)startPhotoRecorder(which==0?5000:10000);
                 else if(which==2)setStatus(PhotoRecorderService.active!=null?PhotoRecorderService.active.protect():"連続撮影を開始してください",Color.GREEN);
                 else if(which==3){stopService(new Intent(this,PhotoRecorderService.class));setStatus("連続撮影停止",Color.GREEN);}
-                else showPhotoExports();
+                else if(which==4)showPhotoExports();
+                else transferRecorderPhotos();
             });
+    }
+    String recorderLocationJson() throws Exception {
+        String host=getPreferences().getString(KEY_LAST_PHONE_HOST,"");if(host.isEmpty())return "{}";
+        HttpURLConnection connection=(HttpURLConnection)openSecureConnection(new URL("http://"+host+":8765/recorder_location"));
+        try{connection.setConnectTimeout(1500);connection.setReadTimeout(1500);addBridgeAuthorization(connection);if(connection.getResponseCode()!=200)return "{}";return readAll(connection.getInputStream());}finally{connection.disconnect();}
+    }
+    private final java.util.concurrent.atomic.AtomicBoolean photoTransferRunning=new java.util.concurrent.atomic.AtomicBoolean();
+    private void transferRecorderPhotos(){
+        if(PhotoRecorderService.active!=null){setStatus("撮影を停止してから転送してください",Color.YELLOW);return;}
+        String host=getPreferences().getString(KEY_LAST_PHONE_HOST,"");
+        if(host.isEmpty()){setStatus("先にスマホと連携してください",Color.YELLOW);return;}
+        if(!photoTransferRunning.compareAndSet(false,true)){setStatus("写真転送中です",Color.YELLOW);return;}
+        final String endpoint="http://"+host+":8765/recorder_photo";
+        new Thread(()->{int sent=0;try{
+            PhotoArchive archive=PhotoArchiveStore.get(this);
+            for(java.io.File file:archive.entries()){
+                if(isDestroyed()||Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("photo transfer cancelled");
+                byte[] jpeg=archive.read(file);String id=file.getName().substring(0,50);StringBuilder sha=new StringBuilder();
+                for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(jpeg))sha.append(String.format(java.util.Locale.US,"%02x",b&255));
+                org.json.JSONObject receipt=null;for(int offset=0;offset<jpeg.length;offset+=131072){
+                    org.json.JSONObject payload=new org.json.JSONObject().put("id",id).put("sha",sha.toString()).put("offset",offset).put("total",jpeg.length).put("data",android.util.Base64.encodeToString(java.util.Arrays.copyOfRange(jpeg,offset,Math.min(jpeg.length,offset+131072)),android.util.Base64.NO_WRAP));
+                    if(offset==0)payload.put("metadata",new org.json.JSONObject(new String(archive.metadata(file),java.nio.charset.StandardCharsets.UTF_8)));
+                    byte[] body=payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    HttpURLConnection connection=(HttpURLConnection)openSecureConnection(new URL(endpoint));
+                    try{connection.setConnectTimeout(3000);connection.setReadTimeout(15000);connection.setRequestMethod("POST");connection.setDoOutput(true);addBridgeAuthorization(connection);connection.setRequestProperty("Content-Type","application/json");connection.setFixedLengthStreamingMode(body.length);try(java.io.OutputStream out=connection.getOutputStream()){out.write(body);}if(connection.getResponseCode()!=200)throw new java.io.IOException("transfer rejected");org.json.JSONObject ack=new org.json.JSONObject(readAll(connection.getInputStream()));if(!ack.optBoolean("ok"))throw new java.io.IOException("transfer failed");if(ack.optBoolean("complete")){receipt=ack;break;}}finally{connection.disconnect();}
+                }archive.removeTransferred(file,receipt,sha.toString(),jpeg.length);sent++;final int count=sent;handler.post(()->setStatus("スマホへ移動："+count+"枚（グラスから削除済み）",Color.GREEN));
+            }final int count=sent;handler.post(()->setStatus("移動完了："+count+"枚。スマホの記録写真で確認",Color.GREEN));
+        }catch(Exception e){handler.post(()->setStatus("写真転送を中断。再実行できます",Color.YELLOW));}finally{photoTransferRunning.set(false);}},"KeepPhotoTransfer").start();
     }
     private void showPhotoExports(){
         if(PhotoRecorderService.active!=null){setStatus("撮影を停止してから書き出してください",Color.YELLOW);return;}
@@ -11927,6 +11958,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 pollRadioPipeline(radioState);
                 final String strTrim3 = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("command")).optString("command", "").trim();
+                if (strTrim3.equals("__LOKI_PHOTO_SYNC__")) {
+                    fetchPhoneEndpointJson("ack_command");
+                    handler.post(() -> {
+                        stopService(new Intent(MainActivity.this,PhotoRecorderService.class));
+                        handler.postDelayed(()->transferRecorderPhotos(),1000);
+                    });
+                    return;
+                }
                 if (strTrim3.startsWith("__LOKI_RADIO_CAPTURE__:")) {
                     final JSONObject capture = new JSONObject(strTrim3.substring("__LOKI_RADIO_CAPTURE__:".length()));
                     fetchPhoneEndpointJson("ack_command");

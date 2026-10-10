@@ -527,6 +527,9 @@ public final class MainActivity extends Activity {
         memoryManager.setText("記憶マネージャー（メモ一覧）");
         memoryManager.setOnClickListener(view -> new MemoryManagerDialog(this).show());
         daily.addView(memoryManager, new LinearLayout.LayoutParams(-1, -2));
+        Button photos=new Button(this);photos.setText("記録写真（KEEP・連続撮影）");
+        photos.setOnClickListener(v -> startActivity(new Intent(this,RecorderGalleryActivity.class)));
+        daily.addView(photos,new LinearLayout.LayoutParams(-1,-2));
         root.addView(navigation);
 
         Button notificationAccess = new Button(this);
@@ -2690,6 +2693,14 @@ public final class MainActivity extends Activity {
             }
             if (!constantTimeEquals(getPreferences().getString(KEY_BRIDGE_TOKEN, ""), payload.token)) {
                 writeJsonResponse(socket, 401, "{\"ok\":false,\"error\":\"unauthorized\"}");
+                return;
+            }
+            if (request.startsWith("GET /recorder_location ")) {
+                writeJsonResponse(socket,200,RecorderLocation.current(this).toString());return;
+            }
+            if (request.startsWith("POST /recorder_photo ")) {
+                try {writeJsonResponse(socket,200,RecorderPhotoStore.accept(this,new JSONObject(bodyText)).toString());}
+                catch(Exception invalid){writeJsonResponse(socket,400,"{\"ok\":false,\"error\":\"photo_transfer_failed\"}");}
                 return;
             }
             if (request.startsWith("GET /navigation_places ")) {

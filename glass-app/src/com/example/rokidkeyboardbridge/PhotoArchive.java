@@ -23,11 +23,26 @@ final class PhotoArchive {
   int count=0;for(File f:photos())if(time(f)>=now-BEFORE&&time(f)<=now){if(!marker(f).exists()&&!marker(f).createNewFile())throw new IOException("保護に失敗");count++;}return count;
  }
  synchronized File[] entries(){return photos();}
+ synchronized void metadata(File file,byte[] value)throws IOException{
+  if(!file.getCanonicalFile().getParentFile().equals(root.getCanonicalFile())||value.length>4096||cipher==null)throw new IOException("invalid metadata");
+  try{File target=new File(root,file.getName()+".meta.gcm"),tmp=new File(root,file.getName()+".meta.tmp");Files.write(tmp.toPath(),cipher.encrypt(value));Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);}catch(Exception e){throw new IOException("metadata save failed",e);}
+ }
+ synchronized byte[] metadata(File file)throws IOException{
+  File meta=new File(root,file.getName()+".meta.gcm");if(!meta.exists())return ("{\"capturedAt\":"+time(file)+",\"available\":false}").getBytes(java.nio.charset.StandardCharsets.UTF_8);return read(meta);
+ }
  synchronized byte[] read(File file)throws IOException{
   if(!file.getCanonicalFile().getParentFile().equals(root.getCanonicalFile()))throw new IOException("invalid photo path");
   if(file.length()>8*1024*1024)throw new IOException("photo too large");
   byte[] bytes=Files.readAllBytes(file.toPath());if(!file.getName().endsWith(".gcm"))return bytes;
   try{if(cipher==null)throw new IOException("missing photo key");return cipher.decrypt(bytes);}catch(Exception e){throw new IOException("写真の復号・検証に失敗",e);}
+ }
+ synchronized void removeTransferred(File photo,org.json.JSONObject receipt,String expectedSha,int total)throws IOException{
+  String id=photo.getName().length()>=50?photo.getName().substring(0,50):"";
+  if(!photo.getCanonicalFile().getParentFile().equals(root.getCanonicalFile())||!photo.getName().matches("[0-9]{13}-[a-f0-9-]{36}\\.jpg(?:\\.gcm)?"))throw new IOException("invalid transfer deletion target");
+  if(receipt==null||!receipt.optBoolean("ok")||!receipt.optBoolean("complete")||(!receipt.optBoolean("stored")&&!receipt.optBoolean("deleted"))||!id.equals(receipt.optString("id"))||!expectedSha.equals(receipt.optString("sha"))||total!=receipt.optInt("total",-1))throw new IOException("missing verified phone receipt");
+  try{byte[] original=read(photo);StringBuilder hash=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(original))hash.append(String.format(Locale.US,"%02x",b&255));if(original.length!=total||!expectedSha.equals(hash.toString()))throw new IOException("source changed during transfer");}catch(IOException e){throw e;}catch(Exception e){throw new IOException("source verification failed",e);}
+  if(!photo.delete())throw new IOException("transferred photo deletion failed");
+  File meta=new File(root,photo.getName()+".meta.gcm");if(meta.exists()&&!meta.delete())throw new IOException("transferred metadata deletion failed");File keep=marker(photo);if(keep.exists()&&!keep.delete())throw new IOException("transferred KEEP cleanup failed");
  }
  synchronized void encryptLegacy()throws IOException{
   if(cipher==null)return;
@@ -52,7 +67,7 @@ final class PhotoArchive {
   File[] existing=photos();long bytes=0;for(File f:existing)bytes+=f.length();
   for(File f:existing){if(bytes+jpeg.length<=limit&&root.getUsableSpace()>=reserve+jpeg.length)break;
    if(marker(f).exists()||time(f)<=keepUntil&&time(f)>=keepUntil-AFTER-BEFORE)continue;
-   long size=f.length();if(!f.delete())throw new IOException("古い写真を削除できません");bytes-=size;
+   long size=f.length();if(!f.delete())throw new IOException("古い写真を削除できません");bytes-=size;new File(root,f.getName()+".meta.gcm").delete();
   }
   if(bytes+jpeg.length>limit||root.getUsableSpace()<reserve+jpeg.length)throw new IOException("保存容量不足：保護写真は削除しません");
   String name=String.format(Locale.US,"%013d-%s.jpg",timestamp,UUID.randomUUID())+(cipher==null?"":".gcm");File target=new File(root,name),tmp=new File(root,name+".tmp");
