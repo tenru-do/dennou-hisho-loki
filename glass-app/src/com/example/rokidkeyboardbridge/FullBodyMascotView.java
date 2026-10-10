@@ -30,13 +30,15 @@ public final class FullBodyMascotView extends View {
     private int previewPose=-1;
     public void setPreviewPose(int id){previewPose=id<0?-1:Math.min(180,id);requestImage();reconcileMotion();}
     private String userContext="";
-    public void setUserContext(String prompt){userContext=prompt==null?"":prompt;speechStance.observed(null);}
-    public void setObservedEmotion(String emotion){speechStance.observed(new FullBodySpeechStance.Cue(AmbientScenePolicy.kind(emotion),1));}
+    private boolean observedScene;
+    public void setUserContext(String prompt){userContext=prompt==null?"":prompt;observedScene=false;speechStance.observed(null);}
+    public void setObservedEmotion(String emotion){setObservedEmotion(emotion,1);}
+    public void setObservedEmotion(String emotion,int intensity){observedScene=true;speechStance.observed(new FullBodySpeechStance.Cue(AmbientScenePolicy.kind(emotion),AmbientScenePolicy.intensity(intensity)));}
     public void beginSpeech(String answer){
         previewPose=-1;speechStance.begin(answer);
         FullBodySemanticReaction.Reaction semantic=FullBodySemanticReaction.find(answer);
         if(semantic!=null)speechStance.semantic(semantic);
-        speechStance.scene(userContext,answer);speechExpression=speechStance.pose(answer,loaded);
+        if(!observedScene)speechStance.scene(userContext,answer);speechExpression=speechStance.pose(answer,loaded);
         FullBodySpeechStance.Cue local=FullBodyScenePolicy.evaluate(userContext,answer);
         if(local==null)local=FullBodySpeechStance.classify(answer);
         if(getVisibility()==VISIBLE)FullBodyReactionAudit.record(getContext(),userContext,answer,speechExpression,semantic==null?null:semantic.cue,local);
@@ -76,6 +78,7 @@ public final class FullBodyMascotView extends View {
             });
         },"LokiFullBodyPerformanceDecode").start();
     }
+    public int restExpression(){return loaded>=0&&FullBodyMotionPolicy.isSeated(loaded)?14:4;}
     private long idleStarted=android.os.SystemClock.uptimeMillis();
     private int requestedPose(){
         long now=android.os.SystemClock.uptimeMillis();

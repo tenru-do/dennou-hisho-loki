@@ -38,7 +38,7 @@ final class FullBodySpeechStance {
    if(scene.kind==REFUSE && (cue==null||!(cue.kind==REFUSE||cue.kind==ANGER||cue.kind==SAD||cue.kind==CRY||cue.kind==WORRY||cue.kind==STRAIN||cue.kind==TIRED)))cue=scene;
    else if(scene.kind!=REFUSE && (cue==null || !(cue.kind==RECOVERY||cue.kind==REFUSE||cue.kind==ANGER)))cue=scene;
   }
-  laughing=laughCue(text)||(observed!=null&&observed.kind==JOY);
+  laughing=laughCue(text);
   if(cue!=null){
    if(cue.kind==RECOVERY){refusing=false;active=cue;}
    else if(cue.kind==REFUSE){refusing=true;active=cue;}

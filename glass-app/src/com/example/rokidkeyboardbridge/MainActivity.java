@@ -3042,6 +3042,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void updateMascotForStatus(String str, int i) {
+        // AMB status colors describe capture/API state, not Loki emotion.
+        if (this.ambientMode) return;
         if (this.mascotView != null) {
             if (this.mascotMode == 2) {
                 return;
@@ -8639,15 +8641,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 if(cancelled.getAsBoolean())continue;
                 if(!raw.trim().equals("NONE")){
                     JSONObject response=new JSONObject(raw.replaceAll("(?s)^```(?:json)?\\s*|\\s*```$", "").trim());
-                    final String reaction=limitText(response.optString("reaction"),60);
+                    final String reaction=AmbientScenePolicy.comment(response.optString("reaction"),response.optString("emotion"),response.optInt("intensity",1));
                     final String sceneEmotion=response.optString("emotion");
-                    final int emotion=AmbientScenePolicy.expression(sceneEmotion);
+
+                    final int sceneIntensity=AmbientScenePolicy.intensity(response.optInt("intensity",1));
                     if(reaction.length()>0&&!reaction.equals(previous)){
                         previous=reaction;rememberAmbientRecentContext(reaction);
                         handler.post(()->{if(!cancelled.getAsBoolean()){
                             showAmbientResult("【AMB取得】\n"+reaction);
-                            setMascotExpression(emotion);
-                            if(fullBodyImage!=null){fullBodyImage.setUserContext("");fullBodyImage.setObservedEmotion(sceneEmotion);fullBodyImage.beginSpeech(reaction);}
+                            if(fullBodyImage!=null){fullBodyImage.setUserContext("");fullBodyImage.setObservedEmotion(sceneEmotion,sceneIntensity);fullBodyImage.beginSpeech(reaction);}
                             // Existing TTS drives the mouth and interruption lifecycle.
                             speakWithRokidChunked(reaction,true);
                         }});
@@ -8667,7 +8669,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         parts.put(new JSONObject().put("text",AmbientScenePolicy.prompt()+"\n前回の反応（繰り返さない）："+previous));
         for(String type:new String[]{"audio","image"})if(observation.has(type))parts.put(new JSONObject().put("inline_data",new JSONObject().put("mime_type",type.equals("audio")?"audio/wav":"image/jpeg").put("data",observation.getString(type))));
         body.put("contents",new JSONArray().put(new JSONObject().put("role","user").put("parts",parts)));
-        body.put("generationConfig",new JSONObject().put("maxOutputTokens",350).put("temperature",.4));
+        body.put("generationConfig",new JSONObject().put("maxOutputTokens",700).put("temperature",.4));
         appendGeminiRuntimeContext(body,false);
         HttpURLConnection connection=(HttpURLConnection)openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"));
         activeAmbientConnection=connection;
@@ -10218,6 +10220,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return "【AMB取得・" + sourceLabel + "】\n◎ 聞き取り\n" + value;
     }
 
+    private void setAmbientRestExpression(){setMascotExpression(isFullBodySelected()&&fullBodyImage!=null?fullBodyImage.restExpression():0);}
+
     private void showAmbientResult(String result) {
         if (this.ambientPausedForNavigation || !this.ambientMode || result == null || result.trim().length() == 0
                 || this.geminiRequestActive || this.voiceRecording
@@ -10232,7 +10236,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.answerScroll.setVisibility(View.VISIBLE);
         }
         scrollAnswerToTop();
-        setMascotExpression(7);
+        setAmbientRestExpression();
         setStatus(this.ambientStatusWords.length() > 0
                         ? "AMB受信: " + this.ambientStatusWords
                         : "AMBIENT 統合解析",
@@ -13901,7 +13905,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (strArrSplitForTts.length == 0) {
                 return;
             }
-            this.handler.post(() -> {if(gestureSpeechGeneration==ttsGeneration){beginPortraitSemanticSpeech(activeGeminiPrompt,str,gestureSpeechGeneration);if(fullBodyImage!=null)fullBodyImage.beginSpeech(str);}});
+            this.handler.post(() -> {if(gestureSpeechGeneration==ttsGeneration){if(ambientReaction){
+                FullBodySemanticReaction.Reaction observed=FullBodySemanticReaction.find(str);
+                portraitReaction=observed==null?PortraitSemanticReaction.resolve("",str):observed.cue;
+                portraitReactionGeneration=gestureSpeechGeneration;
+                if(mascotView!=null)mascotView.setSemanticExpression(PortraitSemanticReaction.expression(portraitReaction));
+            }else beginPortraitSemanticSpeech(activeGeminiPrompt,str,gestureSpeechGeneration);if(fullBodyImage!=null)fullBodyImage.beginSpeech(str);}});
             new Thread(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.41
                 @Override // java.lang.Runnable
                 public void run() {
@@ -13931,6 +13940,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             public void run() {
                                 if (gestureSpeechGeneration != ttsGeneration) return;
                                 setMascotMode(0);
+                                if(ambientReaction)setAmbientRestExpression();
                                 MainActivity.this.setStatus("読み上げ完了", Color.rgb(90, 220, 120));
                             }
                         });
@@ -13940,6 +13950,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             public void run() {
                                 if (gestureSpeechGeneration != ttsGeneration) return;
                                 setMascotMode(0);
+                                if(ambientReaction)setAmbientRestExpression();
                                 triggerMascotGesture(MascotAnimationController.GestureState.SHAKE);
                                 MainActivity.this.setStatus("表示は完了。読み上げエラー: " + e.getMessage(), -256);
                             }

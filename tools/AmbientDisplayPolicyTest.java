@@ -10,7 +10,8 @@ public final class AmbientDisplayPolicyTest {
   }
   FullBodySpeechStance speech=new FullBodySpeechStance();speech.scene("ロキにセクハラして","やめてください");
   speech.observed(new FullBodySpeechStance.Cue(FullBodyPoseCatalog.Kind.JOY,1));speech.begin("いいね");speech.pose("いいね",4);
-  check(speech.kind()==FullBodyPoseCatalog.Kind.JOY&&speech.laughing(),"observed joy survives neutral wording and TTS begin");
+  check(speech.kind()==FullBodyPoseCatalog.Kind.JOY&&!speech.laughing(),"observed joy survives neutral wording without forced laughter");
+  speech.pose("あはは、面白くて笑ってしまいました。",4);check(speech.laughing(),"explicit laughter moves body");
   speech.observed(null);speech.scene("天気を教えて","調べます");speech.begin("調べます");speech.pose("調べます",4);check(!speech.laughing(),"normal conversation clears observed laugh");
   int blink=0,closed=0,transitions=0;
   for(int i=0;i<FullBodyRealisticFeatures.ALL.length;i++){

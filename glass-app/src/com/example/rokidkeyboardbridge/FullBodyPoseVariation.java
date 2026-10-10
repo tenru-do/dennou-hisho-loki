@@ -2,7 +2,7 @@ package com.example.rokidkeyboardbridge;
 
 /** Decorate an existing target with a same-posture pose; never schedule standing/sitting. */
 final class FullBodyPoseVariation {
- private static final int[] SEATED_IDLE={168,167,168,165},SEATED_THOUGHT={167,168,167,165},STANDING={4,13,4,31,4,37,4,77};
+ private static final int[] SEATED_IDLE={168,167,135},SEATED_THOUGHT={167,168,135},STANDING={4,15,4,31,4,37,4,77};
  private int anchor=-1,lastMode=-1;private long started;
  int target(int base,int mode,long now,FullBodyPoseCatalog.Kind speechKind){
   return target(base,mode,now,speechKind,true);
