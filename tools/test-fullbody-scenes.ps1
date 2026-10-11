@@ -1,9 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$Serial,[string]$OutputDirectory)
+﻿param([Parameter(Mandatory=$true)][string]$Serial,[string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 $java='C:/Program Files/Android/Android Studio/jbr/bin'
-$sdk='C:/Users/user/AppData/Local/Android/Sdk/build-tools/37.0.0'
-$adb='C:/Users/user/Documents/Rokid_Zoom_Camera/android-sdk/platform-tools/adb.exe'
+$sdk=(Join-Path $env:LOCALAPPDATA 'Android/Sdk/build-tools/37.0.0')
+$adb=(Join-Path $env:LOCALAPPDATA 'Android/Sdk/platform-tools/adb.exe')
 $output=if($OutputDirectory){$OutputDirectory}else{"$repo/.build-integration/scene-verification"}
 New-Item -ItemType Directory -Force $output | Out-Null
 Remove-Item "$output/device-tests-verified.txt" -ErrorAction SilentlyContinue
@@ -14,11 +14,13 @@ $files=Get-ChildItem "$repo/tools" -Filter 'FullBody*Test.java' | Select-Object 
 & "$java/javac.exe" -encoding UTF8 -cp "$build/android.jar;$build/classes" -d $test @files "$build/scene-tests/FullBodyConfiguredScenesTest.java"
 if($LASTEXITCODE -ne 0){throw 'Test compilation failed'}
 Get-ChildItem "$build/classes/com/example/rokidkeyboardbridge" -Filter 'FullBody*.class' | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination "$test/com/example/rokidkeyboardbridge" -Force}
-$env:TEMP='C:/Users/user/Documents/Codex/2026-10-08/rokid-2/work-build-temp';$env:TMP=$env:TEMP
+$env:TEMP=(Join-Path $output 'build-temp');$env:TMP=$env:TEMP
+New-Item -ItemType Directory -Force $env:TEMP | Out-Null
 & "$java/jar.exe" "-J-Djava.io.tmpdir=$($env:TEMP)" cf "$test/test.jar" -C $test com
 if($LASTEXITCODE -ne 0){throw 'Jar failed'}
 $env:JAVA_HOME='C:/Program Files/Android/Android Studio/jbr'
-$env:TEMP='C:/Users/user/Documents/Codex/2026-10-08/rokid-2/work-build-temp';$env:TMP=$env:TEMP
+$env:TEMP=(Join-Path $output 'build-temp');$env:TMP=$env:TEMP
+New-Item -ItemType Directory -Force $env:TEMP | Out-Null
 & "$sdk/d8.bat" --lib "$build/android.jar" --min-api 28 --output $test "$test/test.jar"
 if($LASTEXITCODE -ne 0){throw 'D8 failed'}
 Copy-Item "$build/loki-glass-integration.apk" "$output/loki-glass-v433.apk" -Force
