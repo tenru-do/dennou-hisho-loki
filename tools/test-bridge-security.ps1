@@ -1,4 +1,4 @@
-﻿param([string]$JavaDirectory='C:/Program Files/Android/Android Studio/jbr/bin')
+﻿param([string]$JavaDirectory='C:/Program Files/Android/Android Studio/jbr/bin', [string]$AndroidJarPath=(Join-Path $env:LOCALAPPDATA 'Android/Sdk/platforms/android-35/android.jar'))
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $out=Join-Path $root '.build-security-tests'
@@ -10,13 +10,13 @@ if(!(Test-Path -LiteralPath $fixture)){
     if($LASTEXITCODE){throw 'Fixture certificate creation failed'}
 }
 $src=Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge'
-& "$JavaDirectory/javac.exe" '-J-Duser.language=en' -encoding UTF8 -d "$out/classes" "$src/BridgeCertificatePolicy.java" "$src/PhotoVaultCipher.java" "$src/PhotoArchive.java" "$src/PhotoRecorderCommands.java" "$root/tools/BridgeSecurityTest.java" "$root/tools/PhotoArchiveTest.java" "$root/phone-app/src/com/example/rokidgeminisecretary/PairingWindow.java" "$root/tools/PairingWindowTest.java"
+& "$JavaDirectory/javac.exe" '-J-Duser.language=en' -encoding UTF8 -cp "$AndroidJarPath" -d "$out/classes" "$src/BridgeCertificatePolicy.java" "$src/PhotoVaultCipher.java" "$src/PhotoArchive.java" "$src/PhotoRecorderCommands.java" "$root/tools/BridgeSecurityTest.java" "$root/tools/PhotoArchiveTest.java" "$root/phone-app/src/com/example/rokidgeminisecretary/PairingWindow.java" "$root/tools/PairingWindowTest.java"
 if($LASTEXITCODE){throw 'Security tests compilation failed'}
-& "$JavaDirectory/java.exe" "-Djava.io.tmpdir=$out" -cp "$out/classes" com.example.rokidkeyboardbridge.BridgeSecurityTest $fixture fixture-local-test
+& "$JavaDirectory/java.exe" "-Djava.io.tmpdir=$out" -cp "$out/classes;$AndroidJarPath" com.example.rokidkeyboardbridge.BridgeSecurityTest $fixture fixture-local-test
 if($LASTEXITCODE){throw 'TLS and vault tests failed'}
-& "$JavaDirectory/java.exe" "-Djava.io.tmpdir=$out" -cp "$out/classes" com.example.rokidkeyboardbridge.PhotoArchiveTest
+& "$JavaDirectory/java.exe" "-Djava.io.tmpdir=$out" -cp "$out/classes;$AndroidJarPath" com.example.rokidkeyboardbridge.PhotoArchiveTest
 if($LASTEXITCODE){throw 'Archive regression failed'}
-& "$JavaDirectory/java.exe" -cp "$out/classes" com.example.rokidgeminisecretary.PairingWindowTest
+& "$JavaDirectory/java.exe" -cp "$out/classes;$AndroidJarPath" com.example.rokidgeminisecretary.PairingWindowTest
 if($LASTEXITCODE){throw 'Pairing window tests failed'}
 . "$PSScriptRoot/secure-bridge.ps1"
 $tokens=$null;$errors=$null

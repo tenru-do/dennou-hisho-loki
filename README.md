@@ -17,20 +17,11 @@ PC・タブレットから同じWi-Fiで写真の精査・JPEG保存・削除・
 
 ## APKのダウンロード
 
-1. 次のAPKをダウンロードします。
-   - [DennouHishoLoki-phone-v0.9.53-alpha.apk](apk/DennouHishoLoki-phone-v0.9.53-alpha.apk?raw=1)：Androidスマホ側
-   - [DennouHishoLoki-glass-v0.9.149-alpha.apk](apk/DennouHishoLoki-glass-v0.9.149-alpha.apk?raw=1)：Rokidグラス側
-   - [DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk](apk/DennouHishoLoki-AudioRelay-v0.1.9-alpha.apk?raw=1)：Bluetooth再生音をAMBへ渡す端末だけに入れる任意アプリ
-   - [SHA-256チェックサム](apk/SHA256SUMS-v0.9.10-alpha.txt)：ダウンロード後の整合性確認用
-2. スマホ版はスマホでAPKを開いてインストールします。
-3. グラス版は開発者ケーブルとADBを使用してインストールします。
+[グラスv469の配布ページ](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v469) にAPK・SHA256チェックサム・公開前検査記録を掲載しています。検査範囲と署名の違いは [v469の公開前検査](docs/releases/glass-v469-security.md) を確認してください。
 
-```powershell
-adb devices
-adb -s <グラスのシリアル番号> install -r DennouHishoLoki-glass-v0.9.149-alpha.apk
-```
+配布用APKは専用の配布署名です。既存の開発用署名版には上書きできません。署名変更のためにアンインストールすると、会話・設定や写真の復号鍵を失う可能性があるため、既存利用者は現在のアプリを維持してください。配布版は新規導入向けです。今回スマホAPKは公開・更新していません。
 
-Androidが警告を表示した場合は、内容を確認したうえで、このAPKを開いたアプリに限って「不明なアプリのインストール」を許可してください。APKはアルファ版用のテスト署名です。導入手順の詳細は [docs/INSTALL.md](docs/INSTALL.md) を参照してください。
+リポジトリ内や過去Releaseの旧APKは履歴用で、今回のセキュリティ対策を含みません。新規導入には推奨しません。
 
 ## 主な機能
 
