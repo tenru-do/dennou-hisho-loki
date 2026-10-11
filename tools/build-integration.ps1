@@ -34,6 +34,10 @@ $link+=@('--java',"$build/generated")
 if(Test-Path "$source/assets") {$link+=@('-A',"$source/assets")}
 & "$bt/aapt2.exe" @link
 Check-Exit
+if($App -eq 'phone' -and (Test-Path "$source/assets/loki-web")) {
+    & "$env:JAVA_HOME/bin/java.exe" "$root/tools/NormalizeWebAssets.java" "$build/unsigned.apk"
+    Check-Exit
+}
 New-Item -ItemType Directory -Force "$build/compiler" | Out-Null
 $ErrorActionPreference='Continue'
 $bootstrap=& "$env:JAVA_HOME/bin/javac.exe" '-J-Duser.language=en' -encoding UTF-8 -d "$build/compiler" "$root/tools/CompileAndroid.java" 2>&1

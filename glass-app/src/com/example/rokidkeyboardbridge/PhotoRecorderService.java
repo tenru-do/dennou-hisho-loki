@@ -17,19 +17,23 @@ public final class PhotoRecorderService extends Service {
  }
  private Notification notification(){
   PendingIntent stop=PendingIntent.getService(this,1,new Intent(this,PhotoRecorderService.class).setAction("stop"),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
-  PendingIntent keep=PendingIntent.getService(this,2,new Intent(this,PhotoRecorderService.class).setAction("keep"),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);
-  return new Notification.Builder(this,"loki_recorder").setSmallIcon(android.R.drawable.ic_menu_camera).setContentTitle("ロキ：連続撮影中").setContentText(interval/1000+"秒間隔・上限5GB / "+status).setOngoing(true).addAction(0,"KEEP",keep).addAction(0,"停止",stop).build();
+  return new Notification.Builder(this,"loki_recorder").setSmallIcon(android.R.drawable.ic_menu_camera).setContentTitle("ロキ：連続撮影中").setContentText(interval/1000+"秒間隔・上限5GB / "+status).setOngoing(true).addAction(0,"停止",stop).build();
  }
  public int onStartCommand(Intent intent,int flags,int id){
   if(intent==null||archive==null){stopSelf();return START_NOT_STICKY;}
-  if("stop".equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
-  if("keep".equals(intent.getAction())){protect();return START_NOT_STICKY;}
+  if("stop".equals(intent.getAction())){requestStop();return START_NOT_STICKY;}
+  if("keep".equals(intent.getAction())){return START_NOT_STICKY;}
   interval=intent.getIntExtra("interval",5000)==10000?10000:5000;
   startForeground(442,notification());active=this;
   if(worker==null){wake.acquire();worker=new Thread(this::loop,"LokiPhotoRecorder");worker.start();}
   return START_NOT_STICKY;
  }
- synchronized String protect(){try{int count=archive.protect(System.currentTimeMillis());status="保護：直前"+count+"枚＋次の1分";return status;}catch(Exception e){status="保護失敗："+e.getMessage();return status;}}
+ void requestStop(){
+  // Cancel first; never wait for archive I/O or camera teardown on the UI thread.
+  stopped=true;status="ユーザー操作で停止";
+  Thread running=worker;if(running!=null)running.interrupt();
+  stopSelf();
+ }
  private void loop(){try{archive.encryptLegacy();}catch(Exception e){status="既存写真の暗号化を完了できません。撮影停止";stopSelf();return;}int failures=0;long next=SystemClock.elapsedRealtime();
   while(!stopped){try{
    long wait=next-SystemClock.elapsedRealtime();if(wait>0)Thread.sleep(wait);if(stopped)break;next=SystemClock.elapsedRealtime()+interval;

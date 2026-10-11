@@ -517,7 +517,6 @@ public final class MainActivity extends Activity {
         glassStateView.setPadding(0, 2, 0, 2);
         glassStateView.setText("グラス: 接続待ち");
         root.addView(glassStateView);
-        root.addView(daily);
         Button tethering = new Button(this);
         tethering.setText("テザリング設定 / 切替");
         tethering.setMinHeight((int)(48 * getResources().getDisplayMetrics().density));
@@ -530,7 +529,9 @@ public final class MainActivity extends Activity {
         Button photos=new Button(this);photos.setText("記録写真（KEEP・連続撮影）");
         photos.setOnClickListener(v -> startActivity(new Intent(this,RecorderGalleryActivity.class)));
         daily.addView(photos,new LinearLayout.LayoutParams(-1,-2));
-        root.addView(navigation);
+        Button webConsole=new Button(this);webConsole.setText("PC・タブレットで写真・会話を共有");
+        webConsole.setOnClickListener(v -> LokiWebConsole.show(this,getWifiIp()));
+        daily.addView(webConsole,new LinearLayout.LayoutParams(-1,-2));
 
         Button notificationAccess = new Button(this);
         notificationAccess.setText("MAIL");
@@ -690,6 +691,13 @@ public final class MainActivity extends Activity {
         });
 
         root.addView(actionRow);
+        // Keep conversation controls ahead of utilities as new features are added.
+        commandInput.setOnFocusChangeListener((view, focused) -> {
+            if (focused) actionRow.post(() -> actionRow.requestRectangleOnScreen(
+                    new android.graphics.Rect(0, 0, actionRow.getWidth(), actionRow.getHeight()), false));
+        });
+        root.addView(daily);
+        root.addView(navigation);
         android.widget.Switch radioSwitch = new android.widget.Switch(this);
         radioSwitch.setText("電脳ラジオモード");
         radioSwitch.setChecked(getPreferences().getBoolean(RadioModeManager.ENABLED, false));
@@ -2626,13 +2634,21 @@ public final class MainActivity extends Activity {
         }catch(Exception e){if(!running)break;}}},"LokiTlsDiscovery").start();
     }
 
-    private boolean confirmPairing(Socket socket,String code) throws Exception {
+    boolean confirmPairing(Socket socket,String code) throws Exception {
         if(!code.matches("[0-9]{6}"))return false;
         MainActivity owner=activeActivity;if(owner==null||owner.isFinishing()||owner.isDestroyed())return false;
         java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean allowed=new java.util.concurrent.atomic.AtomicBoolean(false);java.util.concurrent.atomic.AtomicBoolean live=new java.util.concurrent.atomic.AtomicBoolean(true);
         final android.app.AlertDialog[] dialog=new android.app.AlertDialog[1];
         owner.runOnUiThread(()->{if(!live.get())return;dialog[0]=new android.app.AlertDialog.Builder(owner).setTitle("ロキへの接続を許可？").setMessage("相手側に表示された接続コードが "+code+" と一致することを確認してください。\n接続元: "+socket.getInetAddress().getHostAddress()).setPositiveButton("一致・許可",(d,w)->{if(live.get())allowed.set(true);done.countDown();}).setNegativeButton("拒否",(d,w)->done.countDown()).setOnCancelListener(d->done.countDown()).show();});
         boolean completed=done.await(30,java.util.concurrent.TimeUnit.SECONDS);live.set(false);owner.runOnUiThread(()->{if(dialog[0]!=null)dialog[0].dismiss();});return completed&&allowed.get();
+    }
+
+    int confirmWebConnection(Socket socket,String name,boolean remember) throws Exception {
+        MainActivity owner=activeActivity;if(owner==null||owner.isFinishing()||owner.isDestroyed())return 0;
+        java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicInteger allowed=new java.util.concurrent.atomic.AtomicInteger(0);java.util.concurrent.atomic.AtomicBoolean live=new java.util.concurrent.atomic.AtomicBoolean(true);
+        final android.app.AlertDialog[] dialog=new android.app.AlertDialog[1];
+        owner.runOnUiThread(()->{if(!live.get())return;android.widget.CheckBox registration=new android.widget.CheckBox(owner);registration.setText("この端末を登録する（30日間）");registration.setChecked(remember);dialog[0]=new android.app.AlertDialog.Builder(owner).setTitle("このWeb端末を許可しますか？").setMessage("端末: "+name+"\n接続元: "+socket.getInetAddress().getHostAddress()+"\n写真・会話履歴の閲覧とコメント送信を許可します。操作しているPC・タブレットからの接続なら許可してください。").setView(registration).setPositiveButton("接続を許可",(d,w)->{if(live.get())allowed.set(registration.isChecked()?2:1);done.countDown();}).setNegativeButton("拒否",(d,w)->done.countDown()).setOnCancelListener(d->done.countDown()).show();});
+        boolean completed=done.await(30,java.util.concurrent.TimeUnit.SECONDS);live.set(false);owner.runOnUiThread(()->{if(dialog[0]!=null)dialog[0].dismiss();});return completed?allowed.get():0;
     }
 
     private void handleClient(Socket socket) {
@@ -2672,6 +2688,7 @@ public final class MainActivity extends Activity {
             boolean pair = pcPair || (request != null && request.startsWith("GET /pair "));
             RequestPayload payload = readRequestPayload(reader);
             String bodyText = payload.body;
+            if (LokiWebConsole.handle(this, socket, request, bodyText, payload.webToken, payload.origin, payload.host)) return;
             if (pair) {
                 if(!(pcPair?pcPairingWindow:glassPairingWindow).claim(android.os.SystemClock.elapsedRealtime(),payload.pairCode)){writeJsonResponse(socket,403,"{\"error\":\"pairing_closed_or_invalid_code\"}");return;}
                 if(!confirmPairing(socket,payload.pairCode)){writeJsonResponse(socket,403,"{\"error\":\"pairing_rejected\"}");return;}
@@ -3807,7 +3824,7 @@ public final class MainActivity extends Activity {
     private static final class RequestPayload {
         final String body;
         final String token;
-        String pairCode="";
+        String pairCode="", webToken="", origin="", host="";
         RequestPayload(String body, String token) {
             this.body = body;
             this.token = token;
@@ -3817,7 +3834,7 @@ public final class MainActivity extends Activity {
     private RequestPayload readRequestPayload(BufferedReader reader) throws Exception {
         int contentLength = 0;
         String token = "";
-        String pairCode="";
+        String pairCode="", webToken="", origin="", host="";
         int headerChars=0;
         String line;
         while ((line = reader.readLine()) != null && line.length() > 0) {
@@ -3828,6 +3845,12 @@ public final class MainActivity extends Activity {
                     contentLength = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
                 } catch (Exception ignored) {
                 }
+            } else if (lower.startsWith("x-loki-web-token:")) {
+                webToken=line.substring(line.indexOf(':')+1).trim();
+            } else if (lower.startsWith("origin:")) {
+                origin=line.substring(line.indexOf(':')+1).trim();
+            } else if (lower.startsWith("host:")) {
+                host=line.substring(line.indexOf(':')+1).trim();
             } else if (lower.startsWith("x-roki-pair-code:")) {
                 pairCode=line.substring(line.indexOf(':')+1).trim();
             } else if (lower.startsWith("x-roki-token:")) {
@@ -3835,7 +3858,7 @@ public final class MainActivity extends Activity {
             }
         }
         if (contentLength <= 0) {
-            RequestPayload result=new RequestPayload("", token);result.pairCode=pairCode;return result;
+            RequestPayload result=new RequestPayload("", token);result.pairCode=pairCode;result.webToken=webToken;result.origin=origin;result.host=host;return result;
         }
         if (contentLength > MAX_REQUEST_BODY_CHARS) {
             throw new IllegalArgumentException("request body too large");
@@ -3849,7 +3872,7 @@ public final class MainActivity extends Activity {
         }
         if (offset != contentLength) throw new IllegalArgumentException("incomplete request body");
         RequestPayload result=new RequestPayload(new String(new String(chars, 0, offset)
-                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8), token);result.pairCode=pairCode;return result;
+                .getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8), token);result.pairCode=pairCode;result.webToken=webToken;result.origin=origin;result.host=host;return result;
     }
 
     private void writeJsonResponse(Socket socket, int statusCode, String body) throws Exception {
@@ -4226,6 +4249,11 @@ public final class MainActivity extends Activity {
         String text = value == null ? "" : value.replace('\n', ' ')
                 .replace('\r', ' ').replaceAll("\\s+", " ").trim();
         return text.length() <= max ? text : text.substring(0, max) + "…";
+    }
+
+    JSONArray webHistory() {
+        ArrayList<JSONObject> all=readConversationMemory();JSONArray out=new JSONArray();
+        for(int i=Math.max(0,all.size()-200);i<all.size();i++)out.put(all.get(i));return out;
     }
 
     private ArrayList<JSONObject> readConversationMemory() {

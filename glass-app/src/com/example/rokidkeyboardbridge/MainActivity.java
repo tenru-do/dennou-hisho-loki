@@ -837,9 +837,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     };
 
-    @Override // android.app.Activity
+    private static boolean processStarted;
+    private boolean lightweightStartup;
+    private volatile boolean startupTopicBlocked;
+    private volatile boolean startupNavigationBlocked;
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
+        lightweightStartup=!processStarted;processStarted=true;
+        if(lightweightStartup){
+            startupTopicBlocked=true;startupNavigationBlocked=true;
+            getPreferences().edit().putBoolean(KEY_AMBIENT_ENABLED,false).commit();
+            getSharedPreferences("navigation_display",MODE_PRIVATE).edit()
+                    .putBoolean("full_body_mode",false).putBoolean("lower_half",true)
+                    .putBoolean("upper_half",false).putBoolean("large_map",false)
+                    .putBoolean("overview",false).commit();
+            PhotoRecorderService running=PhotoRecorderService.active;
+            if(running!=null)running.requestStop();
+            else stopService(new Intent(this,PhotoRecorderService.class));
+        }
         new Thread(()->{try{PhotoExportProvider.prune(this);PhotoArchiveStore.get(this).encryptLegacy();}catch(Exception e){handler.post(()->{if(!isDestroyed())setStatus("既存写真の暗号化が未完了です。元写真を保持しています",Color.YELLOW);});}},"PhotoVaultMigration").start();
         recorderHost=new java.lang.ref.WeakReference<>(this);
         this.sharedMemoryManager = SharedMemoryManager.getInstance(this);
@@ -1659,8 +1674,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         focusLabel(keepButton,"KEEP");
         keepButton.setOnClickListener(v->{
             showControlsTemporarily();
-            if(PhotoRecorderService.active!=null)setStatus(PhotoRecorderService.active.protect(),Color.GREEN);
-            else showPhotoRecorder();
+            if(PhotoRecorderService.active!=null)stopPhotoRecorderImmediately();
+            else startPhotoRecorder(5000);
         });
         this.buttonPanel.addView(keepButton,4,new LinearLayout.LayoutParams(0,dp(20),1.0f));
         for(int i=0;i<this.buttonPanel.getChildCount();i++){
@@ -2136,10 +2151,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
     static java.lang.ref.WeakReference<MainActivity> recorderHost=new java.lang.ref.WeakReference<>(null);
     void onPhotoRecorderStopped(String reason){runOnUiThread(()->{if(!isDestroyed())setStatus("連続撮影停止："+reason,Color.YELLOW);});}
     private final Runnable recorderHudTick=new Runnable(){public void run(){
-        if(keepButton!=null)keepButton.setContentDescription(PhotoRecorderService.active!=null?"KEEP：今の場面を保護":"KEEP：連続撮影の設定");
+        if(keepButton!=null){
+            boolean recording=PhotoRecorderService.active!=null;
+            keepButton.setText(recording?"STOP":"KEEP");
+            keepButton.setContentDescription(recording?"STOP：連続撮影をすぐ停止":"KEEP：連続撮影の設定");
+        }
         if(fullBodyStatus!=null)refreshFullBodyStatus();
         handler.postDelayed(this,1000);
     }};
+    private void stopPhotoRecorderImmediately(){
+        PhotoRecorderService recorder=PhotoRecorderService.active;
+        if(recorder!=null)recorder.requestStop();
+        else stopService(new Intent(this,PhotoRecorderService.class));
+        setStatus("連続撮影停止",Color.GREEN);
+    }
     private void startPhotoRecorder(int interval){
         if(photoTransferRunning.get()){setStatus("写真転送の完了を待ってください",Color.YELLOW);return;}
 
@@ -2151,11 +2176,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         PhotoExportProvider.prune(this);
         showControlsTemporarily();
         NavigationChoiceDialog.show(this,"REC："+(PhotoRecorderService.active!=null?PhotoRecorderService.status:"停止中"),
-            new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","KEEP：前2分＋後1分を保護","撮影を停止","記録写真を復号して共有","記録写真をすべてスマホへ移動"},-1,(d,which)->{
+            new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","撮影を停止","記録写真を復号して共有","記録写真をすべてスマホへ移動"},-1,(d,which)->{
                 if(which==0||which==1)startPhotoRecorder(which==0?5000:10000);
-                else if(which==2)setStatus(PhotoRecorderService.active!=null?PhotoRecorderService.active.protect():"連続撮影を開始してください",Color.GREEN);
-                else if(which==3){stopService(new Intent(this,PhotoRecorderService.class));setStatus("連続撮影停止",Color.GREEN);}
-                else if(which==4)showPhotoExports();
+                else if(which==2)stopPhotoRecorderImmediately();
+                else if(which==3)showPhotoExports();
                 else transferRecorderPhotos();
             });
     }
@@ -2202,9 +2226,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
     private boolean handlePhotoRecorderCommand(String text){
         int action=PhotoRecorderCommands.action(text);if(action==0)return false;
-        if(action==1)setStatus(PhotoRecorderService.active!=null?PhotoRecorderService.active.protect():"連続撮影は停止中です",Color.GREEN);
+        if(action==1)setStatus("写真はスマホ・PCで確認できます",Color.GREEN);
         else if(action==2)startPhotoRecorder(5000);
-        else{stopService(new Intent(this,PhotoRecorderService.class));setStatus("連続撮影停止",Color.GREEN);}
+        else stopPhotoRecorderImmediately();
         return true;
     }
     private AlertDialog showLokiControls(){
@@ -3644,6 +3668,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void pollPhoneTransitAsync() {
+        if(startupNavigationBlocked)return;
         if (this.transitPollInFlight) {
             return;
         }
@@ -4070,6 +4095,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void toggleNavigationHudFromGlass() {
+        startupNavigationBlocked=false;
         if (this.navigationButton != null) {
             this.navigationButton.setEnabled(false);
         }
@@ -6726,6 +6752,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void changeTopicMode(final boolean enabled, final String mode, final int minutes, final Runnable after) {
+        if(enabled)startupTopicBlocked=false;
         // Switching TOPIC does not pause the Activity: foreground state belongs to lifecycle callbacks.
         handler.removeCallbacks(ambientTimer);
         cancelAmbientAutotalkRequest();
@@ -11942,6 +11969,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     postPhoneStateAsync(radioBusy() ? "WAIT" : isGeminiCoolingDown() ? "WAIT" : "READY", 0L, "");
                 }
                 final JSONObject radioState = new JSONObject(fetchPhoneEndpointJson("radio_state"));
+                if(startupTopicBlocked){
+                    if(radioState.optBoolean("enabled")){
+                        try{postTopicForm("radio_control","enabled=false&mode=scheduled&minutes=10");}
+                        catch(Exception ignored){}
+                    }
+                    radioState.put("enabled",false);
+                }
                 radioModeEnabled = radioState.optBoolean("enabled");
                 long settingsRevision = radioState.optLong("revision");
                 if (settingsRevision != radioSettingsRevisionSeen) {

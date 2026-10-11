@@ -1,0 +1,7 @@
+# Glass v458: lightweight process startup
+
+New processes start with TOPIC, recorder, navigation HUD, ambient capture and voice loop inactive. Display preferences are set to face mode in the lower half before UI and avatar construction. Smartphone radio state is disabled on reconnection and ignored until explicit TOPIC activation; navigation polling is held until explicit navigation HUD activation. Account keys, conversation history and photo archives are preserved.
+
+KEEP starts 5-second capture directly, without an interval selection dialog; during recording it becomes STOP and directly cancels capture without waiting for archive locks. Protection controls are removed. Camera JPEG bytes continue to be archived directly without a second JPEG compression pass.
+
+Validation: 85-source build, scene validation (5 rules / 9 regression cases), APK signing verification passed. Installed on the identity-verified glasses after APK/application-data backup and hash verification. Installed APK SHA256 matched the candidate. Native device instrumentation passed 11 checks: fresh-process modes off, lower-half face preferences, direct KEEP start, 5-second interval, STOP label, immediate cancellation, and service termination. Stop click handler took 8 ms. This is device code/layout-state evidence, not proof of perceived display quality while wearing the glasses. Verification helper removed and the production app relaunched.
