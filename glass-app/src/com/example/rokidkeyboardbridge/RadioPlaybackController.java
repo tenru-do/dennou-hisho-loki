@@ -22,6 +22,8 @@ final class RadioPlaybackController {
         void onFinished();
         void onError();
     }
+    private final android.content.Context context;
+    RadioPlaybackController(android.content.Context context) { this.context = context.getApplicationContext(); }
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile int generation;
     private volatile boolean speaking;
@@ -93,10 +95,11 @@ final class RadioPlaybackController {
             lease = CaptureLease.acquire(CaptureLease.MICROPHONE, () -> token != generation);
             int minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             if (minimum <= 0) throw new IllegalStateException("microphone unavailable");
-            recorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000,
+            recorder = new AudioRecord(MediaRecorder.AudioSource.DEFAULT, 16000,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(minimum, 6400));
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("microphone unavailable");
-            noiseControl = new RecognitionNoiseControl(recorder);
+            MicrophoneRouting.preferUsb(context, recorder);
+            // Keep DEFAULT vendor processing; avoid extra suppression of quiet PCM.
             if (AcousticEchoCanceler.isAvailable()) {
                 echo = AcousticEchoCanceler.create(recorder.getAudioSessionId());
                 if (echo != null) echo.setEnabled(true);
@@ -109,7 +112,7 @@ final class RadioPlaybackController {
             while (SystemClock.elapsedRealtime() < calibrationEnd && token == generation) {
                 int n = recorder.read(buffer, 0, buffer.length, AudioRecord.READ_NON_BLOCKING);
                 if (n < 0) throw new IllegalStateException("microphone read failed");
-                if (n > 0) { noise += RadioPlaybackPolicy.level(buffer, n); frames++; }
+                if (n > 0) { MicrophoneRouting.boostAndLog(buffer, n, "RADIO", MediaRecorder.AudioSource.DEFAULT); noise += RadioPlaybackPolicy.level(buffer, n); frames++; }
                 else Thread.sleep(5);
             }
             int threshold = RadioPlaybackPolicy.calibratedThreshold(frames == 0 ? 0 : noise / frames);
@@ -151,6 +154,7 @@ final class RadioPlaybackController {
                 int n = recorder.read(buffer, 0, buffer.length, AudioRecord.READ_NON_BLOCKING);
                 if (n < 0) throw new IllegalStateException("microphone read failed");
                 if (n == 0) { Thread.sleep(5); continue; }
+                MicrophoneRouting.boostAndLog(buffer, n, "RADIO", MediaRecorder.AudioSource.DEFAULT);
                 boolean heardVoice = RadioPlaybackPolicy.level(buffer, n) > threshold;
                 if (!capturing) {
                     synchronized (this) {

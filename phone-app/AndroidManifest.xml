@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"
     package="com.example.rokidgeminisecretary"
-    android:versionCode="139"
-    android:versionName="0.9.91">
+    android:versionCode="165"
+    android:versionName="0.9.117-conversation-input-top">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Granted only to privileged installations; ordinary installs use OS settings. -->
     <uses-permission android:name="android.permission.TETHER_PRIVILEGED" />
@@ -28,13 +29,16 @@
     </queries>
 
     <application
+        android:debuggable="false"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="電脳秘書ロキ Bridge"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".RecorderGalleryActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
+            android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTop"
             android:exported="true">
             <intent-filter>

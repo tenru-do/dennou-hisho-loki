@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.lokiaudiorelay"
-    android:versionCode="10"
-    android:versionName="0.1.9-quiet-boot-auto">
+    android:versionCode="20"
+    android:versionName="0.1.10-secure-bridge">
 
     <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
+        android:debuggable="false"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="ロキ Audio Relay"

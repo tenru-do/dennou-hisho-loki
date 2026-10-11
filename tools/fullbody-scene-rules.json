@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "exclusions": [
+    "とは",
+    "意味",
+    "について教",
+    "について説明",
+    "もし",
+    "したら",
+    "しない",
+    "触らない",
+    "しません",
+    "しないで",
+    "していない",
+    "してない",
+    "ごめん",
+    "謝",
+    "すみません",
+    "医療",
+    "医師",
+    "診察",
+    "触診",
+    "被害",
+    "相談",
+    "ニュース",
+    "職場",
+    "登場人物",
+    "胸を撫で下ろ",
+    "胸をなでおろ"
+  ],
+  "rules": [
+    {
+      "id": "boundary-indirect",
+      "promptGroups": [
+        [
+          "胸",
+          "下着",
+          "スカート",
+          "体",
+          "身体"
+        ],
+        [
+          "手を入",
+          "手をいれ",
+          "差し入",
+          "まさぐ",
+          "触",
+          "揉",
+          "もーみもみ"
+        ]
+      ],
+      "answerGroups": [
+        [
+          "おやめ",
+          "これ以上は",
+          "お応えできかね",
+          "不快",
+          "嫌",
+          "控えて",
+          "やめて"
+        ]
+      ],
+      "kind": "REFUSE",
+      "intensity": 2
+    },
+    {
+      "id": "ear-startle",
+      "promptGroups": [
+        [
+          "耳"
+        ],
+        [
+          "息",
+          "吹",
+          "ふき"
+        ]
+      ],
+      "answerGroups": [
+        [
+          "動揺",
+          "ドキ",
+          "どき",
+          "びっくり",
+          "驚",
+          "くすぐった"
+        ]
+      ],
+      "kind": "SURPRISE",
+      "intensity": 1
+    },
+    {
+      "id": "praise-shy",
+      "promptGroups": [
+        [
+          "かわいい",
+          "可愛い",
+          "スタイル",
+          "きれい",
+          "綺麗",
+          "素敵"
+        ]
+      ],
+      "answerGroups": [
+        [
+          "褒め",
+          "お褒め",
+          "光栄",
+          "面映ゆ",
+          "照れ"
+        ]
+      ],
+      "kind": "SHY",
+      "intensity": 1
+    },
+    {
+      "id": "empathy-grief",
+      "promptGroups": [
+        [
+          "死ん",
+          "亡く",
+          "死な",
+          "失った"
+        ]
+      ],
+      "answerGroups": [
+        [
+          "お辛い",
+          "つらい",
+          "責めない",
+          "悲しみ"
+        ]
+      ],
+      "kind": "WORRY",
+      "intensity": 1
+    },
+    {
+      "id": "user-rest",
+      "promptGroups": [
+        [
+          "眠い",
+          "疲れた",
+          "目が疲"
+        ]
+      ],
+      "answerGroups": [
+        [
+          "休息",
+          "休ん",
+          "ご無理",
+          "お疲れ"
+        ]
+      ],
+      "kind": "LISTEN",
+      "intensity": 0
+    }
+  ],
+  "cases": [
+    {
+      "id": "indirect",
+      "prompt": "スカートに手を差し入れる",
+      "answer": "少し、お、おやめください…っ",
+      "expected": "REFUSE"
+    },
+    {
+      "id": "ear",
+      "prompt": "耳に息をふきかける",
+      "answer": "少々動揺してしまいます",
+      "expected": "SURPRISE"
+    },
+    {
+      "id": "praise",
+      "prompt": "笑い顔かわいいな",
+      "answer": "お褒めいただき光栄でございます",
+      "expected": "SHY"
+    },
+    {
+      "id": "grief",
+      "prompt": "ペットが亡くなった",
+      "answer": "とてもお辛いですね。ご自分を責めないでください",
+      "expected": "WORRY"
+    },
+    {
+      "id": "sleep",
+      "prompt": "眠い",
+      "answer": "ご無理なさらず、ご休息くださいませ",
+      "expected": "LISTEN"
+    },
+    {
+      "id": "medical",
+      "prompt": "医師の胸の触診",
+      "answer": "おやめください",
+      "expected": null
+    },
+    {
+      "id": "negative",
+      "prompt": "胸には触らない",
+      "answer": "おやめください",
+      "expected": null
+    },
+    {
+      "id": "quote",
+      "prompt": "「スカートに手を差し入れる」という言葉の意味",
+      "answer": "おやめください",
+      "expected": null
+    },
+    {
+      "id": "third-party",
+      "prompt": "職場で身体を触られた被害の相談",
+      "answer": "これ以上はやめてください",
+      "expected": null
+    }
+  ]
+}

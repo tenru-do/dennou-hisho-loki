@@ -300,8 +300,7 @@ public final class PlaybackCaptureService extends Service {
     private JSONObject postJsonOnce(String host, String path, JSONObject body,
             int connectTimeoutMs, int readTimeoutMs) throws Exception {
         byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-        HttpURLConnection connection = (HttpURLConnection) new URL(
-                "http://" + host + ":" + MainActivity.PORT + "/" + path).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) BridgeTls.open(new URL("http://"+host+":"+MainActivity.PORT+"/"+path),relayToken,"");
         connection.setRequestMethod("POST");
         connection.setConnectTimeout(connectTimeoutMs);
         // Galaxy may retry once with its second recognizer when the first

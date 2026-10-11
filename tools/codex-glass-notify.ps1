@@ -1,8 +1,10 @@
-param(
+﻿param(
     [switch]$Watch,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$HookArguments
 )
+. (Join-Path $PSScriptRoot 'secure-bridge.ps1')
+
 
 $ErrorActionPreference = 'SilentlyContinue'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -82,7 +84,7 @@ function Send-GlassNotification([string]$message) {
     foreach ($target in $targets) {
         [void]$tried.Add($target)
         try {
-            $result = Invoke-RestMethod -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 4
+            $result = Invoke-LokiSecureRest -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 4
             if ($result.ok) {
                 Write-NotifyLog "sent $target $message"
                 return $true
@@ -96,7 +98,7 @@ function Send-GlassNotification([string]$message) {
         if ($tried.Contains($target)) { continue }
         [void]$tried.Add($target)
         try {
-            $result = Invoke-RestMethod -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 3
+            $result = Invoke-LokiSecureRest -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 3
             if ($result.ok) {
                 if ([string]$cfg.phoneHost -ne $discoveredHost) {
                     $cfg.phoneHost = $discoveredHost
@@ -118,10 +120,11 @@ function Send-GlassNotification([string]$message) {
         })
         foreach ($serial in @($candidateSerials | Select-Object -Unique)) {
             & $adb -s $serial forward "tcp:$forwardPort" 'tcp:8765' | Out-Null
+            & $adb -s $serial forward tcp:18766 'tcp:8766' | Out-Null
             if ($LASTEXITCODE -ne 0) { continue }
             $target = "http://127.0.0.1:$forwardPort/command"
             try {
-                $result = Invoke-RestMethod -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 4
+                $result = Invoke-LokiSecureRest -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 4
                 if ($result.ok) {
                     Write-NotifyLog "sent adb:$serial $message"
                     return $true
