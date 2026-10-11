@@ -21,13 +21,16 @@ final class FullBodySpeechStance {
  private Cue active;private boolean refusing;private int variant;private String last="";
  private final int[] rotations=new int[FullBodyPoseCatalog.Kind.values().length];
  void begin(String answer){reset();}
+ void begin(String answer,boolean keep){if(!keep)reset();}
+ int intensity(){return active==null?0:active.intensity;}
  FullBodyPoseCatalog.Kind kind(){return active==null?null:active.kind;}
  boolean laughing(){return laughing && active!=null && active.kind==JOY;}
  static boolean laughCue(String text){return has(clean(text),"あはは","ははは","ふふっ","ふふ、","笑っちゃ","笑ってしま","思わず笑","笑っています","おかしくて笑","面白くて笑");}
  void reset(){laughing=false;active=null;refusing=false;last="";}
  int pose(String text,int current){
   String postureText=clean(text);
-  if(has(postureText,"座って","椅子に座","座ったまま","腰掛け","腰かけ"))current=168;
+  boolean explicitPosture=FullBodyConversationContinuity.posture(postureText);
+  if(has(postureText,"座って","座らせて","お座り","椅子に座","座ったまま","腰掛け","腰かけ"))current=168;
   else if(has(postureText,"立ち上がる","立ち上がり","立ったまま"))current=4;
   Cue cue=classify(text);
   Cue wording=cue;
@@ -47,19 +50,20 @@ final class FullBodySpeechStance {
    if(!last.equals(text))variant=rotations[active.kind.ordinal()]++;
   }
   last=text==null?"":text;
-  return active==null?-1:FullBodySemanticReaction.actionPose(FullBodyPoseCatalog.select(active.kind,active.intensity,current,variant),active,semanticAction,current);
+  return active==null?(explicitPosture?current:-1):FullBodySemanticReaction.actionPose(FullBodyPoseCatalog.select(active.kind,active.intensity,current,variant),active,semanticAction,current);
  }
  static Cue classify(String text){
   String v=clean(text);if(v.isEmpty())return null;
   if(has(v,"という意味","という言葉","とは何","について説明","について教","と言っていました","と言われました")
        &&!has(v,"私は","ロキは","（","("))return null;
+  if(has(v,"思い出","記憶をたど")&&has(v,"首を横","首を振")&&!has(v,"おやめ","やめて","不快","触らない","お断り"))return cue(THINK,v,1);
   if(v.equals("嫌です")||has(v,"おやめください","おやめ下さい","やめていただ","お控えください","お控えいただ","やめてください","やめて下さい","やめてほしい","やめて！","やめて。","触らないで","触れないで","触られるのは嫌",
-       "嫌です。","嫌です！","嫌だよ","お断りします","応じられません","受け入れられません",
+       "嫌です。","嫌です！","嫌だよ","お断りします","お応えできかねます","応じかねます","応じられません","受け入れられません",
        "その発言は不快","そういう発言は不快","困ります","遠慮してください","失礼です","不適切です","控えてください","やめなさい","だめです","セクハラです","セクハラに当たります","セクハラになります","拒絶する","拒む","首を横に振る"))return cue(REFUSE,v,2);
   if(has(v,"落ち着きました","もう大丈夫です","ほっとしました","安心しました","息を整える","呼吸を整える","深呼吸する","息を整えます","落ち着いてきました"))return cue(RECOVERY,v,1);
   if(has(v,"怒っています","腹が立ち","怒ります","不快です","不快に感じ","許せません","拳を握る","拳を握り"))return cue(ANGER,v,2);
   if(has(v,"号泣する","号泣して","泣き叫ぶ","泣き叫ん","涙が止まら","すすり泣く","涙をこぼす","涙を流す","涙が出ます","泣いています","泣いてしま","むせび泣"))return cue(CRY,v,2);
-  if(has(v,"怖いです","怖くな","恐ろしいです","不安です","心配です","心配ですね","つらかったですね","つらいですね","大変でしたね","無理しないで","お大事に","震えている","震える手","体をこわばらせ","申し訳ありません","ごめんなさい","すみません"))return cue(WORRY,v,1);
+  if(has(v,"怖いです","怖くな","恐ろしいです","不安です","心配です","心配ですね","つらかったですね","つらいですね","大変でしたね","無理しないで","お大事に","震えている","震える手","体をこわばらせ","申し訳ありません","ごめんなさい","すみません","緊張しています","緊張しております","戸惑っております","戸惑っています","戸惑ってしま","困惑しております","困惑しています","困惑してしま","身体が強張"))return cue(WORRY,v,1);
   if(has(v,"悲しいです","悲しくな","悲しんで","つらいです","残念です","寂しいです","傷つきました","落ち込んでいます","肩を落とす"))return cue(SAD,v,1);
   if(has(v,"息を呑ん","息をのん","息をのみ","言葉を失","びくっと","びっくりしました","びっくり！","びっくりした","びっくりしちゃ","びっくりです","びっくりさせ","驚いちゃ","驚いた","驚かせ","ドキッ","どきっ","ひゃっ","ひゃ！","きゃっ","わっ！","わっ、","ビクッ","びくっ","驚きました","驚いています","驚いて目を","目を見開く","息をのむ","息を呑む","えっ！","えっ？","まさか！"))return cue(SURPRISE,v,2);
   if(has(v,"本当ですか","えっ、","なんと！","動揺して","動揺しちゃ","動揺する","どきどき","ドキドキ"))return cue(SURPRISE,v,1);
@@ -70,21 +74,29 @@ final class FullBodySpeechStance {
   if(laughCue(text)||has(v,"うれしいです","嬉しいです","嬉しくな","嬉しくて","楽しいです","楽しくな","ありがとうございます","ありがとう！","よかったですね","よかったです","いいですね","素晴らしいですね","ふふ、","おめでとう","笑みを浮かべ","微笑む","にっこり","笑っています"))return cue(JOY,v,1);
   if(has(v,"身体は硬直","身体が硬直","体が硬直","体を硬直","身がこわば","身体がこわば","耐えています","耐えながら","歯を食いしば","我慢しています","身をこわばらせ","必死にこらえ"))return cue(STRAIN,v,2);
   if(has(v,"できました","完了しました","見つかりました","自信があります","胸を張る"))return cue(CONFIDENT,v,1);
-  if(has(v,"確認します","調べます","考えます","考えています","検討します","うーん","顎に手を","思案する"))return cue(THINK,v,1);
+  if(has(v,"ぼーっと","ぼうっと","虚空を見","上の空","思い出すよう","思い出すため","思い出そう","思い出して","思い出します","思い返して","記憶をたど","確認します","調べます","考えます","考えています","検討します","うーん","顎に手を","思案する"))return cue(THINK,v,1);
   if(has(v,"説明します","整理します","順番にお伝え","ご案内します","手のひらを上に"))return cue(EXPLAIN,v,1);
   if(has(v,"教えてください","聞かせてください","ですか？","でしょうか？","耳を傾ける"))return cue(LISTEN,v,0);
   if(has(v,"一緒に歩きます","歩きながら","歩いています","歩き出す","歩き始める"))return cue(WALK,v,1);
   return null;
  }
+ static int thoughtMotion(String text){
+  String v=clean(text);Cue cue=classify(text);
+  if(cue==null||cue.kind!=THINK)return -1;
+  if(has(v,"思い出すよう","思い出すため","思い出そう","思い出して","思い出します","思い返して","記憶をたど"))return -1;
+  return has(v,"ぼーっと","ぼうっと","虚空を見","上の空")?3:-1;
+ }
  private static Cue cue(FullBodyPoseCatalog.Kind kind,String v,int normal){
   int intensity=has(v,"激しく","とても","すごく","大きく","号泣","泣き叫","限界","全身","力尽き","疲れ果て")?3:has(v,"少し","少々","ちょっと","軽く","かすかに")?1:normal;
   return new Cue(kind,intensity);
  }
- private static String clean(String text){
+ static String clean(String text){
   if(text==null)return "";
   String trimmed=text.trim();
-  boolean ownQuoted=trimmed.matches("^[「『“\"][\\s\\S]*[」』”\"]$")||trimmed.startsWith("ロキは");
+  boolean ownQuoted=trimmed.matches("^[「『“\"][\\s\\S]*[」』”\"]$")||trimmed.startsWith("ロキは")
+    || (has(trimmed,"わたくし","私は") && has(trimmed,"制止します","抵抗しよう","拒みます") && !has(trimmed,"彼女は","彼は","友人が","登場人物"));
   String v=ownQuoted?trimmed.replaceAll("[「『“\"」』”]", ""):text.replaceAll("「[^」]*」|『[^』]*』|“[^”]*”|\"[^\"]*\"", "");
+  v=v.replace("お、おやめ", "おやめ").replace("や、やめ", "やめ").replace("い、いや", "嫌です。");
   v=v.replace("適切ではありません","不適切です").replace("応じることはできません","応じられません");
   v=v.replaceAll("[^。！？!?]*(?:彼女は|彼は|友人が|患者が|登場人物が)[^。！？!?]*", "");
   // Negated clauses do not assert a reaction; preserve subsequent affirmative sentences.

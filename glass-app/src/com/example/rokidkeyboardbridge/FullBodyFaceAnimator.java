@@ -9,6 +9,7 @@ final class FullBodyFaceAnimator {
  private final Matrix skinMatrix=new Matrix();
  private Bitmap skinSource;
  private BitmapShader skinShader;
+ void prepare(Bitmap source){skinSource=source;skinShader=new BitmapShader(source,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);}
  void clear(){skinSource=null;skinShader=null;p.setShader(null);}
  static float[] features(int pose){return pose>=0&&pose<FullBodyRealisticFeatures.ALL.length?FullBodyRealisticFeatures.ALL[pose]:null;}
  static boolean supports(int pose){return features(pose)!=null;}
@@ -16,9 +17,12 @@ final class FullBodyFaceAnimator {
  static float blink(long elapsed){long t=Math.max(0,elapsed)%5700;if(t<4500||t>=4740)return 0;if(t<4580)return(t-4500)/80f;if(t<4660)return 1;return(4740-t)/80f;}
  static float mouth(long elapsed,boolean speaking){return speaking?MOUTH_LEVELS[(int)(Math.max(0,elapsed)/110%MOUTH_LEVELS.length)]:0;}
  void draw(Canvas canvas,Bitmap source,int pose,long elapsed,boolean speaking){
-  float[] f=features(pose);if(f==null||source==null||source.isRecycled())return;
+  drawFeatures(canvas,source,features(pose),elapsed,speaking,!transition(pose));
+ }
+ void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking){
+  if(f==null||source==null||source.isRecycled())return;
   canvas.save();canvas.scale(source.getWidth()/f[0],source.getHeight()/f[1]);
-  float closed=transition(pose)?0:blink(elapsed);
+  float closed=blinking?blink(elapsed):0;
   if(closed>0){if(f[7]>0)eye(canvas,source,f,2,closed);if(f[13]>0)eye(canvas,source,f,8,closed);}
   float open=mouth(elapsed,speaking);if(open>0&&f[16]>0)mouth(canvas,source,f,open);
   canvas.restore();

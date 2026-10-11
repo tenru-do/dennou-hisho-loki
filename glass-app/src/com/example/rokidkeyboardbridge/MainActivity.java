@@ -2078,6 +2078,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (navigationOverviewScroll != null) navigationOverviewScroll.setVisibility(View.GONE);
         if (fullBodyImage == null) {
             fullBodyImage = new FullBodyMascotView(this);
+            fullBodyImage.setConversationActive(conversationActive);
             hudRoot.addView(fullBodyImage);
         }
         FrameLayout.LayoutParams body = new FrameLayout.LayoutParams(half,
@@ -2125,24 +2126,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private AlertDialog showDisplaySettings() {
         return NavigationChoiceDialog.show(this, "設定",
-                new String[]{"表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "全身モード", "顔モード", "スマホとペアリング", "全身画像の確認", "CTRL：明るさ", "REC：連続撮影"}, -1,
+                new String[]{"全身モード", "顔モード", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "CTRL：明るさ", "REC：連続撮影"}, -1,
                     new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface dialog, int which) {
-                            if (which == 3) { showApiKeyDialog(); return; }
+                            if (which == 5) { showApiKeyDialog(); return; }
                             if (which == 6) { pairWithPhone(); return; }
                             if (which == 7) { showFullBodyImageGallery(); return; }
                             if (which == 8) { showLokiControls(); return; }
                             if (which == 9) { showPhotoRecorder(); return; }
-                            if (which == 4 || which == 5) {
+                            if (which == 0 || which == 1) {
                                 getSharedPreferences("navigation_display", MODE_PRIVATE).edit()
-                                        .putBoolean("full_body_mode", which == 4).apply();
+                                        .putBoolean("full_body_mode", which == 0).apply();
                                 applyDisplayArea();
-                                if (which == 4) setGlanceHudVisible(true);
+                                if (which == 0) setGlanceHudVisible(true);
                                 else showControlsTemporarily();
                                 return;
                             }
                             getSharedPreferences("navigation_display", MODE_PRIVATE).edit()
-                                    .putBoolean("lower_half", which == 1).putBoolean("upper_half", which == 2).apply();
+                                    .putBoolean("lower_half", which == 3).putBoolean("upper_half", which == 4).apply();
                             applyDisplayArea();
                         }
                     });
@@ -2250,12 +2251,22 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void showFullBodyImageGallery(){
-        String[] choices=new String[FullBodyPoseCatalog.ALL.length+1];choices[0]="会話に合わせて表示";
+        String[] choices=new String[FullBodyPoseCatalog.ALL.length+4+FullBodyDramaticGallery.LABELS.length];choices[0]="会話に合わせて表示";
         for(int id=0;id<FullBodyPoseCatalog.ALL.length;id++)choices[id+1]=FullBodyPoseCatalog.label(id);
+        final int motionStart=FullBodyPoseCatalog.ALL.length+1;
+        choices[motionStart]="動作：激しい呼吸";
+        choices[motionStart+1]="動作：振り返って制止";
+        choices[motionStart+2]="動作：口元を覆い呼吸を整える";
+        final int dramaticStart=motionStart+3;
+        for(int id=0;id<FullBodyDramaticGallery.LABELS.length;id++)choices[dramaticStart+id]=FullBodyDramaticGallery.LABELS[id];
         NavigationChoiceDialog.show(this,"全身画像の確認",choices,-1,(dialog,which)->{
             getSharedPreferences("navigation_display",MODE_PRIVATE).edit().putBoolean("full_body_mode",true).apply();
             applyDisplayArea();setGlanceHudVisible(true);
-            if(fullBodyImage!=null)fullBodyImage.setPreviewPose(which-1);
+            if(fullBodyImage!=null){
+                if(which>=dramaticStart)fullBodyImage.setDramaticPreview(which-dramaticStart);
+                else if(which>=motionStart)fullBodyImage.setApprovedMotionPreview(which-motionStart);
+                else fullBodyImage.setPreviewPose(which-1);
+            }
         });
     }
 
@@ -3226,6 +3237,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             return;
         }
         this.conversationActive = z;
+        if(fullBodyImage!=null)fullBodyImage.setConversationActive(z);
         if (!z && radioResume.suspended()) {
             handler.removeCallbacks(radioResumeCheck);
             handler.post(radioResumeCheck);
@@ -3441,6 +3453,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         releaseConversationWakeLock();
         setScreenBrightness(-1.0f);
         this.conversationActive = false;
+        if(fullBodyImage!=null)fullBodyImage.endConversation();
         setMascotMode(0);
         this.handler.removeCallbacks(this.hideControlsRunnable);
         if (this.voiceButton != null) {
@@ -5225,7 +5238,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         boolean explicit = value.contains("天気") || value.contains("気温") || value.contains("降水")
                 || value.contains("雨降") || value.contains("傘")
-                || value.contains("かさ") || value.contains("カサ") || value.contains("雨具")
+                || WeatherUmbrellaPolicy.kanaUmbrella(value) || value.contains("雨具")
                 || value.contains("weather") || value.contains("temperature")
                 || value.contains("umbrella");
         return explicit || (isRecentConversationTopic("weather") && isWeatherDateFollowUp(value));
@@ -5233,7 +5246,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private boolean isUmbrellaQuestion(String str) {
         String value = str == null ? "" : str.trim().toLowerCase(Locale.JAPAN);
-        return value.contains("傘") || value.contains("かさ") || value.contains("カサ")
+        return value.contains("傘") || WeatherUmbrellaPolicy.kanaUmbrella(value)
                 || value.contains("雨具") || value.contains("umbrella");
     }
 

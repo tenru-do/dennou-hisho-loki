@@ -19,10 +19,10 @@ public final class FullBodySpeechViewTest {
    public AssetManager getAssets(){return assets;}
    public Resources getResources(){return resources;}
   };
-  FullBodyMascotView view=new FullBodyMascotView(context);view.layout(0,0,240,616);java.lang.reflect.Field breathing=FullBodyMascotView.class.getDeclaredField("breathingEnabled");breathing.setAccessible(true);breathing.setBoolean(view,false);Method decode=FullBodyMascotView.class.getDeclaredMethod("decode",int.class,int.class);decode.setAccessible(true);Bitmap pose=(Bitmap)decode.invoke(view,0,616);
-  String[] names={"bitmap","loaded","mode","animateMouth","motionStarted"};Object[] values={pose,0,2,false,android.os.SystemClock.uptimeMillis()-220};for(int i=0;i<names.length;i++){java.lang.reflect.Field f=FullBodyMascotView.class.getDeclaredField(names[i]);f.setAccessible(true);f.set(view,values[i]);}
-  Method draw=FullBodyMascotView.class.getDeclaredMethod("onDraw",android.graphics.Canvas.class);draw.setAccessible(true);Bitmap speaking=Bitmap.createBitmap(240,616,Bitmap.Config.ARGB_8888);draw.invoke(view,new android.graphics.Canvas(speaking));java.lang.reflect.Field mode=FullBodyMascotView.class.getDeclaredField("mode");mode.setAccessible(true);mode.setInt(view,0);Bitmap silent=Bitmap.createBitmap(240,616,Bitmap.Config.ARGB_8888);draw.invoke(view,new android.graphics.Canvas(silent));float scale=FullBodyScalePolicy.scale(0,pose.getWidth(),pose.getHeight(),240,616);float[] landmarks=FullBodyRealisticFeatures.ALL[0];float mouthBottom=616-pose.getHeight()*scale+(landmarks[15]+landmarks[16])*pose.getWidth()/landmarks[0]*scale;int changes=0;for(int y=0;y<616;y++)for(int x=0;x<240;x++)if(silent.getPixel(x,y)!=speaking.getPixel(x,y)){changes++;if(y>mouthBottom)throw new AssertionError("Body moved");}if(changes==0)throw new AssertionError("Narration suppresses mouth");
-  try(java.io.FileOutputStream out=new java.io.FileOutputStream("/data/local/tmp/loki-speech-proof.png")){speaking.compress(Bitmap.CompressFormat.PNG,100,out);}System.out.println("PASS narration animateMouth=false still moves full-body mouth in mode2; changed pixels="+changes);
+  FullBodyMascotView view=new FullBodyMascotView(context);view.setVisibility(android.view.View.INVISIBLE);view.layout(0,0,240,616);java.lang.reflect.Field breathing=FullBodyMascotView.class.getDeclaredField("breathingEnabled");breathing.setAccessible(true);breathing.setBoolean(view,false);Method decode=FullBodyMascotView.class.getDeclaredMethod("decode",int.class,int.class);decode.setAccessible(true);Bitmap pose=(Bitmap)decode.invoke(view,0,616);
+  String[] names={"bitmap","loaded","mode","animateMouth","motionStarted"};Object[] values={pose,0,2,true,android.os.SystemClock.uptimeMillis()-220};for(int i=0;i<names.length;i++){java.lang.reflect.Field f=FullBodyMascotView.class.getDeclaredField(names[i]);f.setAccessible(true);f.set(view,values[i]);}
+  Method draw=FullBodyMascotView.class.getDeclaredMethod("onDraw",android.graphics.Canvas.class);draw.setAccessible(true);Bitmap speaking=Bitmap.createBitmap(240,616,Bitmap.Config.ARGB_8888);while(FullBodyFaceAnimator.mouth(android.os.SystemClock.uptimeMillis(),true)<.4f||FullBodyFaceAnimator.blink(android.os.SystemClock.uptimeMillis())>0)Thread.sleep(5);draw.invoke(view,new android.graphics.Canvas(speaking));java.lang.reflect.Field mode=FullBodyMascotView.class.getDeclaredField("mode");mode.setAccessible(true);mode.setInt(view,0);Bitmap silent=Bitmap.createBitmap(240,616,Bitmap.Config.ARGB_8888);draw.invoke(view,new android.graphics.Canvas(silent));float scale=FullBodyScalePolicy.scale(0,pose.getWidth(),pose.getHeight(),240,616);float[] landmarks=FullBodyRealisticFeatures.ALL[0];float mouthBottom=616-pose.getHeight()*scale+(landmarks[15]+landmarks[16])*pose.getWidth()/landmarks[0]*scale;int changes=0;for(int y=0;y<616;y++)for(int x=0;x<240;x++)if(silent.getPixel(x,y)!=speaking.getPixel(x,y)){changes++;if(y>mouthBottom)throw new AssertionError("Body moved");}if(changes==0)throw new AssertionError("Active speech suppresses mouth");
+  try(java.io.FileOutputStream out=new java.io.FileOutputStream("/data/local/tmp/loki-speech-proof.png")){speaking.compress(Bitmap.CompressFormat.PNG,100,out);}System.out.println("PASS active speech animates full-body mouth in mode2; changed pixels="+changes);
   java.lang.reflect.Field loaded=FullBodyMascotView.class.getDeclaredField("loaded");loaded.setAccessible(true);loaded.setInt(view,-1);mode.setInt(view,2);
   Method requested=FullBodyMascotView.class.getDeclaredMethod("requestedPose");requested.setAccessible(true);
   view.beginSpeech("触らないでください。別の話にしましょう。");view.setExpression(0);
@@ -71,6 +71,24 @@ public final class FullBodySpeechViewTest {
   requested.invoke(view);Thread.sleep(1000);
   if(!FullBodyPoseCatalog.ALL[(int)requested.invoke(view)].supports(FullBodyPoseCatalog.Kind.RECOVERY))throw new AssertionError("Actual View remains refusing after apology");
   System.out.println("PASS scene context reaches actual View and Canvas, guidance suppressed, apology exits");
+  loaded.setInt(view,168);view.setUserContext("突然大きな音がした");view.beginSpeech("びっくりしました！");mode.setInt(view,2);
+  java.lang.reflect.Field motion=FullBodyMascotView.class.getDeclaredField("conversationMotionKind");motion.setAccessible(true);
+  if(motion.getInt(view)!=0||(int)requested.invoke(view)!=168)throw new AssertionError("Seated surprise branch");
+  view.setSpeechText("お、おやめください。");if(motion.getInt(view)!=-1)throw new AssertionError("Boundary fails to cancel motion");
+  loaded.setInt(view,168);view.setUserContext("面白い冗談を聞いた");view.beginSpeech("あはは、思わず笑ってしまいました。");
+  if(motion.getInt(view)!=1)throw new AssertionError("Seated laughter branch");
+  loaded.setInt(view,4);view.setUserContext("悲しい気持ちになった");view.beginSpeech("涙を流すほど悲しいです。");
+  if(motion.getInt(view)!=2||(int)requested.invoke(view)!=4)throw new AssertionError("Kneeling tears branch with original stance baseline");
+  view.setSpeechText("もう大丈夫です。安心しました。");if(motion.getInt(view)!=-1)throw new AssertionError("Recovery fails to end tears");
+  loaded.setInt(view,4);view.setUserContext("少し休憩しよう");view.beginSpeech("少し虚空を見てぼーっとしています。");
+  if(motion.getInt(view)!=3)throw new AssertionError("Daydream not wired to View");
+  view.setSpeechText("少し考えます。");if(motion.getInt(view)!=3)throw new AssertionError("Thought motion lost on neutral beat");
+  view.setUserContext("昔のことを思い出せる？");view.beginSpeech("記憶をたどり、思い出そうとしています。");
+  if(motion.getInt(view)!=-1)throw new AssertionError("Removed recall still selected by View");
+  view.setSpeechText("おやめください。");if(motion.getInt(view)!=-1)throw new AssertionError("Boundary cannot stop recall");
+  System.out.println("PASS View selects daydream, excludes recall, retains across beats, boundary exits");
+  System.out.println("PASS actual View selects kneeling tears, preserves return baseline, recovery exits");
+  System.out.println("PASS actual View selects seated surprise/laughter and cancels motion on boundary");
   System.out.println("PASS whole answer surprise; laughter limited to own amusement and shoulder movement");
   System.out.println("PASS real view overrides generic presentation with refusal, maintains boundary, resets for next answer");
  }
