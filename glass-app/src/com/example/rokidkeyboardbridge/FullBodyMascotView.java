@@ -37,7 +37,7 @@ public final class FullBodyMascotView extends View {
     private final FullBodyConversationContinuity continuity=new FullBodyConversationContinuity();
     public void setConversationActive(boolean value){continuity.active(value,android.os.SystemClock.uptimeMillis());}
     public void endConversation(){
-        continuity.clear();speechStance.reset();speechStance.observed(null);speechStance.scene("別の話","");
+        continuity.clear();speechStance.reset();speechStance.observed(null);speechStance.scene("蛻･縺ｮ隧ｱ","");
         speechExpression=-1;conversationMotionKind=-1;dramaticAuto=dramaticCycle=false;dramaticPreview=-1;
         situationMask=0;heavyBreathActive=rearStopActive=unwellActive=false;
         heavyBreathStarted=rearStopStarted=unwellStarted=conversationMotionStarted=0;invalidate();
@@ -58,6 +58,7 @@ public final class FullBodyMascotView extends View {
     private final FullBodySituationEffects situationEffects=new FullBodySituationEffects();
     private final FullBodyFaceAnimator[] dramaticFaces={new FullBodyFaceAnimator(),new FullBodyFaceAnimator(),new FullBodyFaceAnimator(),new FullBodyFaceAnimator(),new FullBodyFaceAnimator(),new FullBodyFaceAnimator(),new FullBodyFaceAnimator(),new FullBodyFaceAnimator()};
     private void updateDramaticConversation(String text,boolean beginning){
+        if(beginning&&FullBodyDramaticConversationPolicy.postureRequest(userContext)==-2){dramaticPreview=-1;dramaticAuto=dramaticCycle=false;situationMask=0;}
         int effects=speechStance.kind()==FullBodyPoseCatalog.Kind.REFUSE?0:FullBodyDramaticConversationPolicy.effects(text,speechStance.kind());
         if(FullBodyDramaticConversationPolicy.ends(text,speechStance.kind())){
             dramaticPreview=-1;dramaticAuto=false;dramaticCycle=false;situationMask=effects;
@@ -65,7 +66,7 @@ public final class FullBodyMascotView extends View {
         FullBodyDramaticConversationPolicy.Cue cue=FullBodyDramaticConversationPolicy.select(userContext,text,speechStance.kind());
         if(cue==null){
             FullBodySpeechStance.Cue explicit=FullBodySpeechStance.classify(text);
-            if(explicit!=null&&(explicit.kind==FullBodyPoseCatalog.Kind.JOY||explicit.kind==FullBodyPoseCatalog.Kind.CONFIDENT||explicit.kind==FullBodyPoseCatalog.Kind.EXPLAIN||explicit.kind==FullBodyPoseCatalog.Kind.THINK)){
+            if(explicit!=null&&(explicit.kind==FullBodyPoseCatalog.Kind.JOY||explicit.kind==FullBodyPoseCatalog.Kind.CONFIDENT||((explicit.kind==FullBodyPoseCatalog.Kind.EXPLAIN||explicit.kind==FullBodyPoseCatalog.Kind.THINK)&&!dramaticAuto))){
                 dramaticPreview=-1;dramaticAuto=dramaticCycle=false;situationMask=effects;
             }
             return;
@@ -79,6 +80,7 @@ public final class FullBodyMascotView extends View {
     public void setDramaticPreview(int id){
         endConversation();
         dramaticAuto=false;dramaticCycle=false;situationMask=FullBodyDramaticConversationPolicy.ROUGH_BREATH|(id>=2?FullBodyDramaticConversationPolicy.SWEAT:0);
+        situationMask|=FullBodyCyberMotion.effects(id);
         dramaticPreview=FullBodyDramaticGallery.valid(id)?id:-1;
         dramaticBreathStarted=android.os.SystemClock.uptimeMillis();
         approvedMotionPreview=-1;previewPose=-1;
@@ -87,6 +89,7 @@ public final class FullBodyMascotView extends View {
     }
     private void requestDramaticImage(){
         final int selected=dramaticPreview,id=dramaticCycle?7:selected;
+        if(!dramaticCycle&&FullBodyCyberMotion.group(selected)>=0){requestCyber(FullBodyCyberMotion.group(selected));return;}
         if(!FullBodyDramaticGallery.valid(selected)||dramaticLoading||dramaticLoaded==id||!isShown())return;
         dramaticLoading=true;final int token=generation,request=++dramaticRequest;
         new Thread(()->{
@@ -137,16 +140,32 @@ public final class FullBodyMascotView extends View {
             }finally{decoder.recycle();}
         }
     }
+    // One continuous clock and renderer for every still, including held special poses.
+    // Face overlays remain aligned because the mesh leaves the face band untouched.
+    private final long livingStarted=android.os.SystemClock.uptimeMillis();
+    private void drawLivingBitmap(Canvas canvas,Bitmap frame,float[] features){
+        float faceBottom=features==null?.20f:(features[15]+Math.max(features[16]*.25f,features[18])+4)/features[1];
+        drawLivingBitmap(canvas,frame,faceBottom);
+    }
+    private void drawLivingBitmap(Canvas canvas,Bitmap frame,float faceBottom){
+        if(!breathingEnabled&&activeMorph==null){canvas.drawBitmap(frame,0,0,paint);return;}
+        FullBodyBreathPolicy.resting(breathMesh,frame.getWidth(),frame.getHeight(),android.os.SystemClock.uptimeMillis()-livingStarted,faceBottom);
+        FullBodyLivingPosePolicy.apply(breathMesh,frame.getWidth(),frame.getHeight(),android.os.SystemClock.uptimeMillis()-livingStarted,faceBottom,1);
+        if(activeMorph!=null){morphRenderer.draw(canvas,frame,paint,activeMorph,activeMorphWeight,getWidth(),getHeight(),legacyMorphScale,breathMesh,breathingEnabled);morphFrames++;}
+        else canvas.drawBitmapMesh(frame,FullBodyBreathPolicy.COLUMNS,FullBodyBreathPolicy.ROWS,breathMesh,0,null,0,paint);
+    }
     private void drawDramaticBreathFrame(Canvas canvas,int index,float alpha,boolean add,long elapsed){
         Bitmap frame=dramaticFrames[index];if(frame==null||frame.isRecycled()||alpha<=0)return;
-        float scale=Math.min((float)getWidth()/frame.getWidth(),(float)getHeight()/frame.getHeight());
-        float width=frame.getWidth()*scale,height=frame.getHeight()*scale;
-        float x=(getWidth()-width)/2+width*FullBodyDramaticFeatures.SHIFTX[dramaticLoaded][index];
-        float y=getHeight()-height+height*FullBodyDramaticFeatures.SHIFTY[dramaticLoaded][index];
+        float sourceScale=FullBodySceneScalePolicy.dramatic(dramaticLoaded,getWidth(),getHeight());
+        float scale=sourceScale*FullBodyDramaticFeatures.ALL[dramaticLoaded][index][1]/frame.getHeight();
+        float x=FullBodySceneScalePolicy.left(dramaticLoaded,index,getWidth(),sourceScale);
+        float y=FullBodySceneScalePolicy.top(dramaticLoaded,index,getHeight(),sourceScale);
         layerPaint.setAlpha(Math.round(255*alpha));layerPaint.setXfermode(add?additive:null);
         int saved=canvas.saveLayer(0,0,getWidth(),getHeight(),layerPaint);
-        canvas.translate(x,y);canvas.scale(scale,scale);canvas.drawBitmap(frame,0,0,paint);
+        canvas.translate(x,y);canvas.scale(scale,scale);
+        legacyMorphScale=scale;frameLayers++;
         float[] features=FullBodyDramaticFeatures.ALL[dramaticLoaded][index];
+        drawLivingBitmap(canvas,frame,features);
         dramaticFaces[index].drawFeatures(canvas,frame,features,elapsed,mode==2,true);
         situationEffects.draw(canvas,frame,features,elapsed,situationMask);
         canvas.restoreToCount(saved);layerPaint.setAlpha(255);layerPaint.setXfermode(null);
@@ -208,7 +227,7 @@ public final class FullBodyMascotView extends View {
             android.util.Log.w("LokiFullBody","Cannot decode approved motion",error);return null;
         }
     }
-    private Bitmap[] rearStopFrames;
+    private Bitmap[] rearStopFrames,rearHoldFrames;
     private boolean rearStopLoading,rearStopActive;
     private long rearStopStarted;
     private void requestRearStopFrames(){
@@ -216,12 +235,33 @@ public final class FullBodyMascotView extends View {
         rearStopLoading=true;final int token=generation;
         new Thread(()->{
             final Bitmap[] frames=decodeApprovedFrames(FullBodyRearStopPolicy.ASSETS);
+            final Bitmap[] hold=decodeRearHoldFrames();
             post(()->{
                 rearStopLoading=false;
-                if(token!=generation||!isShown()){if(frames!=null)for(Bitmap b:frames)b.recycle();return;}
-                rearStopFrames=frames;prepareApprovedFaces(frames,3);if(frames==null){rearStopActive=false;if(approvedMotionPreview==1)approvedMotionPreview=-1;}invalidate();
+                if(token!=generation||!isShown()){if(frames!=null)for(Bitmap b:frames)b.recycle();if(hold!=null)for(Bitmap b:hold)b.recycle();return;}
+                rearStopFrames=frames;rearHoldFrames=hold;prepareApprovedFaces(frames,3);if(frames==null){rearStopActive=false;if(approvedMotionPreview==1)approvedMotionPreview=-1;}invalidate();
             });
         },"LokiRearStopDecode").start();
+    }
+    private Bitmap[] decodeRearHoldFrames(){
+        Bitmap[] frames=new Bitmap[6];
+        try(java.util.zip.ZipFile apk=new java.util.zip.ZipFile(getContext().getApplicationInfo().sourceDir);
+            InputStream input=apk.getInputStream(apk.getEntry("assets/"+FullBodyRearHoldPolicy.ASSET))){
+            BitmapRegionDecoder decoder=BitmapRegionDecoder.newInstance(input,false);
+            try{int w=decoder.getWidth(),h=decoder.getHeight();for(int i=0;i<6;i++)frames[i]=decoder.decodeRegion(new Rect(i%3*w/3,i<3?0:FullBodyRearHoldPolicy.ROW_BREAK,(i%3+1)*w/3,i<3?FullBodyRearHoldPolicy.ROW_BREAK:h),null);}finally{decoder.recycle();}
+            return frames;
+        }catch(Exception error){for(Bitmap b:frames)if(b!=null)b.recycle();return null;}
+    }
+    private void drawRearHoldFrame(Canvas canvas,int index,float opacity,boolean add){
+        if(opacity<=0)return;Bitmap frame=rearHoldFrames[index];float[] b=FullBodyRearHoldPolicy.BOUNDS[index];
+        float scale=FullBodyRearHoldPolicy.bodyHeight(getWidth(),getHeight())/(b[3]-b[2]);
+        float x=getWidth()*.5f-b[4]*scale;
+        x=Math.max(1-b[0]*scale,Math.min(getWidth()-1-b[1]*scale,x));
+        layerPaint.setAlpha(Math.round(opacity*255));layerPaint.setXfermode(add?additive:null);
+        int saved=canvas.saveLayer(0,0,getWidth(),getHeight(),layerPaint);
+        canvas.translate(x,getHeight()-b[3]*scale);canvas.scale(scale,scale);
+        legacyMorphScale=scale;frameLayers++;
+        drawLivingBitmap(canvas,frame,(b[2]+(b[3]-b[2])*.20f)/frame.getHeight());canvas.restoreToCount(saved);layerPaint.setAlpha(255);layerPaint.setXfermode(null);
     }
     private Bitmap[] unwellFrames;
     private boolean unwellLoading,unwellActive;
@@ -245,13 +285,21 @@ public final class FullBodyMascotView extends View {
     }
     private void drawApprovedFrame(Canvas canvas,Bitmap frame,float opacity,boolean add,float heightFraction){
         if(frame==null||frame.isRecycled()||opacity<=0)return;
-        // Fixed whole-image canvas for all phases; preserves the source margins.
-        float height=Math.min(getHeight()*heightFraction,getWidth()*1.5f),width=height/1.5f;
-        destination.set((getWidth()-width)/2,getHeight()-height,(getWidth()+width)/2,getHeight());
+        int face=approvedFaceIndex(frame);
+        if(face<0)return;
+        // Share content bounds across phases, preserve source aspect and floor.
+        float height=FullBodyApprovedScalePolicy.height(face,getWidth(),getHeight(),heightFraction);
+        float width=height*frame.getWidth()/frame.getHeight();
+        float left=FullBodyApprovedScalePolicy.left(face,getWidth(),height);
+        float top=FullBodyApprovedScalePolicy.top(face,getHeight(),height);
+        destination.set(left,top,left+width,top+height);
         layerPaint.setAlpha(Math.round(255*Math.min(1,opacity)));layerPaint.setXfermode(add?additive:null);
         int saved=canvas.saveLayer(0,0,getWidth(),getHeight(),layerPaint);
-        canvas.drawBitmap(frame,null,destination,paint);
-        int face=approvedFaceIndex(frame);
+        int local=canvas.save();canvas.translate(destination.left,destination.top);
+        canvas.scale(width/frame.getWidth(),height/frame.getHeight());
+        legacyMorphScale=height/frame.getHeight();frameLayers++;
+        drawLivingBitmap(canvas,frame,FullBodyApprovedFeatures.ALL[face]);
+        canvas.restoreToCount(local);
         if(face>=0){
             canvas.translate(destination.left,destination.top);canvas.scale(width/frame.getWidth(),height/frame.getHeight());
             long now=android.os.SystemClock.uptimeMillis();float[] f=FullBodyApprovedFeatures.ALL[face];
@@ -269,7 +317,7 @@ public final class FullBodyMascotView extends View {
         approvedMotionPreview=-1;previewPose=-1;speechStance.begin(answer,keep);
         FullBodySemanticReaction.Reaction semantic=FullBodySemanticReaction.find(answer);
         if(semantic!=null)speechStance.semantic(semantic);
-        if(!observedScene)speechStance.scene(userContext,answer);speechExpression=speechStance.pose(answer,conversationBasePose);rememberReaction(answer);
+        speechStance.scene(userContext,answer);speechExpression=speechStance.pose(answer,conversationBasePose);rememberReaction(answer);
         boolean fresh=!keep||semantic!=null||FullBodySpeechStance.classify(answer)!=null
                 ||FullBodyScenePolicy.evaluate(userContext,answer)!=null||FullBodyConversationContinuity.posture(answer);
         if(fresh){
@@ -367,6 +415,7 @@ public final class FullBodyMascotView extends View {
     private Bitmap[] transitionFrames;
     private int transitionKind;
     private int transitionFirst=186,cachedLink=-1;
+    private int[] transitionIds;
     private Bitmap[] linkFrames;
     private boolean transitionReverse;
     private long transitionStarted;
@@ -382,6 +431,75 @@ public final class FullBodyMascotView extends View {
     private boolean animateMouth=true;
     private final FullBodyFaceAnimator faceAnimator=new FullBodyFaceAnimator();
     private final FullBodyRokidGlasses rokidGlasses=new FullBodyRokidGlasses();
+    private final FullBodyMorphRenderer morphRenderer=new FullBodyMorphRenderer();
+    private float[] activeMorph;private float activeMorphWeight;
+    private float legacyMorphScale=1;
+    private void clearLegacyMorph(){activeMorph=null;activeMorphWeight=0;}
+    private void selectLegacyMorph(int from,int to,float amount){activeMorph=morphRenderer.field(from,to);activeMorphWeight=FullBodyMorphRenderer.weight(amount);}
+    private void drawDramaticMorph(Canvas c,int from,int to,float amount,long elapsed){
+        boolean second=amount>=.5f;int chosen=second?to:from,other=second?from:to;
+        selectLegacyMorph(600+dramaticLoaded*8+chosen,600+dramaticLoaded*8+other,amount);
+        try{drawDramaticBreathFrame(c,chosen,1,false,elapsed);}finally{clearLegacyMorph();}
+    }
+    private void drawApprovedMorph(Canvas c,Bitmap from,Bitmap to,float amount,float height){
+        boolean second=amount>=.5f;Bitmap chosen=second?to:from,other=second?from:to;
+        selectLegacyMorph(700+approvedFaceIndex(chosen),700+approvedFaceIndex(other),amount);
+        try{drawApprovedFrame(c,chosen,1,false,height);}finally{clearLegacyMorph();}
+    }
+    private void drawRearMorph(Canvas c,int from,int to,float amount){
+        boolean second=amount>=.5f;int chosen=second?to:from,other=second?from:to;
+        selectLegacyMorph(800+chosen,800+other,amount);
+        try{drawRearHoldFrame(c,chosen,1,false);}finally{clearLegacyMorph();}
+    }
+    private void drawRearEntry(Canvas c,int frame,float amount){
+        boolean second=amount>=.5f;selectLegacyMorph(second?800+frame:703,second?703:800+frame,amount);
+        try{if(second)drawRearHoldFrame(c,frame,1,false);else drawApprovedFrame(c,rearStopFrames[0],1,false);}finally{clearLegacyMorph();}
+    }
+
+    private int frameLayers;private long morphFrames;
+    private void drawSingleTransition(Canvas canvas,Bitmap first,int firstPose,Bitmap second,int secondPose,long elapsed,float fraction,float amount){
+        boolean target=FullBodyMorphRenderer.source(amount)==1;
+        Bitmap frame=target?second:first;int pose=target?secondPose:firstPose;
+        activeMorph=morphRenderer.field(pose,target?firstPose:secondPose);
+        activeMorphWeight=FullBodyMorphRenderer.weight(amount);
+        try{drawFrame(canvas,frame,pose,elapsed,fraction,1,false);}finally{activeMorph=null;activeMorphWeight=0;}
+    }
+    private Bitmap[][] cyberCache=new Bitmap[FullBodyCyberMotion.GROUPS][];
+    private boolean cyberLoading;private int cyberRequest;
+    private void requestCyber(int group){
+        if(group<0||group>=cyberCache.length||cyberCache[group]!=null||cyberLoading||!isShown())return;
+        cyberLoading=true;final int token=generation,request=++cyberRequest;
+        new Thread(()->{int[] ids=new int[6];for(int i=0;i<6;i++)ids[i]=FullBodyCyberMotion.FIRST+group*6+i;
+            Bitmap[] frames=decodeGroup(ids,1);post(()->{
+                if(request!=cyberRequest){if(frames!=null)for(Bitmap frame:frames)frame.recycle();return;}
+                cyberLoading=false;
+                if(token!=generation){if(frames!=null)for(Bitmap frame:frames)frame.recycle();invalidate();return;}
+                if(frames==null){if(FullBodyCyberMotion.group(dramaticPreview)==group)dramaticPreview=-1;android.util.Log.w("LokiFullBody","Cyber scene decode failed: "+group);}
+                cyberCache[group]=frames;invalidate();
+            });},"LokiCyberMotion").start();
+    }
+    private Bitmap[][] clothCache=new Bitmap[4][];
+    private boolean clothLoading;private int clothGroup=-1;private long clothStarted;private long clothDraws;
+    private void requestCloth(int group){
+        if(clothCache[group]!=null||clothLoading)return;
+        clothLoading=true;final int token=generation;
+        new Thread(()->{int[] ids=new int[6];for(int i=0;i<6;i++)ids[i]=FullBodyClothMotion.FIRST+group*6+i;
+            Bitmap[] frames=decodeGroup(ids,1);post(()->{clothLoading=false;
+                if(token!=generation){if(frames!=null)for(Bitmap frame:frames)frame.recycle();return;}
+                clothCache[group]=frames;invalidate();
+            });},"LokiClothMotion").start();
+    }
+    private Bitmap[] accessoryFrames;
+    private boolean accessoryLoading;
+    private void requestAccessoryFrames(){
+        if(accessoryFrames!=null||accessoryLoading)return;
+        accessoryLoading=true;final int token=generation;
+        new Thread(()->{Bitmap[] frames=decodeGroup(new int[]{329,330,331,332,333,334},1);post(()->{
+            accessoryLoading=false;
+            if(token!=generation){if(frames!=null)for(Bitmap frame:frames)frame.recycle();return;}
+            accessoryFrames=frames;invalidate();
+        });},"LokiGlassesMotion").start();
+    }
     public void setSpeechPresentation(boolean value) { animateMouth=value; invalidate(); }
     private long motionStarted = android.os.SystemClock.uptimeMillis();
     private final Runnable motionTick = new Runnable() {
@@ -429,6 +547,7 @@ public final class FullBodyMascotView extends View {
         final Bitmap[] cached = kind==0 ? null : kind==3?(cachedLink==link?linkFrames:null):transitionCache[kind-1];
         loading = true;
         new Thread(() -> {
+            morphRenderer.load(getContext());
             final Bitmap[] seatSteps=id==168 ? (cachedSeated!=null?cachedSeated:decodeSeatedFrames()) : null;
             final Bitmap[] bodySteps=id>=169?decodeMotionFrames(id>=175):null;
             Bitmap result = bodySteps!=null?bodySteps[(id-169)%6]:seatSteps!=null ? seatSteps[0] : decode(id, targetHeight);
@@ -454,7 +573,7 @@ public final class FullBodyMascotView extends View {
                     reactions.committed(android.os.SystemClock.uptimeMillis());
                     if(steps!=null){
                         if(kind==3){cachedLink=link;linkFrames=steps;}else transitionCache[kind-1]=steps;
-                        transitionFrames=steps;transitionKind=kind;transitionFirst=kind==3?FullBodyPoseLinks.firstFrame(link):kind==1?186:192;
+                        transitionFrames=steps;transitionIds=kind==3?FullBodyPoseLinks.frames(link):null;transitionKind=kind;transitionFirst=kind==3?FullBodyPoseLinks.firstFrame(link):kind==1?186:192;
                         transitionReverse=kind==3?FullBodyPoseLinks.reverse(link,from):FullBodyTransitionPolicy.reverse(kind,from,id);
                         transitionStarted=android.os.SystemClock.uptimeMillis();
                     }
@@ -535,8 +654,20 @@ public final class FullBodyMascotView extends View {
     private Bitmap[] decodeMotionFrames(boolean walking){return walking?decodeGroup(new int[]{175,176,177,178,179,180},1):decodeIdle();}
 
     @Override protected void onDraw(Canvas canvas) {
+        frameLayers=0;
         super.onDraw(canvas);
-        if(dramaticPreview>=0){
+        int cyberGroup=dramaticCycle?-1:FullBodyCyberMotion.group(dramaticPreview);
+        if(cyberGroup>=0){
+            requestCyber(cyberGroup);
+            if(cyberCache[cyberGroup]!=null){
+                long elapsed=android.os.SystemClock.uptimeMillis()-dramaticBreathStarted;
+                float pos=FullBodyCyberMotion.position(elapsed);int a=(int)pos,b=(a+1)%6;
+                int first=FullBodyCyberMotion.FIRST+cyberGroup*6;
+                drawSingleTransition(canvas,cyberCache[cyberGroup][a],first+a,cyberCache[cyberGroup][b],first+b,elapsed,1,pos-a);
+                return;
+            }
+        }
+        if(dramaticPreview>=0&&cyberGroup<0){
             requestDramaticImage();
             int key=dramaticCycle?7:dramaticPreview;
             if(dramaticLoaded==key&&dramaticFrames!=null){
@@ -552,10 +683,7 @@ public final class FullBodyMascotView extends View {
                     int base=dramaticCycle&&FullBodyDramaticMotionPolicy.second(elapsed)?3:0;
                     from=base+FullBodyDramaticMotionPolicy.breathFrom(local,period);to=base+FullBodyDramaticMotionPolicy.breathTo(local,period);weight=FullBodyDramaticMotionPolicy.breathBlend(local,period);
                 }
-                int layer=canvas.saveLayer(0,0,getWidth(),getHeight(),null);
-                drawDramaticBreathFrame(canvas,from,1f-weight,false,elapsed);
-                drawDramaticBreathFrame(canvas,to,weight,true,elapsed);
-                canvas.restoreToCount(layer);return;
+                drawDramaticMorph(canvas,from,to,weight,elapsed);return;
             }
             // During async loading, keep showing the ordinary conversation pose.
         }
@@ -569,10 +697,7 @@ public final class FullBodyMascotView extends View {
                 if(approvedMotionPreview==2)time%=3000L;
                 float blend=FullBodyUnwellPolicy.blend(time);
                 float heightFraction=FullBodyMotionPolicy.bodyHeightFraction(168);
-                int layer=canvas.saveLayer(0,0,getWidth(),getHeight(),null);
-                drawApprovedFrame(canvas,unwellFrames[FullBodyUnwellPolicy.previous(time)],1-blend,false,heightFraction);
-                drawApprovedFrame(canvas,unwellFrames[FullBodyUnwellPolicy.frame(time)],blend,blend<1,heightFraction);
-                canvas.restoreToCount(layer);return;
+                drawApprovedMorph(canvas,unwellFrames[FullBodyUnwellPolicy.previous(time)],unwellFrames[FullBodyUnwellPolicy.frame(time)],blend,heightFraction);return;
             }
         }
         if((((mode==2||continuity.holds(approvedNow))&&rearStopActive)||approvedMotionPreview==1)&&previewPose<0&&!performing(approvedNow)&&!pickingPen(approvedNow)){
@@ -580,12 +705,15 @@ public final class FullBodyMascotView extends View {
             if(rearStopFrames!=null){
                 if(rearStopStarted==0)rearStopStarted=approvedNow;
                 long time=approvedNow-rearStopStarted;
-                if(approvedMotionPreview==1)time%=2400L;
+                if(rearHoldFrames!=null&&time>=FullBodyRearHoldPolicy.START){
+                    long hold=time-FullBodyRearHoldPolicy.START;
+                    float entry=FullBodyBlendPolicy.ease(Math.min(1,hold/600f));
+                    if(entry<1)drawRearEntry(canvas,FullBodyRearHoldPolicy.from(hold),entry);
+                    else drawRearMorph(canvas,FullBodyRearHoldPolicy.from(hold),FullBodyRearHoldPolicy.to(hold),FullBodyRearHoldPolicy.blend(hold));
+                    return;
+                }
                 float blend=FullBodyRearStopPolicy.blend(time);
-                int layer=canvas.saveLayer(0,0,getWidth(),getHeight(),null);
-                drawApprovedFrame(canvas,rearStopFrames[FullBodyRearStopPolicy.previous(time)],1-blend,false);
-                drawApprovedFrame(canvas,rearStopFrames[FullBodyRearStopPolicy.frame(time)],blend,blend<1);
-                canvas.restoreToCount(layer);
+                drawApprovedMorph(canvas,rearStopFrames[FullBodyRearStopPolicy.previous(time)],rearStopFrames[FullBodyRearStopPolicy.frame(time)],blend,1);
                 return;
             }
         }
@@ -609,6 +737,7 @@ public final class FullBodyMascotView extends View {
             int frame=variation.anchorPose()==168?FullBodySeatedPolicy.frame(android.os.SystemClock.uptimeMillis()-seatedStarted):0;
             displayed=seatedFrames[frame];displayedPose=FullBodyRealisticAssets.SEATED[frame];
         }
+        if(loaded==168&&clothCache[3]!=null){displayed=bitmap;displayedPose=168;}
         if(idleFrames!=null && mode==0 && loaded>=169 && loaded<=174 && speechExpression<0)
             {int frame=FullBodyMotionPolicy.idleFrame(elapsed);displayed=idleFrames[frame];displayedPose=169+frame;}
         long now=android.os.SystemClock.uptimeMillis();
@@ -645,25 +774,50 @@ public final class FullBodyMascotView extends View {
                 displayed=conversationMotionFrames[frame];displayedPose=FullBodyConversationMotion.pose(conversationMotionKind,frame);
             }
         }
+        boolean accessoryCompatible=displayedPose==4||(displayedPose>=169&&displayedPose<=174);
+        if(mode==0&&accessoryCompatible&&rokidGlasses.wantsMotion(now))requestAccessoryFrames();
+        rokidGlasses.update(now,mode,transitionFrames!=null||previousBitmap!=null,accessoryCompatible&&accessoryFrames!=null);
+        if(rokidGlasses.moving()&&accessoryFrames!=null&&accessoryCompatible&&mode==0&&transitionFrames==null&&previousBitmap==null){
+            float position=FullBodySmoothTransitionPolicy.position(rokidGlasses.elapsed(now),FullBodyRokidGlasses.MOTION_MS,6);
+            int node=(int)position;float amount=position-node;
+            int firstPose=rokidGlasses.pose(node,displayedPose),secondPose=rokidGlasses.pose(node+1,displayedPose);
+            Bitmap first=firstPose>=329&&firstPose<=334?accessoryFrames[firstPose-329]:displayed;
+            Bitmap second=secondPose>=329&&secondPose<=334?accessoryFrames[secondPose-329]:displayed;
+            drawSingleTransition(canvas,first,firstPose,second,secondPose,elapsed,FullBodyMotionPolicy.bodyHeightFraction(loaded),amount);
+            return;
+        }
         if(transitionFrames!=null){
             long time=now-transitionStarted;
-            if(time<FullBodyTransitionPolicy.DURATION_MS && previousBitmap!=null){
-                float position=FullBodyBlendPolicy.position(time,FullBodyTransitionPolicy.DURATION_MS,7);
+            long duration=FullBodySmoothTransitionPolicy.duration(transitionFrames.length,transitionKind==1);
+            if(time<duration && previousBitmap!=null){
+                float position=FullBodySmoothTransitionPolicy.position(time,duration,transitionFrames.length);
                 int segment=(int)position;
-                float amount=FullBodyBlendPolicy.ease(position-segment);
+                float amount=position-segment;
                 Bitmap first=transitionBitmap(segment,displayed);
                 Bitmap second=transitionBitmap(segment+1,displayed);
                 int firstPose=transitionPose(segment,displayedPose);
                 int secondPose=transitionPose(segment+1,displayedPose);
                 float height=previousFraction
                     +(FullBodyMotionPolicy.bodyHeightFraction(loaded)-previousFraction)
-                    *FullBodyBlendPolicy.ease(time/(float)FullBodyTransitionPolicy.DURATION_MS);
-                drawFrame(canvas,first,firstPose,elapsed,height,1-amount,false);
-                drawFrame(canvas,second,secondPose,elapsed,height,amount,true);
+                    *FullBodyBlendPolicy.ease(time/(float)duration);
+                drawSingleTransition(canvas,first,firstPose,second,secondPose,elapsed,height,amount);
                 return;
             }
             transitionFrames=null;reconcileMotion();
         }
+        int fabricGroup=FullBodyClothMotion.group(displayedPose);
+        if(fabricGroup>=0&&displayedPose==loaded&&!performing(now)&&!pickingPen(now)&&!rokidGlasses.moving()&&previousBitmap==null){
+            requestCloth(fabricGroup);
+            if(clothCache[fabricGroup]!=null){
+                if(clothGroup!=fabricGroup){clothGroup=fabricGroup;clothStarted=now;}
+                float pos=FullBodyClothMotion.position(now-clothStarted,fabricGroup);int node=(int)pos;
+                int firstPose=FullBodyClothMotion.pose(fabricGroup,node),secondPose=FullBodyClothMotion.pose(fabricGroup,node+1);
+                Bitmap first=firstPose==loaded?displayed:clothCache[fabricGroup][firstPose-(FullBodyClothMotion.FIRST+fabricGroup*6)];
+                Bitmap second=secondPose==loaded?displayed:clothCache[fabricGroup][secondPose-(FullBodyClothMotion.FIRST+fabricGroup*6)];
+                drawSingleTransition(canvas,first,firstPose,second,secondPose,elapsed,FullBodyMotionPolicy.bodyHeightFraction(loaded),pos-node);
+                clothDraws++;lastDrawnBitmap=displayed;lastDrawnPose=displayedPose;lastDrawnFraction=FullBodyMotionPolicy.bodyHeightFraction(loaded);return;
+            }
+        }else clothGroup=-1;
         // Smooth the smaller idle/walking/leg frames as well as whole pose changes.
         if(lastDrawnBitmap!=null && displayed!=lastDrawnBitmap
                 && (previousBitmap==null || blendDuration==70L)){
@@ -673,8 +827,8 @@ public final class FullBodyMascotView extends View {
         long blendTime=now-blendStarted;
         if(previousBitmap!=null && blendTime<blendDuration){
             float amount=FullBodyBlendPolicy.ease(blendTime/(float)blendDuration);
-            drawFrame(canvas,previousBitmap,previousPose,elapsed,previousFraction,1-amount,false);
-            drawFrame(canvas,displayed,displayedPose,elapsed,FullBodyMotionPolicy.bodyHeightFraction(loaded),amount,true);
+            float height=previousFraction+(FullBodyMotionPolicy.bodyHeightFraction(loaded)-previousFraction)*amount;
+            drawSingleTransition(canvas,previousBitmap,previousPose,displayed,displayedPose,elapsed,height,amount);
         }else{
             previousBitmap=null;
             drawFrame(canvas,displayed,displayedPose,elapsed,FullBodyMotionPolicy.bodyHeightFraction(loaded),1,false);
@@ -684,16 +838,18 @@ public final class FullBodyMascotView extends View {
 
     private Bitmap transitionBitmap(int node,Bitmap target){
         if(node==0)return previousBitmap;
-        if(node>=7)return target;
-        return transitionFrames[transitionReverse?6-node:node-1];
+        if(node>=transitionFrames.length+1)return target;
+        return transitionFrames[transitionReverse?transitionFrames.length-node:node-1];
     }
     private int transitionPose(int node,int target){
         if(node==0)return previousPose;
-        if(node>=7)return target;
-        return transitionFirst+(transitionReverse?6-node:node-1);
+        if(node>=transitionFrames.length+1)return target;
+        int index=transitionReverse?transitionFrames.length-node:node-1;
+        return transitionIds==null?transitionFirst+index:transitionIds[index];
     }
     private void drawFrame(Canvas canvas,Bitmap frame,int pose,long elapsed,float fraction,float opacity,boolean add){
         if(opacity<=0 || frame==null || frame.isRecycled())return;
+        frameLayers++;
         int alpha=Math.round(255*Math.min(1,opacity));
         boolean layered=alpha<255||add;
         int layer=0;
@@ -707,14 +863,26 @@ public final class FullBodyMascotView extends View {
         destination.set(left,getHeight()-height,left+width,getHeight());
         paint.setAlpha(255);
         int local=canvas.save();canvas.translate(left,getHeight()-height);canvas.scale(scale,scale);
-        if(breathingEnabled){
-            if(mode==2 && speechStance.laughing() && pose<181 && FullBodyPoseCatalog.ALL[pose].supports(FullBodyPoseCatalog.Kind.JOY))FullBodyBreathPolicy.laugh(breathMesh,frame.getWidth(),frame.getHeight(),elapsed);
-            else FullBodyBreathPolicy.mesh(breathMesh,frame.getWidth(),frame.getHeight(),elapsed);
+        if(activeMorph!=null&&activeMorphWeight>0){
+            float[] f=FullBodyFaceAnimator.features(pose);
+            float faceBottom=f==null?.20f:(f[15]+Math.max(f[16]*.25f,f[18])+4)/f[1];
+            FullBodyBreathPolicy.resting(breathMesh,frame.getWidth(),frame.getHeight(),android.os.SystemClock.uptimeMillis()-livingStarted,faceBottom);
+            FullBodyLivingPosePolicy.apply(breathMesh,frame.getWidth(),frame.getHeight(),android.os.SystemClock.uptimeMillis()-livingStarted,faceBottom,FullBodyLivingPosePolicy.profile(pose,f));
+            if(FullBodyCyberMotion.groupForPose(pose)>=0&&(situationMask&4)!=0)FullBodyCyberMotion.rough(breathMesh,frame.getWidth(),frame.getHeight(),elapsed,faceBottom);
+            morphRenderer.draw(canvas,frame,paint,activeMorph,activeMorphWeight,getWidth(),getHeight(),scale,breathMesh,breathingEnabled);morphFrames++;
+        }else if(breathingEnabled&&mode==2&&speechStance.laughing()&&pose<181&&FullBodyPoseCatalog.ALL[pose].supports(FullBodyPoseCatalog.Kind.JOY)){
+            FullBodyBreathPolicy.laugh(breathMesh,frame.getWidth(),frame.getHeight(),elapsed);
             canvas.drawBitmapMesh(frame,FullBodyBreathPolicy.COLUMNS,FullBodyBreathPolicy.ROWS,breathMesh,0,null,0,paint);
-        }else canvas.drawBitmap(frame,0,0,paint);
+        }else if(breathingEnabled){
+            float[] f=FullBodyFaceAnimator.features(pose);
+            float faceBottom=f==null?.20f:(f[15]+Math.max(f[16]*.25f,f[18])+4)/f[1];
+            long living=android.os.SystemClock.uptimeMillis()-livingStarted;
+            FullBodyBreathPolicy.resting(breathMesh,frame.getWidth(),frame.getHeight(),living,faceBottom);
+            FullBodyLivingPosePolicy.apply(breathMesh,frame.getWidth(),frame.getHeight(),living,faceBottom,FullBodyLivingPosePolicy.profile(pose,f));
+            canvas.drawBitmapMesh(frame,FullBodyBreathPolicy.COLUMNS,FullBodyBreathPolicy.ROWS,breathMesh,0,null,0,paint);
+        }else drawLivingBitmap(canvas,frame,FullBodyFaceAnimator.features(pose));
         faceAnimator.draw(canvas,frame,pose,android.os.SystemClock.uptimeMillis(),mode==2&&animateMouth);
-        if(mode==2||continuity.holds(android.os.SystemClock.uptimeMillis()))situationEffects.draw(canvas,frame,FullBodyFaceAnimator.features(pose),android.os.SystemClock.uptimeMillis(),situationMask);
-        rokidGlasses.update(android.os.SystemClock.uptimeMillis(),mode,transitionFrames!=null||previousBitmap!=null);
+        if(FullBodyCyberMotion.groupForPose(pose)>=0||mode==2||continuity.holds(android.os.SystemClock.uptimeMillis()))situationEffects.draw(canvas,frame,FullBodyFaceAnimator.features(pose),android.os.SystemClock.uptimeMillis(),situationMask);
         rokidGlasses.draw(canvas,frame,pose);
         canvas.restoreToCount(local);
         if(layered)canvas.restoreToCount(layer);
@@ -739,16 +907,11 @@ public final class FullBodyMascotView extends View {
         dramaticPreview=dramaticLoaded=-1;dramaticRequest++;dramaticLoading=false;
         dramaticFrames=null;dramaticBreathStarted=0;dramaticAuto=dramaticCycle=false;situationMask=0;for(FullBodyFaceAnimator face:dramaticFaces)face.clear();for(FullBodyFaceAnimator face:approvedFaces)face.clear();
         unwellFrames=null;unwellLoading=false;unwellActive=false;unwellStarted=0;
-        approvedMotionPreview=-1;rearStopFrames=null;rearStopActive=false;rearStopLoading=false;rearStopStarted=0;
+        approvedMotionPreview=-1;rearStopFrames=null;rearHoldFrames=null;rearStopActive=false;rearStopLoading=false;rearStopStarted=0;
         heavyBreathFrames=null;heavyBreathActive=false;heavyBreathLoading=false;heavyBreathStarted=0;
         conversationMotionFrames=null;conversationMotionKind=conversationMotionCached=-1;conversationMotionStarted=0;conversationMotionLoading=false;
         faceAnimator.clear();
-        generation++; lastDrawnBitmap=null;previousBitmap=null;reactions.reset();variation.reset();speechStance.reset();speechExpression=-1;bitmap = null; motionFrames=null;idleFrames = null; loaded = -1; transitionFrames=null; seatedFrames=null; transitionCache[0]=null; transitionCache[1]=null;linkFrames=null;cachedLink=-1;performanceFrames=null;performanceRequested=performanceLoading=false;performanceStarted=0;manualPenRequested=false;manualPenStarted=0;manualPenKind=manualPenPose=-1;activityFrames=null;activityCached=-1;activityLoading=false;
+        generation++; cyberRequest++;cyberCache=new Bitmap[FullBodyCyberMotion.GROUPS][];cyberLoading=false; clothCache=new Bitmap[4][];clothLoading=false;clothGroup=-1; accessoryFrames=null;accessoryLoading=false; lastDrawnBitmap=null;previousBitmap=null;reactions.reset();variation.reset();speechStance.reset();speechExpression=-1;bitmap = null; motionFrames=null;idleFrames = null; loaded = -1; transitionFrames=null; seatedFrames=null; transitionCache[0]=null; transitionCache[1]=null;linkFrames=null;cachedLink=-1;performanceFrames=null;performanceRequested=performanceLoading=false;performanceStarted=0;manualPenRequested=false;manualPenStarted=0;manualPenKind=manualPenPose=-1;activityFrames=null;activityCached=-1;activityLoading=false;
         if (motionTick != null) removeCallbacks(motionTick);
     }
 }
-
-
-
-
-

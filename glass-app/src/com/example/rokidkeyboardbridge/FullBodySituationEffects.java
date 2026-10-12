@@ -7,7 +7,7 @@ final class FullBodySituationEffects {
  void draw(Canvas canvas,Bitmap source,float[] f,long elapsed,int effects){
   if(source==null||f==null||effects==0)return;
   int saved=canvas.save();canvas.scale(source.getWidth()/f[0],source.getHeight()/f[1]);
-  float width=Math.max(f[4],f[10]);if(width<=0){canvas.restoreToCount(saved);return;}
+  float width=Math.max(f[4],f[10]);if((effects&FullBodyDramaticConversationPolicy.CYBER_HIGHLIGHT)!=0)width*=1.3f;if(width<=0){canvas.restoreToCount(saved);return;}
   if((effects&FullBodyDramaticConversationPolicy.SWEAT)!=0){
    float t=(Math.max(0,elapsed)%2800)/2800f;
    bead(canvas,f[8]+width*.75f,f[9]-width*.6f+t*width*.55f,width*.13f,Math.min(1,Math.min(t*6,(1-t)*5)));
