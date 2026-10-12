@@ -7,7 +7,7 @@ final class FullBodySpeechStance {
   final FullBodyPoseCatalog.Kind kind;final int intensity;
   Cue(FullBodyPoseCatalog.Kind k,int i){kind=k;intensity=i;}
  }
- private Cue scene;
+ private Cue scene; private boolean troubledBoundary;
  private Cue observed;
  private String semanticAction;
  void observed(Cue cue){observed=cue;semanticAction=null;if(cue!=null)scene=null;}
@@ -16,6 +16,7 @@ final class FullBodySpeechStance {
   Cue next=FullBodyScenePolicy.evaluate(prompt,answer);
   boolean leave=FullBodyScenePolicy.has(FullBodyScenePolicy.clean(prompt),"ごめん","謝","すみません","やめます","もうやめる","もうやめた","TOPIC","ラジオ","ジークンドー","ペン","コーヒー","触診","診察","医師","医療","胸を撫で下ろ","胸をなでおろ","別の話","話題を変","天気","予定","ニュース","について教","とは","相談");
   if(next!=null||scene==null||scene.kind!=REFUSE||leave)scene=next;
+  if(next!=null)troubledBoundary=next.kind==REFUSE&&(has(clean(prompt),"ペニス","性器")||has(clean(answer),"困ります","戸惑"));else if(scene==null)troubledBoundary=false;
  }
  private boolean laughing;
  private Cue active;private boolean refusing;private int variant;private String last="";
@@ -50,6 +51,10 @@ final class FullBodySpeechStance {
    if(!last.equals(text))variant=rotations[active.kind.ordinal()]++;
   }
   last=text==null?"":text;
+  // A boundary can be expressed as troubled hesitation, without a smile or assent.
+  if(troubledBoundary&&scene!=null&&scene.kind==REFUSE&&active!=null&&active.kind==REFUSE
+      &&!has(clean(text),"おやめ","やめて","お断り","嫌です","不快","セクハラ","控え","遠慮","応じ","受け入"))
+   return FullBodyPoseCatalog.select(WORRY,1,current,variant);
   return active==null?(explicitPosture?current:-1):FullBodySemanticReaction.actionPose(FullBodyPoseCatalog.select(active.kind,active.intensity,current,variant),active,semanticAction,current);
  }
  static Cue classify(String text){

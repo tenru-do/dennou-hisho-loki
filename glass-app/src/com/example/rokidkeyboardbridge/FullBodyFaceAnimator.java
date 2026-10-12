@@ -13,18 +13,26 @@ final class FullBodyFaceAnimator {
  void clear(){skinSource=null;skinShader=null;p.setShader(null);}
  static float[] features(int pose){return pose>=0&&pose<FullBodyRealisticFeatures.ALL.length?FullBodyRealisticFeatures.ALL[pose]:null;}
  static boolean supports(int pose){return features(pose)!=null;}
- static boolean transition(int pose){return pose>=186&&pose<=221;}
+ static boolean transition(int pose){return (pose>=186&&pose<=221)||(pose>=305&&pose<341);}
  static float blink(long elapsed){long t=Math.max(0,elapsed)%5700;if(t<4500||t>=4740)return 0;if(t<4580)return(t-4500)/80f;if(t<4660)return 1;return(4740-t)/80f;}
- static float mouth(long elapsed,boolean speaking){return speaking?MOUTH_LEVELS[(int)(Math.max(0,elapsed)/110%MOUTH_LEVELS.length)]:0;}
+ static float mouth(long elapsed,boolean speaking){
+  if(!speaking)return 0;
+  long time=Math.max(0,elapsed);int index=(int)(time/110%MOUTH_LEVELS.length);
+  float t=time%110/110f;t=t*t*(3-2*t);
+  return MOUTH_LEVELS[index]+(MOUTH_LEVELS[(index+1)%MOUTH_LEVELS.length]-MOUTH_LEVELS[index])*t;
+ }
  void draw(Canvas canvas,Bitmap source,int pose,long elapsed,boolean speaking){
-  drawFeatures(canvas,source,features(pose),elapsed,speaking,!transition(pose));
+  drawFeatures(canvas,source,features(pose),elapsed,speaking,!transition(pose),FullBodyClothMotion.base(pose)==1||(pose>=305&&pose<341));
  }
  void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking){
+  drawFeatures(canvas,source,f,elapsed,speaking,blinking,false);
+ }
+ private void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking,boolean preserveSmile){
   if(f==null||source==null||source.isRecycled())return;
   canvas.save();canvas.scale(source.getWidth()/f[0],source.getHeight()/f[1]);
   float closed=blinking?blink(elapsed):0;
   if(closed>0){if(f[7]>0)eye(canvas,source,f,2,closed);if(f[13]>0)eye(canvas,source,f,8,closed);}
-  float open=mouth(elapsed,speaking);if(open>0&&f[16]>0)mouth(canvas,source,f,open);
+  float open=mouth(elapsed,speaking);if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
   canvas.restore();
  }
  // Retain the original lashes, iris, lip corners and shading rather than drawing generic eyes.
@@ -42,9 +50,12 @@ final class FullBodyFaceAnimator {
   if(closed<.85f)patch(c,source,f,x,y,w*.58f,h,angle,Math.max(.05f,1-closed));
   if(closed>.5f){c.save();c.rotate(angle,x,y);p.setColor(Color.BLACK);p.setStyle(Paint.Style.STROKE);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeWidth(Math.max(.65f,w*.055f));line.reset();line.moveTo(x-w*.49f,y);line.quadTo(x,y+w*.09f*closed,x+w*.49f,y);c.drawPath(line,p);c.restore();}
  }
- private void mouth(Canvas c,Bitmap source,float[]f,float open){
+ private void mouth(Canvas c,Bitmap source,float[]f,float open,boolean preserveSmile){
   float x=f[14],y=f[15],w=f[16],angle=f[17],original=f[18];
-  if(original>w*.17f){
+  if(preserveSmile){
+   // Keep the drawn smile, teeth and chin-hand occlusion; no synthetic dark oval.
+   patch(c,source,f,x,y,w*.49f,Math.max(original*.8f,w*.12f),angle,1+.16f*open);
+  }else if(original>w*.17f){
    // Strong open-mouth emotions stay recognizable, with a small speech deformation.
    float h=Math.max(w*.23f,original*.72f);
    patch(c,source,f,x,y,w*.63f,h,angle,.88f+.27f*open);

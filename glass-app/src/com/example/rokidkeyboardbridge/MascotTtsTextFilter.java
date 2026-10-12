@@ -4,7 +4,7 @@ import java.util.regex.Pattern;
 
 /** XML-safe SSML preparation. Rokid/Android string transports use the plain fallback. */
 public final class MascotTtsTextFilter {
-    private static final Pattern TOKENS = Pattern.compile("マスター…|はぁっ|はあっ|だめ|あっ|あ…");
+    private static final Pattern TOKENS = Pattern.compile("(?<![ぁ-んァ-ヶ一-龯])(?:マスター…|はぁっ|はあっ|だめ|あっ|あ…)(?=$|[\\s、。！？!?…])");
     private MascotTtsTextFilter() {}
     public static final class Prepared {
         public final String ssml, fallback;
@@ -19,7 +19,7 @@ public final class MascotTtsTextFilter {
         return value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&apos;");
     }
     public static Prepared prepare(String raw) {
-        String text=raw==null?"":raw;
+        String text=LokiVocalizationPolicy.normalize(raw);
         // Incoming markup is literal text, never trusted SSML. Discard illegal XML 1.0 controls.
         text=text.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]","");
         Matcher matcher=TOKENS.matcher(text);

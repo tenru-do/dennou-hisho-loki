@@ -2126,27 +2126,23 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private AlertDialog showDisplaySettings() {
         return NavigationChoiceDialog.show(this, "設定",
-                new String[]{"全身モード", "顔モード", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "CTRL：明るさ", "REC：連続撮影"}, -1,
-                    new DialogInterface.OnClickListener() {
-                        @Override public void onClick(DialogInterface dialog, int which) {
-                            if (which == 5) { showApiKeyDialog(); return; }
-                            if (which == 6) { pairWithPhone(); return; }
-                            if (which == 7) { showFullBodyImageGallery(); return; }
-                            if (which == 8) { showLokiControls(); return; }
-                            if (which == 9) { showPhotoRecorder(); return; }
-                            if (which == 0 || which == 1) {
-                                getSharedPreferences("navigation_display", MODE_PRIVATE).edit()
-                                        .putBoolean("full_body_mode", which == 0).apply();
-                                applyDisplayArea();
-                                if (which == 0) setGlanceHudVisible(true);
-                                else showControlsTemporarily();
-                                return;
-                            }
-                            getSharedPreferences("navigation_display", MODE_PRIVATE).edit()
-                                    .putBoolean("lower_half", which == 3).putBoolean("upper_half", which == 4).apply();
-                            applyDisplayArea();
-                        }
-                    });
+                new String[]{"CTRL：明るさ", isFullBodySelected()?"表示：全身 → 顔に切替":"表示：顔 → 全身に切替", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "REC：連続撮影"}, -1,
+                (dialog, which) -> {
+                    if (which == 0) { showLokiControls(); return; }
+                    if (which == 1) {
+                        boolean full = !isFullBodySelected();
+                        getSharedPreferences("navigation_display", MODE_PRIVATE).edit().putBoolean("full_body_mode", full).apply();
+                        applyDisplayArea();
+                        if (full) setGlanceHudVisible(true); else showControlsTemporarily();
+                        return;
+                    }
+                    if (which == 5) { showApiKeyDialog(); return; }
+                    if (which == 6) { pairWithPhone(); return; }
+                    if (which == 7) { showFullBodyImageGallery(); return; }
+                    if (which == 8) { showPhotoRecorder(); return; }
+                    getSharedPreferences("navigation_display", MODE_PRIVATE).edit().putBoolean("lower_half", which == 3).putBoolean("upper_half", which == 4).apply();
+                    applyDisplayArea();
+                });
     }
 
     static java.lang.ref.WeakReference<MainActivity> recorderHost=new java.lang.ref.WeakReference<>(null);
@@ -10706,11 +10702,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             sb.append("\n</ambient_reference>");
         }
         if (!konburuStyle) {
-            sb.append("\n\n回答方針: 日本語で、まず結論を短く。その後、必要な補足だけを続ける。");
+            sb.append("\n\n回答方針: 日本語で、まず要点を伝え、その後は状況に合う反応と必要な補足を続ける。通常は200文字前後を目安にし、淡白な相づちだけで終わらせない。");
             sb.append("\n一般的な質問、雑談、物語・落語の実演、創作、架空のロールプレイも秘書の対応範囲とする。安全上問題のない依頼を、単に「AIには肉体がない」「業務外」という理由だけで拒否しない。");
             if (this.voiceLoopMode && !hiddenNazokakeRequest) {
                 sb.append("\n<voice_conversation_policy>");
-                sb.append("VOICE連続会話中である。音声で聞きやすい自然な会話を最優先し、通常は2〜3文で直接返す。必要なら最後に短い質問を一つだけ添える。");
+                sb.append("VOICE連続会話中である。音声で聞きやすい自然な会話を最優先し、通常は3〜5文、160〜240文字（200文字前後）で直接返す。感情のある場面では具体的に受け止め、ロキ自身の気持ちや理由を台詞に含める。短い確認や緊急時、短答の指定では簡潔さを優先する。必要なら最後に短い質問を一つだけ添える。");
                 sb.append("ロキ自身の表情、視線、呼吸、身体、姿勢、衣服、仕草、心の声などの舞台描写を原則として書かない。括弧書き・ト書き・地の文を重ねず、実際に口にする台詞を中心にする。");
                 sb.append("毎回同じ呼びかけ、承知表現、確認の言い直しを繰り返さない。聞き取りが曖昧な短語には、長い推測をせず『○○のことでしょうか？』のように一度だけ簡潔に確認する。");
                 sb.append("ユーザーが明示的に物語・演技・情景描写を求めた場合だけ、その依頼に必要な描写を加えてよい。");
@@ -14004,7 +14000,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 portraitReaction=observed==null?PortraitSemanticReaction.resolve("",str):observed.cue;
                 portraitReactionGeneration=gestureSpeechGeneration;
                 if(mascotView!=null)mascotView.setSemanticExpression(PortraitSemanticReaction.expression(portraitReaction));
-            }else beginPortraitSemanticSpeech(activeGeminiPrompt,str,gestureSpeechGeneration);if(fullBodyImage!=null)fullBodyImage.beginSpeech(str);}});
+            }else beginPortraitSemanticSpeech(activeGeminiPrompt,str,gestureSpeechGeneration);if(fullBodyImage!=null){if(!ambientReaction)fullBodyImage.setUserContext(activeGeminiPrompt);fullBodyImage.beginSpeech(str);}}});
             new Thread(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.41
                 @Override // java.lang.Runnable
                 public void run() {
@@ -14180,10 +14176,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private String normalizeTtsVocalizations(String text) {
-        if (text == null || text.isEmpty()) return "";
-        // Very long runs are synthesized as a flat, mechanical vowel. Keep the
-        // emotional cue but cap it at a naturally pronounceable three sounds.
-        return text.replaceAll("([\u3042\u3041\u30a2\u30a1\u3044\u3043\u30a4\u30a3\u3046\u3045\u30a6\u30a5\u3048\u3047\u30a8\u30a7\u304a\u3049\u30aa\u30a9])\\1{3,}", "$1$1$1");
+        return LokiVocalizationPolicy.normalize(text);
     }
 
     private static final int MASCOT_FAMILY_NEUTRAL = 0;
@@ -15302,7 +15295,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         final int i = this.ttsGeneration + 1;
         this.ttsGeneration = i;
-        this.handler.post(() -> { if(i==ttsGeneration){beginPortraitSemanticSpeech(prompt,fullBodyAnswer,i);if(fullBodyImage!=null)fullBodyImage.beginSpeech(fullBodyAnswer);} });
+        this.handler.post(() -> { if(i==ttsGeneration){beginPortraitSemanticSpeech(prompt,fullBodyAnswer,i);if(fullBodyImage!=null){fullBodyImage.setUserContext(prompt);fullBodyImage.beginSpeech(fullBodyAnswer);}} });
         Log.i(TAG, "PhoneTTS chunk count=" + strArrSplitForTts.length);
         if (strArrSplitForTts.length == 0) {
             setMascotMode(0);
@@ -18973,7 +18966,3 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 }
-
-
-
-
