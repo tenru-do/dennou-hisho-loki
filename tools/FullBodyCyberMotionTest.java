@@ -15,7 +15,7 @@ public final class FullBodyCyberMotionTest {
   }
   check(FullBodyDramaticConversationPolicy.select("","私はめまいはありません。",STRAIN)==null,"negated symptom");
   check(FullBodyDramaticConversationPolicy.ends("私は吐き気がありません。",STRAIN),"negative ends scene");
-  check(FullBodyDramaticGallery.LABELS.length==20,"legacy + new gallery");
+  check(FullBodyDramaticGallery.LABELS.length==20+FullBodyAttachedMotion.COUNT,"legacy + new gallery");
   check(FullBodyDramaticConversationPolicy.recovery("私はエラーを解消しました。"),"recovery");
   for(long t=0;t<7200;t++)check(FullBodyCyberMotion.position(t)>=0&&FullBodyCyberMotion.position(t)<6,"loop bounds");
   float[] mesh=new float[(FullBodyBreathPolicy.COLUMNS+1)*(FullBodyBreathPolicy.ROWS+1)*2];

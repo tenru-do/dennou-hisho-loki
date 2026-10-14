@@ -2528,6 +2528,9 @@ public final class MainActivity extends Activity {
 
     private void ensureCalendarPermission() {
         ArrayList<String> missingExtra = new ArrayList<String>();
+        if (checkSelfPermission(Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+            missingExtra.add(Manifest.permission.WRITE_CALENDAR);
+        }
         if (checkSelfPermission(Manifest.permission.READ_CALENDAR)
                 != PackageManager.PERMISSION_GRANTED) {
             missingExtra.add(Manifest.permission.READ_CALENDAR);
@@ -2710,6 +2713,28 @@ public final class MainActivity extends Activity {
             }
             if (!constantTimeEquals(getPreferences().getString(KEY_BRIDGE_TOKEN, ""), payload.token)) {
                 writeJsonResponse(socket, 401, "{\"ok\":false,\"error\":\"unauthorized\"}");
+                return;
+            }
+            if(request.startsWith("GET /calendar_write_state ")) {
+                writeJsonResponse(socket,200,new JSONObject().put("ok",true)
+                        .put("permission",CalendarWriter.permitted(this)).put("calendars",CalendarWriter.calendars(this)).toString());return;
+            }
+            if(request.startsWith("POST /meeting_state ")) {writeJsonResponse(socket,200,MeetingControl.update(this,new JSONObject(formValue(bodyText,"state"))).toString());return;}
+            if(request.startsWith("POST /meeting_audio ")) {
+                JSONObject result;try{result=MeetingAudioStore.accept(this,new JSONObject(formValue(bodyText,"request")));}
+                catch(Exception error){result=new JSONObject().put("ok",false).put("error",error instanceof java.io.IOException?error.getMessage():"会議録音の転送内容を検証できません");}
+                writeJsonResponse(socket,200,result.toString());return;
+            }
+            if(request.startsWith("POST /calendar_events ")) {
+                JSONObject result;
+                try {result=CalendarWriter.save(this,new JSONObject(formValue(bodyText,"request")));}
+                catch(Exception error){result=new JSONObject().put("ok",false).put("message","登録を確認できませんでした。スマホのカレンダーで日時・登録先を確認してください。");}
+                writeJsonResponse(socket,200,result.toString());return;
+            }
+            if(request.matches("(?:GET /codex_(?:target|pending)|POST /codex_(?:register|submit|ack)) HTTP/1\\.[01]")){
+                String endpoint=request.split(" ")[1].substring("/codex_".length());
+                try{writeJsonResponse(socket,200,LokiCodexInstructions.handle(this,endpoint,bodyText).toString());}
+                catch(Exception invalid){writeJsonResponse(socket,409,"{\"ok\":false,\"error\":\"codex_request_rejected\"}");}
                 return;
             }
             if (request.startsWith("GET /recorder_location ")) {
@@ -5716,10 +5741,7 @@ public final class MainActivity extends Activity {
             return new JSONObject().put("ok",advanced).put("message",advanced ? "次の区間を現在時刻で検索中" : "現在の区間では進行できません。経路取得を確認してください。");
         }
         if ("stop".equals(action)) {
-            boolean stopped = MailNotificationService.stopMapsNavigation();
-            setNavigationHudSuppressed(true);
-            return new JSONObject().put("ok", true).put("message", stopped
-                    ? "ナビを終了しました。" : "グラスのナビ表示を停止しました。Googleマップの終了はスマホで確認してください。");
+            return stopNavigationFromGlass();
         }
         if ("resume".equals(action)) {
             setNavigationHudSuppressed(false);
@@ -5764,6 +5786,23 @@ public final class MainActivity extends Activity {
                 : "Googleマップを開きました。スマホで目的地と移動手段を確認してください。");
     }
 
+    private JSONObject stopNavigationFromGlass() throws Exception {
+        boolean active=MailNotificationService.recentTransitJson().optBoolean("navigationActive",false);
+        boolean exitAvailable=MailNotificationService.hasMapsNavigationExitAction();
+        boolean stopped=MailNotificationService.navigationListenerConnected() && !active && !exitAvailable;
+        if(exitAvailable && MailNotificationService.stopMapsNavigation()) {
+            long deadline=android.os.SystemClock.elapsedRealtime()+2000;
+            while(MailNotificationService.hasMapsNavigationExitAction()
+                    && android.os.SystemClock.elapsedRealtime()<deadline) Thread.sleep(50);
+            stopped=!MailNotificationService.hasMapsNavigationExitAction();
+        }
+        setNavigationHudSuppressed(true);
+        return new JSONObject().put("ok",true).put("suppressed",true)
+                .put("navigationStopped",stopped).put("message",stopped
+                ? "ナビを停止しました。Googleマップの音声案内も終了しています。"
+                : "グラスの表示は停止しましたが、Googleマップの案内終了を確認できません。スマホでナビを終了してください。");
+    }
+
     private JSONObject buildNavigationHudControlJson(String action) throws Exception {
         String command = action == null ? "toggle" : action.trim().toLowerCase(Locale.US);
         boolean suppressed = isNavigationHudSuppressed();
@@ -5773,6 +5812,12 @@ public final class MainActivity extends Activity {
             suppressed = false;
         } else {
             suppressed = !suppressed;
+        }
+        if(suppressed) {
+            JSONObject stopResult=stopNavigationFromGlass();
+            final String message=stopResult.getString("message");
+            runOnUiThread(()->updateStatus("ナビ停止",message));
+            return stopResult;
         }
         final boolean resultSuppressed = suppressed;
         setNavigationHudSuppressed(resultSuppressed);

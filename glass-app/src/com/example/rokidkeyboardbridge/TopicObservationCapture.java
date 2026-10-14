@@ -28,8 +28,6 @@ final class TopicObservationCapture {
         JSONObject result = new JSONObject().put("requestId", request.getString("requestId"))
                 .put("revision", request.getLong("revision"));
         String mode = request.optString("mode");
-        try(AutoCloseable mascotPause=context instanceof MainActivity
-                ? ((MainActivity)context).pauseMascotForCamera() : ()->{}) {
         android.util.Log.i("CameraTopic","TOPIC capture begin mode="+mode);
         if ("sound".equals(mode) || "both".equals(mode)) {
             try {
@@ -39,15 +37,19 @@ final class TopicObservationCapture {
             } catch (Exception error) { result.put("audioUnavailable", true); }
         }
         if (!cancelled.getAsBoolean() && ("vision".equals(mode) || "both".equals(mode))) {
-            try {
+            if(MeetingRecorderService.active!=null&&!MeetingRecorderService.active.reserveCamera()){
+                result.put("imageSkipped","会議録音優先・撮影間隔調整");
+            }else {
+            try (AutoCloseable mascotPause = context instanceof MainActivity
+                    ? ((MainActivity) context).pauseMascotForCamera() : () -> {}) {
                 if (context.checkSelfPermission("android.permission.CAMERA") != 0) throw new IllegalStateException();
                 result.put("image", Base64.encodeToString(photo(context,cancelled), Base64.NO_WRAP));
             } catch (Exception error) { result.put("imageUnavailable", true); }
+            }
         }
         if (cancelled.getAsBoolean()) throw new InterruptedException("observation cancelled");
         android.util.Log.i("CameraTopic","TOPIC capture completed image="+result.has("image")+" audio="+result.has("audio"));
         return result;
-        }
     }
     private static byte[] audio(Context context, BooleanSupplier cancelled) throws Exception {
         try (CaptureLease lease = CaptureLease.acquire(CaptureLease.MICROPHONE, cancelled)) {

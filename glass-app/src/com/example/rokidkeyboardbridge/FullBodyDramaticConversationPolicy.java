@@ -17,7 +17,7 @@ final class FullBodyDramaticConversationPolicy {
  static int effects(String text,FullBodyPoseCatalog.Kind kind){
   String a=own(text);if(a.isEmpty()||recovery(text))return 0;
   int value=0;
-  if(has(a,"汗をかいて","汗ばんで","冷や汗","汗が出","汗が流"))value|=SWEAT;
+  if(has(a,"汗をかいて","汗ば","冷や汗","汗が出","汗が流","汗がにじ","汗が滲"))value|=SWEAT;
   if(kind==CRY||has(a,"泣いています","涙を流","涙が出","涙をこぼ","涙が止まら","すすり泣"))value|=TEARS;
   if(has(a,"息が上がって","息を切らして","息切れして","呼吸が荒","息が荒","息苦しいです","はぁ、はぁ"))value|=ROUGH_BREATH;
   return value;

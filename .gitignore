@@ -54,3 +54,20 @@ window*.xml
 Thumbs.db
 .idea/
 .vscode/
+# Local Codex destinations/receipts are user data, never release assets.
+tools/codex-instruction-*.local.json*
+tools/codex-notify-outbox.local.json*
+
+# Private runtime data and generated review artifacts
+*.local.json*
+__pycache__/
+*.py[cod]
+outputs/
+*.gcm
+*.wav
+*.mp4
+*.m4a
+*.hprof
+meeting-audio/
+meeting-import/
+*-backup.zip

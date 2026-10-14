@@ -22,7 +22,7 @@ final class FullBodyFaceAnimator {
   return MOUTH_LEVELS[index]+(MOUTH_LEVELS[(index+1)%MOUTH_LEVELS.length]-MOUTH_LEVELS[index])*t;
  }
  void draw(Canvas canvas,Bitmap source,int pose,long elapsed,boolean speaking){
-  drawFeatures(canvas,source,features(pose),elapsed,speaking,!transition(pose),FullBodyClothMotion.base(pose)==1||(pose>=305&&pose<341));
+  drawFeatures(canvas,source,features(pose),elapsed,speaking,true,FullBodyClothMotion.base(pose)==1||(pose>=305&&pose<341));
  }
  void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking){
   drawFeatures(canvas,source,f,elapsed,speaking,blinking,false);
@@ -31,8 +31,8 @@ final class FullBodyFaceAnimator {
   if(f==null||source==null||source.isRecycled())return;
   canvas.save();canvas.scale(source.getWidth()/f[0],source.getHeight()/f[1]);
   float closed=blinking?blink(elapsed):0;
-  if(closed>0){if(f[7]>0)eye(canvas,source,f,2,closed);if(f[13]>0)eye(canvas,source,f,8,closed);}
-  float open=mouth(elapsed,speaking);if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
+  if(closed>0){if(f[4]>0)eyeMotion(canvas,source,f,2,closed);if(f[10]>0&&Math.abs(f[8]-f[2])>f[4]*.4f)eyeMotion(canvas,source,f,8,closed);}
+  float open=speaking?mouth(elapsed,true):preserveSmile?.12f*(.5f+.5f*(float)Math.sin(elapsed/950.0)):0;if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
   canvas.restore();
  }
  // Retain the original lashes, iris, lip corners and shading rather than drawing generic eyes.
@@ -40,6 +40,11 @@ final class FullBodyFaceAnimator {
   c.save();c.rotate(angle,x,y);rect.set(x-w,y-h,x+w,y+h);clip.reset();clip.addOval(rect,Path.Direction.CW);c.clipPath(clip);
   c.rotate(-angle,x,y);c.translate(x,y);c.rotate(angle);c.scale(1,stretch);c.rotate(-angle);c.translate(-x,-y);
   c.scale(f[0]/source.getWidth(),f[1]/source.getHeight());p.setStyle(Paint.Style.FILL);p.setColor(Color.WHITE);c.drawBitmap(source,0,0,p);c.restore();
+ }
+ private void eyeMotion(Canvas c,Bitmap source,float[]f,int offset,float closed){
+  if(f[offset+5]>0){eye(c,source,f,offset,closed);return;}
+  // Closed lids tighten briefly; never invent an iris over a closed/occluded eye.
+  patch(c,source,f,f[offset],f[offset+1],f[offset+2]*.55f,Math.max(1,f[offset+2]*.17f),f[offset+3],1-.14f*closed);
  }
  private void eye(Canvas c,Bitmap source,float[]f,int offset,float closed){
   float x=f[offset],y=f[offset+1],w=f[offset+2],angle=f[offset+3];
@@ -53,8 +58,15 @@ final class FullBodyFaceAnimator {
  private void mouth(Canvas c,Bitmap source,float[]f,float open,boolean preserveSmile){
   float x=f[14],y=f[15],w=f[16],angle=f[17],original=f[18];
   if(preserveSmile){
-   // Keep the drawn smile, teeth and chin-hand occlusion; no synthetic dark oval.
-   patch(c,source,f,x,y,w*.49f,Math.max(original*.8f,w*.12f),angle,1+.16f*open);
+   // Keep the smiling corners and tilt while opening the centre of the lips.
+   patch(c,source,f,x,y,w*.49f,Math.max(original*.8f,w*.15f),angle,.95f+.75f*open);
+   if(open>.18f){
+    c.save();c.rotate(angle,x,y);float rx=w*.34f,gap=w*.16f*open,curve=w*.035f;
+    line.reset();line.moveTo(x-rx,y-curve);line.quadTo(x,y+curve-gap*.25f,x+rx,y-curve);line.quadTo(x,y+curve+gap,x-rx,y-curve);line.close();
+    p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(Color.BLACK);c.drawPath(line,p);
+    if(open>.45f){p.setColor(Color.WHITE);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(Math.max(.5f,w*.035f));line.reset();line.moveTo(x-rx*.63f,y);line.quadTo(x,y+curve-gap*.12f,x+rx*.63f,y);c.drawPath(line,p);p.setStyle(Paint.Style.FILL);}
+    c.restore();
+   }
   }else if(original>w*.17f){
    // Strong open-mouth emotions stay recognizable, with a small speech deformation.
    float h=Math.max(w*.23f,original*.72f);

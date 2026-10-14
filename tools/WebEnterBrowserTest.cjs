@@ -1,0 +1,7 @@
+const fs=require('node:fs');
+let suite=fs.readFileSync(require('node:path').join(__dirname,'WebSendBrowserTest.cjs'),'utf8');
+suite=suite.replace('let submit,requests=[]','let submit,key,cs,ce,submitted=0,requests=[]');
+suite=suite.replace("addEventListener(t,f){if(id==='chatForm'&&t==='submit')submit=f}","requestSubmit(){submitted++},addEventListener(t,f){if(id==='chatForm'&&t==='submit')submit=f;if(id==='message'&&t==='keydown')key=f;if(id==='message'&&t==='compositionstart')cs=f;if(id==='message'&&t==='compositionend')ce=f}");
+const probes=`const event=(extra={})=>({key:'Enter',keyCode:13,preventDefault(){},...extra});key(event());assert.equal(submitted,1);key(event({shiftKey:true}));assert.equal(submitted,1);cs();key(event());assert.equal(submitted,1);ce();key(event({keyCode:229}));assert.equal(submitted,1);key(event({isComposing:true}));assert.equal(submitted,1);key(event({repeat:true}));assert.equal(submitted,1);el('send').disabled=true;key(event());assert.equal(submitted,1);el('send').disabled=false;el('message').value=' ';key(event());assert.equal(submitted,1);el('message').value='テスト';console.log('PASS Enter/Shift+Enter/IME/229/repeat/disabled/empty');`;
+suite=suite.replace('await submit({preventDefault(){}});',probes+'await submit({preventDefault(){}});');
+eval(suite);

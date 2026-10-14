@@ -88,6 +88,18 @@ final class RadioPlaybackController {
     private void captureAndSpeak(String[] chunks, long[] durations, final int token,
                                  VoiceTransport transport, final Listener listener) {
         AudioRecord recorder = null;
+        if(MeetingRecorderService.active!=null){
+            try {
+                for(int i=0;i<chunks.length&&token==generation;i++){
+                    MeetingRecorderService meeting=MeetingRecorderService.active;if(meeting!=null)meeting.assistantSpeech(durations[i]);
+                    transport.speak(chunks[i]);if(i==0)main.post(()->{if(token==generation)listener.onStarted();});
+                    long until=SystemClock.elapsedRealtime()+durations[i];while(token==generation&&SystemClock.elapsedRealtime()<until)Thread.sleep(30);
+                }
+                synchronized(this){if(token!=generation)return;transport.stop();speaking=false;voice=null;}
+                main.post(()->{if(token==generation)listener.onFinished();});
+            }catch(Exception error){main.post(()->{if(token==generation)listener.onError();});}
+            return;
+        }
         AcousticEchoCanceler echo = null;
         RecognitionNoiseControl noiseControl = null;
         CaptureLease lease = null;

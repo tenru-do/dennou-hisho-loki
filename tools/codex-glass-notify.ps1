@@ -4,12 +4,36 @@
     [string[]]$HookArguments
 )
 . (Join-Path $PSScriptRoot 'secure-bridge.ps1')
+. (Join-Path $PSScriptRoot 'codex-notify-policy.ps1')
 
 
 $ErrorActionPreference = 'SilentlyContinue'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $configPath = Join-Path $scriptDir 'token-codex-notify.local.json'
 $logPath = Join-Path $scriptDir 'codex-notify.log'
+$outboxPath = Join-Path $scriptDir 'codex-notify-outbox.local.json'
+$script:notifyOutbox = @()
+if(Test-Path $outboxPath){try{$script:notifyOutbox=@(Get-Content $outboxPath -Raw -Encoding UTF8|ConvertFrom-Json)}catch{}}
+function Save-NotifyOutbox {
+    $temporary=$outboxPath+'.tmp'
+    [IO.File]::WriteAllText($temporary,(ConvertTo-Json -InputObject @($script:notifyOutbox) -Depth 8),[Text.UTF8Encoding]::new($true))
+    Move-Item -LiteralPath $temporary -Destination $outboxPath -Force
+}
+function Queue-NotifyEnvelope([string]$message){
+    if(!$message){return}
+    try{$data=$message|ConvertFrom-Json;if(@($script:notifyOutbox|Where-Object {$_.id -eq $data.id}).Count){return}
+        $script:notifyOutbox+=@{id=$data.id;issuedAt=$data.issuedAt;message=$message;nextAttempt=0L};Save-NotifyOutbox
+    }catch{}
+}
+function Flush-NotifyOutbox {
+    $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$keep=@()
+    foreach($item in $script:notifyOutbox){
+        if($now-[long]$item.issuedAt -gt 300000 -or [long]$item.issuedAt-$now -gt 30000){continue}
+        if([long]$item.nextAttempt -gt $now){$keep+=$item;continue}
+        if(!(Send-GlassNotification ([string]$item.message))){$item.nextAttempt=$now+15000;$keep+=$item}
+    }
+    $script:notifyOutbox=$keep;Save-NotifyOutbox
+}
 $adbCandidates = @(
     $(if ($env:ANDROID_HOME) { Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe' }),
     $(if ($env:ANDROID_SDK_ROOT) { Join-Path $env:ANDROID_SDK_ROOT 'platform-tools\adb.exe' }),
@@ -171,6 +195,8 @@ function Watch-CodexApprovals {
     while ($true) {
         Get-ChildItem $sessionRoot -Recurse -Filter '*.jsonl' | ForEach-Object {
             $path = $_.FullName
+            $roots=@((Split-Path $scriptDir -Parent));try{$localConfig=Get-Content -Raw -Encoding UTF8 $configPath|ConvertFrom-Json;$roots+=@($localConfig.projectRoots|Where-Object {$_})}catch{}
+            if(!(Test-LokiProjectSession $path $roots)){return}
             if (!$offsets.ContainsKey($path)) { $offsets[$path] = 0L }
             if ($_.Length -lt $offsets[$path]) { $offsets[$path] = 0L }
             if ($_.Length -gt $offsets[$path]) {
@@ -182,16 +208,18 @@ function Watch-CodexApprovals {
                 $reader.Dispose(); $stream.Dispose()
                 $needsAttention = $false
                 $completionMessage = ''
+                $questionMessages = @()
                 foreach ($line in ($newText -split "`r?`n")) {
                     if ([string]::IsNullOrWhiteSpace($line)) { continue }
                     try {
                         $record = $line | ConvertFrom-Json
+                        $questionMessages += @(New-LokiQuestionEnvelopes $record $path)
                         # Desktop tasks do not always invoke the user-level notify hook.
                         # Watch the durable task_complete event as a fallback.  The hook
                         # formats the same text, so the phone's 60-second deduplicator
                         # suppresses a second delivery when both mechanisms do fire.
                         if ($record.type -eq 'event_msg' -and $record.payload.type -eq 'task_complete') {
-                            $completionMessage = Format-CompleteMessage ([string]$record.payload.last_agent_message)
+                            $completionMessage = New-LokiCompletionEnvelope ([string]$record.payload.last_agent_message) $path ([DateTimeOffset]::Parse([string]$record.timestamp))
                             continue
                         }
                         if ($record.type -ne 'response_item' -or $record.payload.type -ne 'custom_tool_call') { continue }
@@ -205,16 +233,16 @@ function Watch-CodexApprovals {
                         }
                     } catch {}
                 }
-                if ($needsAttention) {
-                    $cfg = Get-Content -Raw -Encoding UTF8 $configPath | ConvertFrom-Json
-                    $permissionText = if ($cfg.permissionMessage) { [string]$cfg.permissionMessage } else { 'Permission needed. Check Codex on the PC.' }
-                    Send-GlassNotification $permissionText | Out-Null
-                }
+                # Approval/tool activity is not a completed user task; never read it aloud.
                 if ($completionMessage) {
-                    Send-GlassNotification $completionMessage | Out-Null
+                    Queue-NotifyEnvelope $completionMessage
+                }
+                foreach($questionMessage in $questionMessages){
+                    Queue-NotifyEnvelope $questionMessage
                 }
             }
         }
+        Flush-NotifyOutbox
         Start-Sleep -Seconds 2
     }
 }
@@ -245,4 +273,4 @@ Ensure-ApprovalWatcher
 if (Test-Path $originalHook) {
     & $originalHook 'turn-ended' @HookArguments
 }
-Send-GlassNotification (Get-HookMessage $HookArguments) | Out-Null
+# Completion delivery is owned by the single durable-event watcher, not both hook and watcher.

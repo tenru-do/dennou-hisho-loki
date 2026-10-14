@@ -4,7 +4,7 @@ public final class FullBodyConversationScenesTest {
  static int checks;
  static void check(boolean ok,String name){if(!ok)throw new AssertionError(name);checks++;}
  public static void main(String[]args){
-  boolean[] covered=new boolean[20];
+  boolean[] covered=new boolean[FullBodyDramaticGallery.LABELS.length];
   for(FullBodyConversationScenes.Rule rule:FullBodyConversationScenes.ALL){
    check(!covered[rule.scene],"unique scene");covered[rule.scene]=true;
    String words="私は";for(String[] group:rule.words)words+=group[0]+" ";

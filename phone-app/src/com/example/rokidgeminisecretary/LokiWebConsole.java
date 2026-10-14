@@ -88,7 +88,7 @@ final class LokiWebConsole {
     }
     private static String id(File f){return f.getName().substring(0,f.getName().length()-4);}
     private static byte[] asset(Context context,String name) throws IOException {
-        // Only the three fixed assets selected by the route handler are read.
+        // Only fixed assets selected by the route handler are read.
             try(InputStream in=context.getAssets().open("loki-web/"+name);ByteArrayOutputStream out=new ByteArrayOutputStream()) {
                 byte[] b=new byte[8192];int n;while((n=in.read(b))>0){if(out.size()+n>262144)throw new IOException("web asset too large");out.write(b,0,n);}return out.toByteArray();
             }
@@ -99,6 +99,9 @@ final class LokiWebConsole {
         String method=parts[0], target=parts[1];if(!target.equals("/web")&&!target.startsWith("/web/"))return false;
         try {
             URI uri=new URI(target);String path=uri.getPath();
+            if(method.equals("GET")&&path.equals("/web/icon.png")) {
+                respond(socket,200,"image/png",asset(owner,"icon.png"));return true;
+            }
             if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/style.css"))) {
                 String asset=path.endsWith(".js")?"app.js":path.endsWith(".css")?"style.css":"index.html";
                 respond(socket,200,asset.endsWith(".js")?"text/javascript; charset=utf-8":asset.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8",asset(owner,asset));return true;
@@ -125,6 +128,21 @@ final class LokiWebConsole {
                 for(int i=offset;i<Math.min(all.size(),offset+60);i++){File f=all.get(i);items.put(new JSONObject().put("id",id(f)).put("time",Long.parseLong(id(f).substring(0,13))).put("metadata",RecorderPhotoStore.metadata(f)));}
                 json(socket,200,new JSONObject().put("total",all.size()).put("offset",offset).put("pageSize",60).put("items",items));return true;
             }
+            if(method.equals("GET")&&path.equals("/web/api/meeting-import")){json(socket,200,MeetingMediaImport.list(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-import-begin")){json(socket,200,MeetingMediaImport.begin(owner,new JSONObject(body)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-import-chunk")){json(socket,200,MeetingMediaImport.chunk(owner,new JSONObject(body)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-import-finish")){MeetingMediaImport.finish(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-import-cancel")){MeetingMediaImport.cancel(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/meeting-control")){json(socket,200,MeetingControl.status(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-control")){json(socket,200,MeetingControl.queue(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/meetings")){json(socket,200,new JSONObject().put("items",MeetingAudioStore.list(owner)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/meeting-audio")){
+                File f=MeetingAudioStore.folder(owner,query.getOrDefault("id",""));JSONObject m=MeetingAudioStore.meta(f);int index=Integer.parseInt(query.getOrDefault("part","0"));if(index>=m.getJSONArray("parts").length())throw new IOException("invalid recording part");respond(socket,200,"audio/wav",MeetingAudioStore.audio(f,index));return true;
+            }
+            if(method.equals("GET")&&path.equals("/web/api/meeting-transcript")){
+                File f=MeetingAudioStore.folder(owner,query.getOrDefault("id",""));byte[] text=DeviceSecrets.photos().decrypt(java.nio.file.Files.readAllBytes(new File(f,"transcript.gcm").toPath()));respond(socket,200,"text/plain; charset=utf-8",text);return true;
+            }
+            if(method.equals("POST")&&path.equals("/web/api/meeting-analyze")){MeetingAudioStore.analyze(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
             if(method.equals("GET")&&path.equals("/web/api/photo")) {
                 synchronized(PHOTO_WORK) {
                     File f=photo(owner,query.getOrDefault("id",""));ByteArrayOutputStream out=new ByteArrayOutputStream();
@@ -167,6 +185,7 @@ final class LokiWebConsole {
             }
             json(socket,404,new JSONObject().put("error","この操作はありません"));
         }catch(FileNotFoundException e){json(socket,404,new JSONObject().put("error","写真が見つかりません。一覧を更新してください"));}
+        catch(IOException e){json(socket,409,new JSONObject().put("error",e.getMessage()==null?"保存先または接続を確認してください":e.getMessage()));}
         catch(IllegalArgumentException|JSONException e){json(socket,400,new JSONObject().put("error","入力を確認してください"));}
         catch(Exception e){android.util.Log.w("LokiWebConsole","Browser request failed: "+e.getClass().getSimpleName());json(socket,500,new JSONObject().put("error","処理できませんでした。スマホの状態を確認してください"));}
         return true;
@@ -174,7 +193,7 @@ final class LokiWebConsole {
     private static void json(Socket socket,int status,JSONObject body)throws IOException{respond(socket,status,"application/json; charset=utf-8",body.toString().getBytes(StandardCharsets.UTF_8));}
     private static void respond(Socket socket,int status,String type,byte[] bytes)throws IOException {
         String text=status==200?"OK":status==401?"Unauthorized":status==403?"Forbidden":status==404?"Not Found":status==409?"Conflict":status==400?"Bad Request":"Internal Server Error";
-        String headers="HTTP/1.1 "+status+" "+text+"\r\nContent-Type: "+type+"\r\nContent-Length: "+bytes.length+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'\r\nConnection: close\r\n\r\n";
+        String headers="HTTP/1.1 "+status+" "+text+"\r\nContent-Type: "+type+"\r\nContent-Length: "+bytes.length+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'\r\nConnection: close\r\n\r\n";
         OutputStream out=socket.getOutputStream();out.write(headers.getBytes(StandardCharsets.US_ASCII));out.write(bytes);out.flush();
     }
 }
