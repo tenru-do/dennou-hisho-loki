@@ -17,7 +17,7 @@ PC・タブレットから同じWi-Fiで写真の精査・JPEG保存・削除・
 
 ## APKのダウンロード
 
-公開済みの最新Releaseは [グラスv485のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v485) です。v521のReleaseは下書きで、今回のv551/v199ソース更新に新しいAPK配布は含みません。ソースの機能と公開済みAPKの機能は異なります。
+最新の配布版は [グラスv551・スマホv199のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v551) です。両APK・SHA256チェックサム・検査記録を掲載しています。対象と検査範囲は [v551の公開前検査](docs/releases/glass-v551-security.md) を確認してください。v521のReleaseは以前の下書きのままで、最新版ではありません。
 
 配布用APKは専用署名です。開発署名版には上書きできません。署名変更のためのアンインストールは会話・設定や復号鍵を失う場合があるため、既存利用者は現在のアプリを維持してください。検査範囲と署名は各Releaseの記録を確認してください。
 
