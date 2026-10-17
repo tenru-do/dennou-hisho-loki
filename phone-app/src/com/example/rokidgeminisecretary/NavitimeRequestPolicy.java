@@ -37,6 +37,9 @@ final class NavitimeRequestPolicy {
     static String routeQuery(double lat, double lng, double toLat, double toLng, String departure) {
         return commonQuery(lat, lng, toLat, toLng, departure) + "&shape=true&limit=1";
     }
+    static String choicesQuery(double lat,double lng,double x,double y,String departure) {
+        return commonQuery(lat,lng,x,y,departure)+"&shape=true&limit=3";
+    }
 
     // transport_shape is a shape_transit option, not a route_transit option.
     // no identifies the selected route's summary.no; omitting it selects the first route.

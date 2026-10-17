@@ -10,11 +10,11 @@ final class FullBodySituationEffects {
   float width=Math.max(f[4],f[10]);if((effects&FullBodyDramaticConversationPolicy.CYBER_HIGHLIGHT)!=0)width*=1.3f;if(width<=0){canvas.restoreToCount(saved);return;}
   if((effects&FullBodyDramaticConversationPolicy.SWEAT)!=0){
    float t=(Math.max(0,elapsed)%2800)/2800f;
-   bead(canvas,f[8]+width*.75f,f[9]-width*.6f+t*width*.55f,width*.13f,Math.min(1,Math.min(t*6,(1-t)*5)));
+   int side=f[10]>0?8:2;bead(canvas,f[side]+width*.75f,f[side+1]-width*.6f+t*width*.55f,width*.13f,Math.min(1,Math.min(t*6,(1-t)*5)));
   }
   if((effects&FullBodyDramaticConversationPolicy.TEARS)!=0){
    for(int eye=0;eye<2;eye++){
-    int offset=eye==0?2:8;float t=((Math.max(0,elapsed)+(eye==0?0:750))%2400)/2400f;
+    int offset=eye==0?2:8;if(f[offset+2]<=0||(eye==1&&Math.abs(f[8]-f[2])<width*.4f))continue;float t=((Math.max(0,elapsed)+(eye==0?0:750))%2400)/2400f;
     float x=f[offset]+(eye==0?-1:1)*f[offset+2]*.25f,y=f[offset+1]+width*.15f+t*width*1.3f;
     bead(canvas,x,y,width*.10f,Math.min(1,Math.min(t*8,(1-t)*6)));
    }

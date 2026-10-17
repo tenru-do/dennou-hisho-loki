@@ -4,7 +4,7 @@ import org.json.*;
 
 /** Session-local plan. Route publication and phase advancement are separate transactions. */
 final class MultimodalJourney {
-    enum Phase { FIRST_MILE, TRANSIT_LEG, LAST_MILE }
+    enum Phase { FIRST_MILE, BOARDING, TRANSIT_LEG, LAST_MILE }
     final String destination, accessMode, egressMode;
     final double[] finalPoint;
     volatile Phase phase = Phase.FIRST_MILE;
@@ -16,7 +16,7 @@ final class MultimodalJourney {
     long revision;
     MultimodalJourney(String destination, double[] finalPoint, String access, String egress) {
         this.destination = destination; this.finalPoint = finalPoint.clone();
-        accessMode = "walking".equals(access) ? "walking" : "bicycling";
+        accessMode = "bicycling".equals(access) ? "bicycling" : "walking";
         egressMode = "bicycling".equals(egress) ? "bicycling" : "walking";
     }
     synchronized void stations(JSONObject route) throws Exception {
@@ -52,12 +52,36 @@ final class MultimodalJourney {
     JSONObject fetchPhase(double lat,double lng,RouteRequest request) throws Exception {
         double[] start, end; String travel;
         synchronized(this) {
+            // Keep the selected provider/route through boarding. A fresh station-to-station
+            // Google query can select another train or fail where the original provider works.
+            if ((phase==Phase.BOARDING||phase==Phase.TRANSIT_LEG) && initialTransit!=null) return transitSection(initialTransit);
             start=phase==Phase.FIRST_MILE ? new double[]{lat,lng} : (phase==Phase.TRANSIT_LEG ? boarding : alighting).clone();
             end=target(); travel=mode();
         }
         return request.route(start[0],start[1],end[0],end[1],travel);
     }
-    synchronized double[] target() { return (phase==Phase.FIRST_MILE ? boarding : phase==Phase.TRANSIT_LEG ? alighting : finalPoint).clone(); }
+    static JSONObject transitSection(JSONObject selected) throws Exception {
+        JSONArray all=steps(selected), kept=new JSONArray(); int first=-1,last=-1;
+        for(int i=0;i<all.length();i++)if("TRANSIT".equals(all.getJSONObject(i).optString("travelMode"))){if(first<0)first=i;last=i;}
+        if(first<0)throw new Exception("google_transit_stations_missing");
+        double seconds=0,meters=0;
+        for(int i=first;i<=last;i++){JSONObject s=new JSONObject(all.getJSONObject(i).toString());kept.put(s);
+            double d=TransitJourney.duration(s.optString("staticDuration"));seconds=seconds<0||d<0?-1:seconds+d;
+            d=s.optDouble("distanceMeters",-1);meters=meters<0||d<0?-1:meters+d;}
+        JSONObject route=new JSONObject(selected.toString()).put("legs",new JSONArray().put(new JSONObject().put("steps",kept)))
+            .put("distanceMeters",meters).put("duration",seconds+"s");
+        route.remove("polyline");GooglePolyline.mergeSteps(route);
+        if(!route.has("polyline"))throw new Exception("google_route_geometry_unavailable");
+        return route;
+    }
+    synchronized double[] target() { return (phase==Phase.FIRST_MILE||phase==Phase.BOARDING ? boarding : phase==Phase.TRANSIT_LEG ? alighting : finalPoint).clone(); }
+    /** Being near the selected platform is evidence of arrival, never proof of boarding. */
+    synchronized boolean startAtBoardingStop(double lat,double lng,double accuracy,long sample,long now) {
+        if(phase!=Phase.FIRST_MILE||!validFix(lat,lng,accuracy,sample,now)||boarding==null||distance(lat,lng,boarding)>70)return false;
+        phase=Phase.BOARDING;revision++;advancedAt=now;return true;
+    }
+    private static boolean validFix(double lat,double lng,double accuracy,long sample,long now){return Double.isFinite(lat)&&Double.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180&&Double.isFinite(accuracy)&&accuracy>=0&&accuracy<=70&&sample>0&&now>=sample&&now-sample<=30000;}
+    private static double distance(double lat,double lng,double[] p){double a=Math.sin(Math.toRadians(lat-p[0])/2),b=Math.sin(Math.toRadians(lng-p[1])/2);double h=a*a+Math.cos(Math.toRadians(lat))*Math.cos(Math.toRadians(p[0]))*b*b;return 6371000*2*Math.asin(Math.sqrt(Math.min(1,h)));}
     /** Complete remaining journey for the unchanged Overview formatter, separate from active geometry. */
     synchronized JSONObject overview(JSONObject current, long fetchedAt) throws Exception {
         JSONArray currentSteps=steps(current), combined=new JSONArray();
@@ -92,7 +116,7 @@ final class MultimodalJourney {
             if(instruction!=null)maneuvers.put(new JSONObject().put("instruction",instruction.optString("instructions")));
         }
         JSONObject progress=new JSONObject();
-        if(phase==Phase.TRANSIT_LEG) {
+        if(phase==Phase.BOARDING||phase==Phase.TRANSIT_LEG) {
             TransitJourney journey=TransitJourney.parse(destination,whole,fetchedAt);
             progress=new JourneyProgress(journey).snapshot(Double.NaN,Double.NaN,-1,0,fetchedAt,new JSONArray());
         }
@@ -106,17 +130,18 @@ final class MultimodalJourney {
     }
     synchronized boolean advance(String action) {
         if (!ready) return false;
-        if (phase==Phase.FIRST_MILE && "board".equals(action)) phase=Phase.TRANSIT_LEG;
+        if ((phase==Phase.FIRST_MILE||phase==Phase.BOARDING) && "board".equals(action)) phase=Phase.TRANSIT_LEG;
+        else if(phase==Phase.FIRST_MILE && "arrive".equals(action))phase=Phase.BOARDING;
         else if (phase==Phase.TRANSIT_LEG && "alight".equals(action)) phase=Phase.LAST_MILE;
         else return false;
         ready=false; revision++; advancedAt=System.currentTimeMillis(); return true;
     }
     synchronized String geofence(double lat,double lng,double accuracy,long sample,long now) {
-        if (!ready||phase==Phase.LAST_MILE||!Double.isFinite(accuracy)||accuracy<0||accuracy>70||sample<=advancedAt||sample<=0||now<sample||now-sample>30000) return "";
+        if (!ready||phase==Phase.LAST_MILE||phase==Phase.BOARDING||!validFix(lat,lng,accuracy,sample,now)||sample<=advancedAt) return "";
         double[] p=phase==Phase.FIRST_MILE?boarding:alighting;
         if (p==null||!Double.isFinite(lat)||!Double.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180) return "";
         double a=Math.sin(Math.toRadians(lat-p[0])/2),b=Math.sin(Math.toRadians(lng-p[1])/2);
         double h=a*a+Math.cos(Math.toRadians(lat))*Math.cos(Math.toRadians(p[0]))*b*b;
-        return 6371000*2*Math.asin(Math.sqrt(Math.min(1,h)))<=70 ? (phase==Phase.FIRST_MILE?"board":"alight") : "";
+        return 6371000*2*Math.asin(Math.sqrt(Math.min(1,h)))<=70 ? (phase==Phase.FIRST_MILE?"arrive":"alight") : "";
     }
 }

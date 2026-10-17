@@ -2,14 +2,14 @@ package com.example.rokidkeyboardbridge;
 import android.content.Context;import android.graphics.*;import java.io.*;
 /** One opaque source image is moved toward its neighbour; two silhouettes are never composited. */
 final class FullBodyMorphRenderer {
- static final int COLUMNS=48,ROWS=96;static final String ASSET="loki_transition_flow_v482.bin";
+ static final int COLUMNS=48,ROWS=96;static final String ASSET="loki_transition_flow_v486.bin";
  private volatile boolean loaded;private long[] keys=new long[0];private float[][] fields=new float[0][];
  private final float[] vertices=new float[(COLUMNS+1)*(ROWS+1)*2];
  private long cachedKey=Long.MIN_VALUE;private float[] cachedField;
  synchronized void load(Context context){
   if(loaded)return;
   try(DataInputStream in=new DataInputStream(new BufferedInputStream(context.getAssets().open(ASSET)))){
-   if(in.readInt()!=0x4c4b4631||in.readInt()!=COLUMNS||in.readInt()!=ROWS)throw new IOException("Morph header");int count=in.readInt();if(count<1||count>1000)throw new IOException("Morph count");
+   if(in.readInt()!=0x4c4b4631||in.readInt()!=COLUMNS||in.readInt()!=ROWS)throw new IOException("Morph header");int count=in.readInt();if(count<1||count>2048)throw new IOException("Morph count");
    long[] nextKeys=new long[count];float[][] nextFields=new float[count][];
    for(int i=0;i<count;i++){int from=in.readInt(),to=in.readInt();nextKeys[i]=key(from,to);float[] v=new float[vertices.length];for(int j=0;j<v.length;j++){v[j]=in.readFloat();if(!Float.isFinite(v[j])||Math.abs(v[j])>.3f)throw new IOException("Morph displacement");}nextFields[i]=v;}
    if(in.read()!=-1)throw new IOException("Morph trailing data");keys=nextKeys;fields=nextFields;

@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "reviewed": "2026-10-16",
+  "provider": "gemini-2.5-flash",
+  "verifiedOn": {
+    "glass": 541,
+    "phone": 198
+  },
+  "evidence": "docs/CONVERSATION-RECOVERY.md",
+  "providerVerified": true,
+  "response": "マスター、本日も一日お疲れ様でした。どうぞゆっくりお休みください。",
+  "entries": [
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/LokiPersonaPolicy.java",
+      "sha256": "45e4fcdecf0523238dbb91ad8c86d1e23ce7df42b73900e08773ee422ef98af9"
+    },
+    {
+      "app": "phone",
+      "path": "phone-app/src/com/example/rokidgeminisecretary/LokiPersonaPolicy.java",
+      "sha256": "1667fd91f5c5ab5b1144d17a555bcd6dba6473f10a5e6636e9dee7ba58bcb1d8"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/NormalRequestContextPolicy.java",
+      "sha256": "2b9ec31126e446b6e893310c0de005845eedcb2f99ae47bcc50b5390920803c6"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/FullBodySemanticReaction.java",
+      "sha256": "a20c1421d85f44346a0deec1949cf67ffe4b622ce8c4cc5d74c91d9e6b95d94c"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/FullBodyConversationScenes.java",
+      "sha256": "75eb0e41a3fde0f19451d0adea6380858aac751670af5fc2d2aa68e79fc8edb8"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/FullBodyDramaticGallery.java",
+      "sha256": "11bbe044dc435e69ea0c9a10b0ec67f7bffc44b8bd5c18f551d26719d98ecf8d"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationIntentPolicy.java",
+      "sha256": "8229256202d37f7473379ddddbee2e5186e1cc8d327d6058797d0683a6975ac0"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationReplyPolicy.java",
+      "sha256": "5b07c107e9e985707d81c53c8cf360edfd57705b1a08e86d21850d3614c68f7e"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationFollowupPolicy.java",
+      "sha256": "e73aca07427039ab3903ddc4002030f6868d54c9815269a8ec4b547b21c422d2"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationTaskPolicy.java",
+      "sha256": "ca06040a660be0f62aafabc07ebad133387ad7f779d52974033679d81e6add8e"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
+      "sha256": "23c44ad44362e543e44d0fff4aba9fbc8a893c3ce7b272e1cf591d272cf52b16",
+      "start": "    private String buildGeminiPromptCompact(String str, boolean includeHistory)",
+      "end": "    private JSONObject fetchOptionalImportedMemory("
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
+      "sha256": "3495047907bb0f0315ecadcc8a15bde6d32b3b70b3483200d639d4c43617e66e",
+      "start": "    private String getCustomInstructionsForNormalRequest()",
+      "end": "    private String stripDormantNazokakeInstructions("
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
+      "sha256": "e1a606f95e766f727ce9451ac3b841c6101fb29ca8ca87c7326f32f22265f27a",
+      "start": "    private String requestGemini(String str, String str2, String str3)",
+      "end": "    // Runs on Gemini's worker;"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
+      "sha256": "bb5a1615f04d70df1400dbb70651e31eedc91fe8ab78a55f04b0af51b79db001",
+      "start": "    private void appendGeminiRuntimeContext(JSONObject request, boolean includeReferenceMemory)",
+      "end": "    private String postGeminiJson("
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
+      "sha256": "65cfc47cdda058ad300ede24c3750b1d72d8265542207a01e7b7bc0dab9a796b",
+      "start": "    private String postGeminiJson(",
+      "end": "    private int scheduleDisplayLimit("
+    },
+    {
+      "app": "phone",
+      "path": "phone-app/src/com/example/rokidgeminisecretary/RadioModeManager.java",
+      "sha256": "f30cfc0d6cdd07694829c928f93aa5c7a6567037070e90b531b6549c783ae93a"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationCompletionPolicy.java",
+      "sha256": "03bd3a3615e88055ae74b18d8629da6041407420f456d9429e2b43e7e0a0eb73"
+    }
+  ],
+  "extensions": [
+    {
+      "version": 551,
+      "reviewed": "2026-10-17",
+      "scope": "ConversationCompletionPolicy only; original 541/198 protected entries unchanged",
+      "providerEvidence": "outputs/conversation551/provider-synthetic.txt (3 synthetic conversations; no saved private settings/history/location sent)",
+      "deviceEvidence": "outputs/conversation551/context-native.txt (installed MainActivity isolated fixture)"
+    }
+  ]
+}

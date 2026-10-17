@@ -5,9 +5,13 @@ final class FullBodyConversationScenes {
   final int scene;final String key;final String[][] words;
   Rule(int scene,String key,String[][] words){this.scene=scene;this.key=key;this.words=words;}
   boolean matches(String text){for(String[] group:words)if(!FullBodyDramaticConversationPolicy.has(text,group))return false;return true;}
-  int effects(){return scene>=7?FullBodyCyberMotion.effects(scene):scene>=2?FullBodyDramaticConversationPolicy.SWEAT:0;}
+  int effects(){if(FullBodyAttachedMotion.group(scene)>=0)return FullBodyAttachedMotion.effects(scene);return scene>=7?FullBodyCyberMotion.effects(scene):scene>=2?FullBodyDramaticConversationPolicy.SWEAT:0;}
  }
  static final Rule[] ALL={
+  new Rule(23,"LOW_BRACED",new String[][]{{"低い姿勢","腰を落と"},{"踏ん張","足を開","膝に手"}}),
+  new Rule(20,"CROUCH_STRAIN",new String[][]{{"しゃがみ","しゃがんで","しゃがんだ"},{"息が荒","呼吸が荒","息苦し","負荷に耐"}}),
+  new Rule(21,"SLIP_BALANCE",new String[][]{{"足を滑らせ","滑って転びかけ","尻もちをつきかけ","転倒しかけ"}}),
+  new Rule(22,"OVERHEAD_STRETCH",new String[][]{{"伸びをしています","伸びをして","背伸びをして","ストレッチをして","両腕を上げて伸び"}}),
   new Rule(7,"ERROR_DISMISS",new String[][]{{"エラーウィンドウ","警告ウィンドウ","見えないウィンドウ","エラー画面","警告画面"},{"払","閉じ","消去","押し","消す"}}),
   new Rule(8,"REBOOT_RESIST",new String[][]{{"強制再起動","メモリ過負荷","脳内エラー","頭部の負荷","メモリの過負荷","再起動に抗"}}),
   new Rule(9,"GRAVITY_CROUCH",new String[][]{{"重力増幅","重力エラー","見えない重圧","重力が強"},{"しゃが","膝","低","床","沈み"}}),

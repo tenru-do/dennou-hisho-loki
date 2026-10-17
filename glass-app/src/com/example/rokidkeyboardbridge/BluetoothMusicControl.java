@@ -19,7 +19,19 @@ final class BluetoothMusicControl {
      MediaMetadata metadata=controller.getMetadata();String title=metadata==null?"":metadata.getString(MediaMetadata.METADATA_KEY_TITLE);if(title==null)title="";
      if(state==null||state.getState()==PlaybackState.STATE_NONE||state.getState()==PlaybackState.STATE_ERROR){finish.done(false,"Bluetoothの再生元が見つかりません。","");return;}
      MediaController.TransportControls controls=controller.getTransportControls();long actions=state.getActions();
-     if(command.action.equals("pause")){
+     if(command.action.equals("seek")){
+      if((actions&PlaybackState.ACTION_SEEK_TO)==0){finish.done(false,"再生元が秒数指定の移動に対応していません。",title);return;}
+      long position=state.getPosition();
+      if(position<0){finish.done(false,"再生位置を取得できないため移動できません。",title);return;}
+      if(state.getState()==PlaybackState.STATE_PLAYING&&state.getLastPositionUpdateTime()>0){
+       long age=SystemClock.elapsedRealtime()-state.getLastPositionUpdateTime();
+       if(age<0||age>30000){finish.done(false,"再生位置が古いため移動できません。",title);return;}
+       position+=Math.round(age*state.getPlaybackSpeed());
+      }
+      long duration=metadata==null?0:metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
+      controls.seekTo(MusicSeekPolicy.target(position,command.delta,duration));
+      finish.done(true,command.delta>0?"30秒先への操作を送りました。":"30秒戻す操作を送りました。",title);return;
+     }else if(command.action.equals("pause")){
       if((actions&PlaybackState.ACTION_PAUSE)==0){finish.done(false,"一時停止に対応していません。",title);return;}controls.pause();
      }else {if((actions&PlaybackState.ACTION_PLAY)==0){finish.done(false,"再生に対応していません。",title);return;}controls.play();}
      finish.done(true,"Bluetoothの再生元へ"+(command.action.equals("pause")?"一時停止":"再開")+"の操作を送りました。",title);

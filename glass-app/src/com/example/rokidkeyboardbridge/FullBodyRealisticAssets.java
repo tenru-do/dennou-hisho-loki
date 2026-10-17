@@ -41,7 +41,7 @@ final class FullBodyRealisticAssets {
    try{int[]r=REGIONS[id];BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=sample;options.inMutable=true;
     Bitmap frame=decoder.decodeRegion(new Rect(r[0],r[1],r[2],r[3]),options);
     int strayRows=topStrayRows(id);
-    if(strayRows>0&&frame!=null){Paint clean=new Paint();clean.setColor(Color.BLACK);new Canvas(frame).drawRect(0,0,frame.getWidth(),(strayRows+sample-1)/sample,clean);}
+    if(strayRows>0&&frame!=null){if(!frame.isMutable()){Bitmap editable=frame.copy(Bitmap.Config.ARGB_8888,true);if(editable==null)throw new IllegalStateException("Cannot create editable crop "+id);frame.recycle();frame=editable;}Paint clean=new Paint();clean.setColor(Color.BLACK);new Canvas(frame).drawRect(0,0,frame.getWidth(),(strayRows+sample-1)/sample,clean);}
     return frame;}
    finally{decoder.recycle();}
   }

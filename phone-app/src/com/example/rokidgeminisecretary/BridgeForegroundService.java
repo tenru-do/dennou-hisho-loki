@@ -41,6 +41,8 @@ public final class BridgeForegroundService extends Service {
     public void onCreate() {
         super.onCreate();
         startBridgeForeground();
+        ImageGeneration.recover(this);
+        VideoGeneration.recover(this);
         dailyContext = new DailyContextSync(this);
         hirokidLogMonitor = new HirokidLogMonitor(this);
         radioMode = new RadioModeManager(this);

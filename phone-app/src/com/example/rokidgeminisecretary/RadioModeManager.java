@@ -66,7 +66,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                                 || !"READY".equals(prefs.getString("glass_runtime_state", ""))) return;
                         String key = GeminiCredentialStore.read(context);
                         if (key.isEmpty()) throw new IllegalStateException("Gemini credential unavailable");
-                        if (System.currentTimeMillis() < retryAfter) throw new IllegalStateException("TOPIC API retry cooldown");
+                        if (System.currentTimeMillis() < retryAfter) return;
                         JSONObject observation = null;
                         if (TopicMode.audio(mode) || TopicMode.camera(mode)) {
                             String id = java.util.UUID.randomUUID().toString();
@@ -84,6 +84,10 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                             if (closed || token != generation) return;
                             if (observation == null) throw new java.util.concurrent.TimeoutException("TOPIC observation timeout");
                             if (observation.optString("audio").isEmpty() && observation.optString("image").isEmpty()) {
+                                if(!observation.optString("imageSkipped").isEmpty()){
+                                    analysisError="";retryAfter=System.currentTimeMillis()+30000L;
+                                    Log.i("LokiRadio","TOPIC image deferred: recording priority");return;
+                                }
                                 throw new IllegalStateException("TOPIC observation empty");
                             }
                         }
@@ -91,16 +95,27 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                         String promptContext = contextPrompt();
                         for (int attempt = 0; attempt < 2; attempt++) {
                             if (closed || token != generation) return;
-                            JSONObject candidate = generate(key, promptContext, observation);
+                            JSONObject candidate;
+                            try { candidate = generate(key, promptContext, observation); }
+                            catch (java.io.IOException shapeError) {
+                                String reason=shapeError.getMessage();
+                                if(attempt!=0 || !("invalid topic length".equals(reason)
+                                        || "claim too long".equals(reason) || "incomplete topic".equals(reason))) throw shapeError;
+                                Log.i("LokiRadio","topic shape retry: "+reason);
+                                promptContext += observation != null ? "\n前の出力は形式・長さの検査で不採用でした。同じ添付の音・画像を根拠に本文を180〜350文字にまとめ、coveredPointsは短い事実を1〜3個だけにしてください。" : "\n前の出力は形式・長さの検査で不採用でした。本文を450〜500文字にまとめ、coveredPointsは短い事実を1〜3個だけにしてください。";
+                                continue;
+                            }
                             boolean badTone=!LokiPersonaPolicy.accepts(candidate.getString("message"));
                             candidate.put("message", ColumnSpeechFormatter.format(candidate.getString("message"), continuous));
-                            boolean tooShort = !ColumnSpeechFormatter.accepts(candidate.getString("message"));
+                            boolean tooShort = !TopicResponseLength.accepts(candidate.getString("message"), observation != null);
                             boolean badGranularity = false; // Sentence grouping belongs to the existing glass TTS chunker.
                             boolean duplicate = repeated(candidate);
                             if (!tooShort && !duplicate && !badTone && !badGranularity) { generated = candidate; break; }
                             Log.i("LokiRadio", "topic rejected chars=" + candidate.getString("message").length()
                                     + " short=" + tooShort + " repeated=" + duplicate+" badTone="+badTone + " sentenceCount=" + badGranularity);
-                            promptContext = contextPrompt() + "\n前の案は不採用です。挨拶・日付コールなしでタイトルまたは本文から始め、400〜600文字で歴史的背景、仕組み、実用例、盲点を具体的に説明してください。";
+                            promptContext = contextPrompt() + (observation != null
+                                    ? "\n前の案は不採用です。同じ添付の音・画像を根拠に、新しい角度で自然に反応してください。本文は180〜350文字を目安に、既に話した事実を繰り返さず、ロキの口調を守ってください。"
+                                    : "\n前の案は不採用です。挨拶・日付コールなしでタイトルまたは本文から始め、400〜600文字で歴史的背景、仕組み、実用例、盲点を具体的に説明してください。");
                         }
                         if (generated == null) throw new IllegalStateException("repeated topics");
                         String text = generated.getString("message");
@@ -124,6 +139,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                     } catch (Exception error) {
                         // Never log credentials, context, or API response bodies.
                         analysisError="TOPIC analysis failed: "+error.getClass().getSimpleName();
+                        if(error instanceof java.io.IOException && ("invalid topic length".equals(error.getMessage()) || "claim too long".equals(error.getMessage()) || "incomplete topic".equals(error.getMessage()))) analysisError += " ("+error.getMessage()+" )";
                         DailyContextSync.LOG.failed("TOPIC", error);
                         publishFallback(token, revision, mode, continuous, workTicket, chain);
                         if (token == generation) retryAfter = System.currentTimeMillis() + 30000L;
@@ -382,6 +398,8 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
     }
     private JSONObject generate(String key, String data, JSONObject observation) throws Exception {
         JSONArray inputParts = new JSONArray().put(new JSONObject().put("text", data));
+        if(observation!=null&&"keep_saved_photo".equals(observation.optString("imageSource")))
+            inputParts.put(new JSONObject().put("text","この画像はKEEPで直近に撮影・保存された写真の縮小版です。ライブ映像ではありません。撮影日時（Unixミリ秒）："+observation.optLong("imageCapturedAt")+"。現在も同じ状況が続いているとは断定しないでください。"));
         if (observation != null && observation.optBoolean("audioDuringAssistantSpeech")) inputParts.put(new JSONObject().put("text",
                 "この音声はロキの発話中に取得した周囲音です。recent_topicsにあるロキ自身の発話を周囲の人の会話や新しい事実として扱わないでください。独立した周囲音が不明なら、その音について捏造せず新しい雑学へ話を広げてください。"));
         if (observation != null) {
@@ -392,7 +410,8 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
             }
         }
         String length = "本文は日本語400〜600文字。歴史的起源・背景、科学的・技術的メカニズム、現代社会の実用例、意外な盲点を具体的に含める。挨拶と日付コールを入れずタイトルまたは本文から始める。文の数は内容に合わせ、2〜3文の発話チャンク分割はグラス側に任せる。";
-        String instruction = LokiPersonaPolicy.INSTRUCTION + length
+        if (observation != null) length = "本文は日本語180〜350文字を目安にする。最初に添付の音・画像から確実に分かることに自然にひと言反応し、それに関連した身近な知識を1つ添える。画像や音が不明瞭なら断定しない。挨拶や日付コールは不要。短い反応を無理に長文コラムへ引き延ばさない。";
+        String instruction = LokiPersonaPolicy.INSTRUCTION + LokiSelfProfile.summary(context) + length
                 + "身近な話題から関連する雑学、なぜそうなるか、歴史や意外なつながりへ自然に広げる。毎回あいさつせず、質問ばかりで終わらず、相手の返事がなくても話を進める。"
                 + "recent_topicsとalready_coveredの説明・事実は言い換えても繰り返さない。次の角度のヒントを参考に分野を変え、新しい事実を1〜2個含める。topicKeyは広い分野名ではなく今回の具体的な主題、coveredPointsは説明した事実の短い要約。"
                 + "coveredPointsには新しい雑学・知識だけを入れ、見えている部屋の物や今の天気などの実況は入れない。以前と関連する分野でも、新しい具体的な事実や角度に話を広げるのはよい。"
@@ -407,7 +426,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
         JSONObject request = new JSONObject().put("systemInstruction", new JSONObject().put("parts",
                 new JSONArray().put(new JSONObject().put("text", instruction + "\n" + LokiPersonaPolicy.IMPORTANT))))
                 .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", inputParts)))
-                .put("generationConfig", new JSONObject().put("maxOutputTokens", 1300).put("temperature", 0.4)
+                .put("generationConfig", new JSONObject().put("maxOutputTokens", 2200).put("temperature", 0.4)
                         .put("responseMimeType", "application/json").put("responseSchema", schema));
         HttpURLConnection connection = (HttpURLConnection) new URL(
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent").openConnection();
@@ -438,7 +457,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                 if (!parts.getJSONObject(i).optBoolean("thought")) text.append(parts.getJSONObject(i).optString("text"));
             JSONObject result = new JSONObject(text.toString().trim());
             String message = result.getString("message").trim();
-            int maximum = 600;
+            int maximum = 2000; // The 400–600-character delivery gate below retries an overlong draft.
             JSONArray claims = result.getJSONArray("coveredPoints");
             if (message.isEmpty() || message.length() > maximum || result.getString("topicKey").isEmpty()
                     || result.getString("topicKey").length() > 120 || claims.length() < 1 || claims.length() > 6)

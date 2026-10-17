@@ -21,23 +21,8 @@ final class FullBodyScalePolicy {
  static float scale(int pose,int bitmapWidth,int bitmapHeight,int width,int height){
   float[] f=FullBodyRealisticFeatures.ALL[pose];
   if(FullBodyCyberMotion.groupForPose(pose)>=0)return FullBodyCyberMotion.scale(pose,bitmapWidth,bitmapHeight,width,height);
-  if(pose>=359&&pose<=364){
-   float[] ref=FullBodyRealisticFeatures.ALL[168];float target=ref[1]*scale(168,(int)ref[0],(int)ref[1],width,height);
-   float visible=FullBodyAnchorPolicy.MAX[pose]-FullBodyAnchorPolicy.MIN[pose];return Math.min(target/f[1],Math.max(1,width-2)/visible)*f[0]/bitmapWidth;
-  }
-  if(pose>=305&&pose<FullBodyRealisticFeatures.ALL.length){
-   // Transition art has the same standing stance as its endpoints. Match body
-   // height, rather than mixing incompatible face-landmark measurements.
-   float visibleWidth=(FullBodyAnchorPolicy.MAX[pose]-FullBodyAnchorPolicy.MIN[pose])*bitmapWidth/f[0];
-   return Math.min(height/(float)bitmapHeight,Math.max(1,width-2)/Math.max(1,visibleWidth));
-  }
-  if(pose>=293&&pose<=304){
-   int first=pose<299?293:299;
-   float raw=commonSpan(width,height)/HEAD_SPAN[first];
-   for(int i=first;i<first+6;i++)raw=Math.min(raw,Math.min(Math.max(1,width-6)/FullBodyRealisticFeatures.ALL[i][0],height/FullBodyRealisticFeatures.ALL[i][1]));
-   return raw*f[0]/bitmapWidth;
-  }
+  if(pose>=293&&pose<=364)return FullBodyFrameScalePolicy.source(pose,width,height)*f[0]/bitmapWidth;
   float normalizedSpan=HEAD_SPAN[pose]*bitmapWidth/f[0];
-  return Math.min(commonSpan(width,height)/normalizedSpan,Math.min((pose>=288?Math.max(1,width-6):width)/(float)bitmapWidth,height/(float)bitmapHeight));
+  return Math.min(commonSpan(width,height)/normalizedSpan,Math.min(Math.max(1,width-6)/((FullBodyAnchorPolicy.MAX[pose]-FullBodyAnchorPolicy.MIN[pose])*bitmapWidth/f[0]),height/f[1]*f[0]/bitmapWidth));
  }
 }

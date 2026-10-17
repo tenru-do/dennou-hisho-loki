@@ -5,6 +5,9 @@ if($Release){
     if(!$KeyStorePath -or !$KeyAlias -or !(Test-Path -LiteralPath $KeyStorePath) -or !$env:LOKI_RELEASE_STORE_PASSWORD -or !$env:LOKI_RELEASE_KEY_PASSWORD){throw 'Release requires an explicit keystore, alias and LOKI_RELEASE_STORE_PASSWORD/LOKI_RELEASE_KEY_PASSWORD environment variables'}
 }
 $root=Split-Path $PSScriptRoot -Parent
+if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/Assert-ConversationPromptBaseline.ps1" -App $App}
+if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/generate-loki-self-profile.ps1"}
+if($App -eq 'glass'){& "$PSScriptRoot/Test-ConversationCompletion.ps1"}
 $sdk=Join-Path $env:LOCALAPPDATA 'Android/Sdk'
 $env:JAVA_HOME='C:/Program Files/Android/Android Studio/jbr'
 $env:PATH="$env:JAVA_HOME/bin;$env:PATH"

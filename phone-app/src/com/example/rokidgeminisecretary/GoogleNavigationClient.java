@@ -198,6 +198,9 @@ final class GoogleNavigationClient {
     static double[] destinationCoordinates(Context c,String destination)throws Exception {JSONObject p=destinationWaypoint(c,destination).getJSONObject("location").getJSONObject("latLng");return new double[]{p.getDouble("latitude"),p.getDouble("longitude")};}
     static JSONObject routeToPoint(Context c,double lat,double lng,double toLat,double toLng,String mode)throws Exception {String label="loki-segment:"+toLat+","+toLng;selectedDestinations.put(label,new double[]{toLat,toLng});try{return route(c,lat,lng,label,mode);}finally{selectedDestinations.remove(label);}}
     static JSONObject route(Context c, double lat, double lng, String destination, String mode) throws Exception {
+        return routes(c,lat,lng,destination,mode,false).getJSONObject(0);
+    }
+    static JSONArray routes(Context c,double lat,double lng,String destination,String mode,boolean alternatives)throws Exception {
         reserve(c, "routes", 50, 3);
         String travel = RoutesRequestPolicy.mode(mode);
         JSONObject point = new JSONObject().put("latitude", lat).put("longitude", lng);
@@ -206,7 +209,7 @@ final class GoogleNavigationClient {
                 .put("languageCode", "ja-JP").put("units", "METRIC");
         String fields = RoutesRequestPolicy.mask(travel);
         if ("TRANSIT".equals(travel)) {
-            body.put("computeAlternativeRoutes", false);
+            body.put("computeAlternativeRoutes", alternatives);
             body.put("departureTime", java.time.Instant.now().toString());
             // Omit transitPreferences: no mode filter or walking/transfer preference.
         }
@@ -218,13 +221,15 @@ final class GoogleNavigationClient {
         JSONArray routes = root.optJSONArray("routes");
         android.util.Log.d("LokiRoutesApi", "response routes=" + (routes == null ? "missing" : routes.length()));
         if (routes == null || routes.length() == 0) throw new Exception("google_route_not_found");
-        JSONObject route = routes.getJSONObject(0);
+        for(int i=0;i<routes.length();i++) {
+        JSONObject route = routes.getJSONObject(i);
         if ("TRANSIT".equals(travel)) {
             try { WalkingAccessGeometry.repairLeading(route,(a,b,x,y,m)->routeToPoint(c,a,b,x,y,m)); }
             catch(Exception unavailable) { android.util.Log.w("LokiTransit","walking access geometry unavailable; retaining marked fallback"); }
             GooglePolyline.mergeStepsOrOverview(route);
         }
-        return route;
+        }
+        return routes;
     }
     private static synchronized String session(Context c) throws Exception {
         if (session.length() > 0 && System.currentTimeMillis() < sessionExpires - 60000) return session;

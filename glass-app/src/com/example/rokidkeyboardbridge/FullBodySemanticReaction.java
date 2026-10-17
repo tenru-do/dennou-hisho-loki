@@ -7,12 +7,15 @@ final class FullBodySemanticReaction {
   "場面動作も選べます："+FullBodyConversationScenes.guidance()+
   "場面動作はロキ自身がその状態にあるか、ユーザーがロキの演技・ポーズを明示的に依頼した場合だけ指定してください。症状の相談、第三者、ニュース、説明、仮定、否定からロキの不調を作らないでください。該当時は上記の動作欄へSCENE_名を入れます。落ち着いた・回復した状態はRECOVERY:1:REST。場面が続く相づちには同じ場面を保持し、説明や笑顔へ突然戻さないでください。本文は自然な返答にし、選択のために『私は』などの定型文を付け足す必要はありません。BREATH,PANTも呼吸状態の感情として使えます。";
  static final class Reaction {final FullBodySpeechStance.Cue cue;final String action;Reaction(FullBodySpeechStance.Cue cue,String action){this.cue=cue;this.action=action;}}
- private static final Pattern TAG=Pattern.compile("\\[\\[LOKI_REACTION:([A-Z]+):([0-3]):(DEFAULT|REST|PROTECT|STARTLE|THINK|EXPLAIN|SMILE|SCENE_[A-Z_]+)\\]\\]");
+ private static final Pattern TAG=Pattern.compile("\\[\\[(?:LOKI_REACTION:)?([A-Z]+):([0-3]):(DEFAULT|REST|PROTECT|STARTLE|THINK|EXPLAIN|SMILE|SCENE_[A-Z_]+)\\]\\]");
  private static final LinkedHashMap<String,Reaction> recent=new LinkedHashMap<>();
  static synchronized String decode(String raw){
+  if(raw==null)return "";
   Matcher matcher=TAG.matcher(raw);Reaction reaction=null;
   while(matcher.find())try{if(matcher.group(3).startsWith("SCENE_")&&FullBodyConversationScenes.action(matcher.group(3))==null)continue;reaction=new Reaction(new FullBodySpeechStance.Cue(FullBodyPoseCatalog.Kind.valueOf(matcher.group(1)),Integer.parseInt(matcher.group(2))),matcher.group(3));}catch(IllegalArgumentException ignored){}
-  String text=raw.replaceAll("\\[\\[LOKI_REACTION:[^\\r\\n]*?\\]\\]", "").replaceAll("\\[\\[LOKI_REACTION:[^\\r\\n]*$", "").trim();
+  String prefix="(?:LOKI_REACTION:|(?:NEUTRAL|LISTEN|EXPLAIN|THINK|JOY|CONFIDENT|ANGER|SAD|CRY|SURPRISE|SHY|WORRY|REFUSE|TIRED|RECOVERY|STRAIN|BREATH|PANT):)";
+  String text=raw.replaceAll("\\[\\["+prefix+"[^\\r\\n]*?\\]\\]", "").replaceAll("\\[\\["+prefix+"[^\\r\\n]*$", "").trim();
+  text=ConversationReplyPolicy.clean(text);
   if(reaction==null&&!text.isEmpty())recent.remove(text);
   if(reaction!=null&&!text.isEmpty()){recent.put(text,reaction);while(recent.size()>32)recent.remove(recent.keySet().iterator().next());}
   return text;

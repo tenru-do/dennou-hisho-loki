@@ -19,7 +19,7 @@ public final class MascotTtsTextFilter {
         return value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&apos;");
     }
     public static Prepared prepare(String raw) {
-        String text=LokiVocalizationPolicy.normalize(raw);
+        String text=LokiVocalizationPolicy.normalize(SpeechCitationPolicy.forSpeech(raw));
         // Incoming markup is literal text, never trusted SSML. Discard illegal XML 1.0 controls.
         text=text.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]","");
         Matcher matcher=TOKENS.matcher(text);

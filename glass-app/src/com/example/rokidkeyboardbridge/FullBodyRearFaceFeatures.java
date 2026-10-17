@@ -1,0 +1,3 @@
+package com.example.rokidkeyboardbridge;
+/** Manually checked visible profile features; far eye is occluded. */
+final class FullBodyRearFaceFeatures { static final float[][] ALL={{341f,720f,219f,79f,11f,20f,3f,1f,0f,0f,0f,0f,0f,0f,216f,104f,8f,10f,1.2f},{341f,720f,208f,79f,11f,20f,3f,1f,0f,0f,0f,0f,0f,0f,205f,104f,8f,10f,1.2f},{342f,720f,216f,79f,11f,20f,3f,1f,0f,0f,0f,0f,0f,0f,213f,104f,8f,10f,1.2f},{341f,816f,218f,92f,11f,20f,3f,1f,0f,0f,0f,0f,0f,0f,215f,117f,8f,10f,1.2f},{341f,816f,207f,92f,11f,20f,3f,1f,0f,0f,0f,0f,0f,0f,204f,117f,8f,10f,1.2f},{342f,816f,214f,92f,11f,20f,3f,1f,0f,0f,0f,0f,0f,0f,211f,117f,8f,10f,1.2f}};}

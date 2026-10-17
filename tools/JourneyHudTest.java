@@ -35,6 +35,11 @@ public class JourneyHudTest {
         check(JourneyHud.apply(input,true)==input,"SDK untouched");
         check(JourneyHud.apply(new JSONObject().put("instruction","legacy"),false).getString("instruction").equals("legacy"),"legacy untouched");
         input.remove("source"); j.remove("currentLeg");
+        j.put("phase","TRANSIT_LEG");input.put("routeDestination","降車駅");
+        check(JourneyHud.apply(input,false).getString("routeDestination").equals("目的地"),"final facility is not overwritten by intermediate station");
+        j.put("waitingToBoard",true);
+        check(JourneyHud.apply(input,false).getString("instruction").contains("乗車待ち"),"near platform does not claim boarding");
+        j.remove("waitingToBoard");
         for (String mode : new String[]{"walking","bicycling","WALK","BICYCLE","transit","TRANSIT"}) {
             j.put("requestedMode",mode).put("effectiveMode","walking");
             JSONObject waiting=JourneyHud.apply(input,false);

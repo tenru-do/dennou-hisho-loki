@@ -53,7 +53,7 @@ final class JourneyProgress {
             if ("TRANSIT".equals(next.travelMode)) transitStops.put(new JSONObject()
                     .put("departureStop", next.departureStop).put("arrivalStop", next.arrivalStop)
                     .put("departureTime", next.departureTime).put("arrivalTime", next.arrivalTime)
-                    .put("lineName", next.lineName));
+                    .put("lineName", next.lineName).put("stopCount",next.stopCount).put("durationSeconds",next.durationSeconds));
         }
         out.put("transitStops", transitStops);
         long finalArrival = -1;

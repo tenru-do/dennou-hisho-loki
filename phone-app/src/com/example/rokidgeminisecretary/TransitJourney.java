@@ -37,8 +37,8 @@ final class TransitJourney {
             JSONObject stops = details == null ? null : details.optJSONObject("stopDetails");
             departureStop = stopName(stops, "departureStop");
             arrivalStop = stopName(stops, "arrivalStop");
-            departureTime = stops == null ? "" : stops.optString("departureTime", "");
-            arrivalTime = stops == null ? "" : stops.optString("arrivalTime", "");
+            departureTime = stops == null ? "" : normalizedTime(stops.optString("departureTime", ""));
+            arrivalTime = stops == null ? "" : normalizedTime(stops.optString("arrivalTime", ""));
             JSONObject line = details == null ? null : details.optJSONObject("transitLine");
             String name = line == null ? "" : line.optString("name", "");
             lineName = name.isEmpty() && line != null ? line.optString("nameShort", "公共交通") : name;
@@ -53,6 +53,11 @@ final class TransitJourney {
             double seconds = Double.parseDouble(value.replace("s", ""));
             return Double.isFinite(seconds) && seconds >= 0 ? seconds : -1;
         } catch (Exception absent) { return -1; }
+    }
+    static String normalizedTime(String value) {
+        try{return java.time.Instant.parse(value).toString();}catch(Exception ignored){}
+        try{return java.time.OffsetDateTime.parse(value).toInstant().toString();}catch(Exception ignored){}
+        try{return java.time.LocalDateTime.parse(value).atZone(java.time.ZoneId.of("Asia/Tokyo")).toInstant().toString();}catch(Exception ignored){return "";}
     }
     private TransitJourney(String destination, String geometry, List<Leg> legs, long now) {
         id = UUID.randomUUID().toString(); finalDestination = destination;

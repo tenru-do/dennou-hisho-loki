@@ -28,6 +28,7 @@ public final class MailNotificationService extends NotificationListenerService {
     private static HealthItem latestHealth;
     private static TransitItem latestTransit;
     private static volatile Notification latestMapsNotification;
+    private static volatile boolean listenerConnected;
 
     @Override
     public void onCreate() {
@@ -37,6 +38,7 @@ public final class MailNotificationService extends NotificationListenerService {
 
     @Override
     public void onListenerConnected() {
+        listenerConnected=true;
         StatusBarNotification[] notifications = getActiveNotifications();
         if (notifications == null) return;
         for (StatusBarNotification notification : notifications) {
@@ -48,6 +50,13 @@ public final class MailNotificationService extends NotificationListenerService {
     public void onNotificationPosted(StatusBarNotification notification) {
         collect(notification);
     }
+
+    @Override public void onListenerDisconnected() {
+        listenerConnected=false;
+        super.onListenerDisconnected();
+    }
+
+    static boolean navigationListenerConnected() { return listenerConnected; }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification notification) {

@@ -15,7 +15,7 @@ final class FullBodyLivingPosePolicy {
   float shoulder=(float)Math.sin(t*2*Math.PI/6100);
   float elbow=(float)Math.sin((t-430)*2*Math.PI/5300);
   float shift=(float)Math.sin(t*2*Math.PI/9700);
-  float begin=Math.max(.08f,face+.008f);
+  float begin=Math.max(.08f,face+.065f);
   float gain=kind==2?1.55f:kind==1?1.7f:kind==3?1.5f:1;
   for(int row=0;row<=FullBodyBreathPolicy.ROWS;row++){
    float y=row/(float)FullBodyBreathPolicy.ROWS;
