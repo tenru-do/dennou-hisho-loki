@@ -43,6 +43,31 @@ final class NavitimeNavigationClient {
         return requestJson(c,"route_transit",NavitimeRequestPolicy.routeQuery(lat,lng,toLat,toLng,departure));
     }
     interface AccessListener { void ready(android.location.Address station,JSONObject route,String mode) throws Exception; }
+    static JSONArray choices(Context c,double lat,double lng,String destination)throws Exception {
+        double[] target=GoogleNavigationClient.destinationCoordinates(c,destination);
+        String departure=c.getSharedPreferences("loki_navitime_secure",0).getString("departure","");
+        long now=System.currentTimeMillis();
+        if(!departure.isEmpty()){
+            try{now=java.time.LocalDateTime.parse(departure).atZone(java.time.ZoneId.of("Asia/Tokyo")).toInstant().toEpochMilli();}
+            catch(Exception invalid){throw new Exception("navitime_invalid_departure");}
+            if(now<System.currentTimeMillis()-60000)throw new Exception("navitime_departure_past");
+        }
+        String time=NavitimeRequestPolicy.departureTime(now);
+        JSONObject raw=requestJson(c,"route_transit",NavitimeRequestPolicy.choicesQuery(lat,lng,target[0],target[1],time));
+        JSONArray items=raw.optJSONArray("items"),out=new JSONArray();
+        if(items==null||items.length()==0)throw new Exception("navitime_route_not_found");
+        for(int i=0;i<Math.min(3,items.length());i++){
+            JSONObject one=new JSONObject().put("items",new JSONArray().put(items.getJSONObject(i))),shape=null;
+            if(NavitimeRouteAdapter.needsTransportGeometry(one)){
+                JSONObject summary=items.getJSONObject(i).optJSONObject("summary");
+                try{shape=requestJson(c,"shape_transit",NavitimeRequestPolicy.shapeQuery(lat,lng,target[0],target[1],time,summary==null?"":summary.optString("no")));}
+                catch(Exception unavailable){ /* Adapter marks missing provider geometry as estimated. */ }
+            }
+            JSONObject route=NavitimeRouteAdapter.convert(one,shape,(a,b,x,y,m)->GoogleNavigationClient.routeToPoint(c,a,b,x,y,m));
+            route.put("lokiTimetableBased",false);out.put(route);
+        }
+        return out;
+    }
     private static String url(String value)throws Exception{return URLEncoder.encode(value,"UTF-8");}
     static JSONObject route(Context c,double lat,double lng,String destination)throws Exception {
         return route(c,lat,lng,destination,null);
@@ -58,15 +83,6 @@ final class NavitimeNavigationClient {
             catch(Exception invalid){throw new Exception("navitime_invalid_departure");}
             if(start<System.currentTimeMillis()-60000)throw new Exception("navitime_departure_past");
         }
-        final double originLat=lat,originLng=lng;
-        String access=p.getString("access_mode","walking");JSONObject accessRoute=null;
-        if(!"walking".equals(access)) {
-            android.location.Address station=GoogleNavigationClient.nearestStation(c,lat,lng);
-            accessRoute=GoogleNavigationClient.routeToPoint(c,lat,lng,station.getLatitude(),station.getLongitude(),access);
-            if(listener!=null)listener.ready(station,accessRoute,access);
-            start+=(long)(TransitJourney.duration(accessRoute.optString("duration"))*1000);
-            lat=station.getLatitude();lng=station.getLongitude();
-        }
         String time=NavitimeRequestPolicy.departureTime(start);
         JSONObject route;
         try {
@@ -81,22 +97,7 @@ final class NavitimeNavigationClient {
             }
             route=NavitimeRouteAdapter.convert(raw,shape,(a,b,x,y,mode)->GoogleNavigationClient.routeToPoint(c,a,b,x,y,mode));
         } catch(Exception failure) {
-            // Keep a valid road leg even when the onward transit request failed. It is
-            // explicitly marked as an automatically selected station candidate in the HUD.
-            if(listener!=null&&accessRoute==null)try {
-                android.location.Address station=GoogleNavigationClient.nearestStation(c,originLat,originLng);
-                JSONObject road=GoogleNavigationClient.routeToPoint(c,originLat,originLng,station.getLatitude(),station.getLongitude(),access);
-                listener.ready(station,road,access);
-            }catch(Exception unavailable){ /* The original transit error owns the outcome. */ }
             throw failure;
-        }
-        if(accessRoute!=null) {
-            JSONArray all=new JSONArray();JSONArray accessLegs=accessRoute.getJSONArray("legs");
-            for(int i=0;i<accessLegs.length();i++){JSONArray steps=accessLegs.getJSONObject(i).getJSONArray("steps");for(int j=0;j<steps.length();j++)all.put(steps.getJSONObject(j));}
-            JSONArray steps=route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps");for(int i=0;i<steps.length();i++)all.put(steps.getJSONObject(i));
-            route.put("legs",new JSONArray().put(new JSONObject().put("steps",all)));
-            route.put("duration",(TransitJourney.duration(route.optString("duration"))+TransitJourney.duration(accessRoute.optString("duration")))+"s");
-            route.put("distanceMeters",route.optDouble("distanceMeters",0)+accessRoute.optDouble("distanceMeters",0));GooglePolyline.mergeSteps(route);
         }
         route.put("lokiTimetableBased",false); // API-market default uses average rail travel times.
         return route;

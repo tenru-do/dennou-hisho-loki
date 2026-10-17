@@ -94,6 +94,12 @@ final class NavigationChoiceDialog {
             for(int i=0;i<g.getChildCount();i++)blackContainers(g.getChildAt(i));}
     }
     static AlertDialog show(Activity activity,String title,String[] labels,int current,DialogInterface.OnClickListener action){
+        return show(activity,title,labels,current,action,false);
+    }
+    static AlertDialog showRoutes(Activity activity,String title,String[] labels,DialogInterface.OnClickListener action){
+        return show(activity,title,labels,-1,action,true);
+    }
+    private static AlertDialog show(Activity activity,String title,String[] labels,int current,DialogInterface.OnClickListener action,boolean wrap){
         int theme=activity.getResources().getIdentifier("NavigationDialogTheme","style",activity.getPackageName());
         AlertDialog dialog=new AlertDialog.Builder(activity,theme).create();
         Context context=dialog.getContext();
@@ -110,7 +116,8 @@ final class NavigationChoiceDialog {
             b.setTextSize(16);b.setAllCaps(false);b.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);b.setPadding(dp(context,8),0,dp(context,8),0);
             b.setMinHeight(0);b.setMinimumHeight(0);b.setBackgroundTintList(null);b.setStateListAnimator(null);b.setBackground(background(context,i==current));
             enableSelection(b);b.setOnClickListener(v->{dialog.dismiss();action.onClick(dialog,index);});
-            choices.addView(b,new LinearLayout.LayoutParams(-1,dp(context,48)));buttons[i]=b;
+            if(wrap){b.setPadding(dp(context,8),dp(context,6),dp(context,8),dp(context,6));b.setMinHeight(dp(context,48));b.setSingleLine(false);}
+            choices.addView(b,new LinearLayout.LayoutParams(-1,wrap?-2:dp(context,48)));buttons[i]=b;
         }
         Button close=new Button(context);close.setText("閉じる");close.setTextColor(Color.WHITE);close.setTextSize(16);close.setAllCaps(false);
         close.setMinHeight(0);close.setMinimumHeight(0);close.setBackgroundTintList(null);close.setStateListAnimator(null);close.setBackground(background(context,false));close.setOnClickListener(v->dialog.dismiss());

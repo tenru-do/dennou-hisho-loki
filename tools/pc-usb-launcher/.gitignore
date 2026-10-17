@@ -1,0 +1,4 @@
+*.exe
+*.local.json
+*.local.der
+private-browser-profile/

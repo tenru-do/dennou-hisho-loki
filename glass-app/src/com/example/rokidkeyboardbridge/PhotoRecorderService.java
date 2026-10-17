@@ -8,6 +8,24 @@ public final class PhotoRecorderService extends Service {
  static volatile PhotoRecorderService active; static volatile String status="";
  private volatile boolean stopped; private Thread worker; private PhotoArchive archive;
  private int interval=5000;private PowerManager.WakeLock wake;
+ private final java.util.concurrent.locks.ReentrantLock imageWork=new java.util.concurrent.locks.ReentrantLock(true);
+ private volatile boolean captureWaiting;private File latestPhoto;private long latestPhotoAt,latestPhotoWall,lastTopicUse;
+ static final class TopicPhoto {final byte[] jpeg;final long capturedAt;TopicPhoto(byte[] jpeg,long at){this.jpeg=jpeg;capturedAt=at;}}
+ TopicPhoto topicPhoto(java.util.function.BooleanSupplier cancelled)throws Exception {
+  if(stopped||active!=this||captureWaiting||!imageWork.tryLock())return null;
+  try {
+   if(stopped||active!=this||cancelled.getAsBoolean()||latestPhoto==null)return null;
+   android.app.ActivityManager.MemoryInfo info=new android.app.ActivityManager.MemoryInfo();
+   ((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(info);
+   Runtime runtime=Runtime.getRuntime();long free=runtime.maxMemory()-(runtime.totalMemory()-runtime.freeMemory()),now=SystemClock.elapsedRealtime();
+   if(!KeepTopicImagePolicy.canReuse(now,latestPhotoAt,lastTopicUse,latestPhoto.length(),free,info.lowMemory,captureWaiting))return null;
+   byte[] source=archive.read(latestPhoto);if(cancelled.getAsBoolean())return null;
+   byte[] small=ImageQuestionBitmap.normalize(source,640,250000);
+   if(stopped||active!=this||cancelled.getAsBoolean())return null;
+   lastTopicUse=SystemClock.elapsedRealtime();return new TopicPhoto(small,latestPhotoWall);
+  }catch(OutOfMemoryError pressure){return null;
+  }finally{imageWork.unlock();}
+ }
  public IBinder onBind(Intent intent){return null;}
  public void onCreate(){super.onCreate();
   try{archive=PhotoArchiveStore.get(this);}
@@ -40,6 +58,9 @@ public final class PhotoRecorderService extends Service {
    // Other local camera features take priority; missed slots are never queued.
    if(CaptureLease.CAMERA.availablePermits()==0){status="カメラ使用中・撮影待ち";continue;}
    if(MeetingRecorderService.active!=null&&!MeetingRecorderService.active.reserveCamera()){status="会議録音優先・撮影待機";continue;}
+   captureWaiting=true;try{imageWork.lockInterruptibly();}finally{captureWaiting=false;}
+   try {
+   if(stopped)break;
    long captureStarted=SystemClock.elapsedRealtime();byte[] jpeg;MainActivity host=MainActivity.recorderHost.get();
    RecorderPhotoLocation.refresh(host);
    try(AutoCloseable pause=host!=null&&!host.isDestroyed()?host.pauseMascotForCamera():()->{}){
@@ -47,7 +68,9 @@ public final class PhotoRecorderService extends Service {
    }
    if(stopped)break;long captureMs=SystemClock.elapsedRealtime()-captureStarted;long saveStarted=SystemClock.elapsedRealtime();long capturedAt=System.currentTimeMillis();java.io.File saved=archive.save(jpeg,capturedAt);archive.metadata(saved,RecorderPhotoLocation.snapshot(capturedAt));failures=0;android.util.Log.i("LokiRecorderTiming","capture_ms="+captureMs+" save_ms="+(SystemClock.elapsedRealtime()-saveStarted)+" interval_ms="+interval);
    if(!stopped){MainActivity feedbackHost=MainActivity.recorderHost.get();if(feedbackHost!=null)feedbackHost.onKeepPhotoSaved();}
+   latestPhoto=saved;latestPhotoAt=SystemClock.elapsedRealtime();latestPhotoWall=capturedAt;
    long[] stats=archive.stats();status="REC "+stats[0]+"枚 / "+String.format(java.util.Locale.US,"%.2fGB",stats[1]/1e9)+" / 保護"+stats[2]+"枚";
+   }finally{imageWork.unlock();}
   }catch(InterruptedException e){if(stopped)break;status="カメラ使用中・撮影待ち";}
    catch(IOException e){status=e.getMessage();stopSelf();break;}
    catch(Exception e){status="撮影失敗（"+(++failures)+"）："+e.getClass().getSimpleName();if(failures>=5){stopSelf();break;}}

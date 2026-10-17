@@ -36,8 +36,7 @@ final class JourneyHud {
         JSONObject leg = journey.optJSONObject("currentLeg");
         JSONArray selected = routeFor(journey, overview);
         out.put("route", selected).put("routeReady", selected.length() >= 2)
-                .put("routeDestination", journey.optString("phase").isEmpty()
-                        ? journey.optString("finalDestination") : input.optString("routeDestination"));
+                .put("routeDestination", journey.optString("finalDestination",input.optString("routeDestination")));
         JSONArray planned = journey.optJSONArray("transitStops");
         if (planned != null && planned.length() > 0) {
             StringBuilder transport = new StringBuilder();
@@ -47,7 +46,8 @@ final class JourneyHud {
             }
             out.put("transportSummary", "予定 乗換" + Math.max(0, planned.length() - 1) + "回 " + transport);
         }
-        if (leg == null || !journey.optBoolean("positionConfirmed")) {
+        if (leg == null || !journey.optBoolean("positionConfirmed") || journey.optBoolean("waitingToBoard")) {
+            if(journey.optBoolean("waitingToBoard"))for(String key:new String[]{"nextDistance","afterNextInstruction","afterNextDistance","afterNextDuration","currentRoad","arrival","routeArrival","totalRemainingDistance","totalRemainingDuration"})out.put(key,"");
             // Retain notification guidance while GPS cannot identify the current step.
             if (out.optString("instruction").isEmpty()) out.put("instruction", "現在区間を確認中");
             JSONArray stops = journey.optJSONArray("transitStops");
@@ -56,10 +56,16 @@ final class JourneyHud {
                 out.put("detail", "予定：" + next.optString("departureStop") + " " + time(next.optString("departureTime"))
                         + " 発 / " + next.optString("lineName") + " → " + next.optString("arrivalStop")
                         + " " + time(next.optString("arrivalTime")) + " 着");
+                String point="降車 "+next.optString("arrivalStop");int count=next.optInt("stopCount",-1);
+                point+=count>=0?"・区間"+count+"駅（残駅数は位置確認待ち）":"・駅数はAPI未提供";
+                out.put("afterNextInstruction",point).put("afterNextDistance",time(next.optString("arrivalTime"))+"着予定")
+                    .put("afterNextDuration","");
             }
             double scheduledTotal = journey.optDouble("totalRemainingSeconds", -1);
             if (scheduledTotal >= 0) out.put("totalRemainingDuration", minutes(scheduledTotal) + "（予定）")
                     .put("routeArrival", time(journey.optString("finalArrivalTime")) + "予定");
+            if(journey.optBoolean("waitingToBoard"))out.put("instruction","乗車地点付近・乗車待ち")
+                .put("detail",out.optString("detail")+" / 乗車したら「乗車した」で区間を進めます");
             return out;
         }
         // No mixing Google Maps' independently selected trip with this API journey.

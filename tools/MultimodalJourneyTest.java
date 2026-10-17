@@ -12,8 +12,9 @@ public final class MultimodalJourneyTest {
     }
     static JSONObject route(JSONObject... steps)throws Exception{return new JSONObject().put("legs",new JSONArray().put(new JSONObject().put("steps",new JSONArray(Arrays.asList(steps)))));}
     public static void main(String[] args)throws Exception {
-        MultimodalJourney p=new MultimodalJourney("final",new double[]{35.1,139.1},"","wrong");
-        check(p.mode().equals("bicycling"),"default cycle"); check(p.egressMode.equals("walking"),"default walk");
+        MultimodalJourney p=new MultimodalJourney("final",new double[]{35.1,139.1},"bicycling","wrong");
+        check(p.mode().equals("bicycling"),"explicit cycle retained"); check(p.egressMode.equals("walking"),"default walk");
+        check(new MultimodalJourney("final",new double[]{35.1,139.1},"","wrong").mode().equals("walking"),"unconfigured access defaults to walking");
         check(!p.advance("board"),"cannot board before route");
         p.stations(route(ride("A","B",35,139,35.04,139.04),new JSONObject().put("travelMode","WALK"),ride("B","C",35.04,139.04,35.08,139.08)));
         check(p.boardingName.equals("A")&&p.alightingName.equals("C"),"outer stations across transfer");
@@ -29,7 +30,7 @@ public final class MultimodalJourneyTest {
         };
         JSONObject first=p.fetchPhase(34.99,139,api); p.ready=true;
         long now=System.currentTimeMillis();
-        check(p.geofence(35,139,10,now,now).equals("board"),"70m automatic board");
+        check(p.geofence(35,139,10,now,now).equals("arrive"),"near stop means arrival, not automatic boarding");
         check(p.geofence(35.001,139,10,now,now).isEmpty(),"outside 70m");
         check(p.geofence(35,139,71,now,now).isEmpty(),"inaccurate GPS");
         check(p.geofence(35,139,10,now-31000,now).isEmpty(),"stale GPS");
@@ -50,7 +51,7 @@ public final class MultimodalJourneyTest {
         check(!last.toString().equals(train.toString()),"polyline switch to walking");
         check(!p.advance("alight")&&!p.advance("board"),"terminal phase");
         check(p.geofence(35.1,139.1,10,now,now).isEmpty(),"no phase four");
-        check(calls.size()==3,"one independent request per phase");
+        check(calls.size()==2,"road phases requested; selected transit preserved without another provider query");
         check(GooglePolyline.decode(first.getJSONObject("polyline").getString("encodedPolyline")).length==3,"retained cycle road vertex");
         check(GooglePolyline.decode(last.getJSONObject("polyline").getString("encodedPolyline"))[1][0]==35.09,"retained walk road vertex");
         MultimodalJourney reverse=new MultimodalJourney("final",new double[]{35.1,139.1},"walking","bicycling");

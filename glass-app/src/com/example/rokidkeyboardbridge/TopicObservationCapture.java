@@ -37,14 +37,27 @@ final class TopicObservationCapture {
             } catch (Exception error) { result.put("audioUnavailable", true); }
         }
         if (!cancelled.getAsBoolean() && ("vision".equals(mode) || "both".equals(mode))) {
-            if(MeetingRecorderService.active!=null&&!MeetingRecorderService.active.reserveCamera()){
+            PhotoRecorderService keep=PhotoRecorderService.active;
+            if(keep!=null) {
+                // KEEP owns the camera and image-save cycle. Optional TOPIC vision
+                // only reads an already-saved, recent frame; never opens another camera.
+                result.put("imageSkipped","KEEP撮影・保存優先：画像判定は待機中");
+                try {
+                    PhotoRecorderService.TopicPhoto saved=keep.topicPhoto(cancelled);
+                    if(saved!=null){result.put("image",Base64.encodeToString(saved.jpeg,Base64.NO_WRAP))
+                        .put("imageSource","keep_saved_photo").put("imageCapturedAt",saved.capturedAt);result.remove("imageSkipped");}
+                }catch(Exception unavailable){ /* KEEP continues; TOPIC retries on a later observation. */ }
+            }else if(MeetingRecorderService.active!=null&&!MeetingRecorderService.active.reserveCamera()){
                 result.put("imageSkipped","会議録音優先・撮影間隔調整");
             }else {
             try (AutoCloseable mascotPause = context instanceof MainActivity
                     ? ((MainActivity) context).pauseMascotForCamera() : () -> {}) {
                 if (context.checkSelfPermission("android.permission.CAMERA") != 0) throw new IllegalStateException();
                 result.put("image", Base64.encodeToString(photo(context,cancelled), Base64.NO_WRAP));
-            } catch (Exception error) { result.put("imageUnavailable", true); }
+            } catch (Exception error) {
+                if(PhotoRecorderService.active!=null)result.put("imageSkipped","KEEP撮影開始を優先：画像判定は待機中");
+                else result.put("imageUnavailable", true);
+            }
             }
         }
         if (cancelled.getAsBoolean()) throw new InterruptedException("observation cancelled");
@@ -84,7 +97,9 @@ final class TopicObservationCapture {
             return wav.array();
     }
     static byte[] recorderPhoto(Context context, BooleanSupplier cancelled) throws Exception {return photo(context,cancelled,true);}
-    private static byte[] photo(Context context, BooleanSupplier cancelled) throws Exception {return photo(context,cancelled,false);}
+    private static byte[] photo(Context context, BooleanSupplier cancelled) throws Exception {
+        return photo(context,()->cancelled.getAsBoolean()||PhotoRecorderService.active!=null,false);
+    }
     private static byte[] photo(Context context, BooleanSupplier cancelled, boolean recorder) throws Exception {
         try (CaptureLease lease = CaptureLease.acquire(CaptureLease.CAMERA, cancelled)) {
         HandlerThread thread = new HandlerThread("TopicCamera");thread.start();

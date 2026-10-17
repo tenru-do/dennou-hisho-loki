@@ -5,6 +5,7 @@ final class RecorderPhotoStore {
  static String hash(byte[] b)throws Exception{StringBuilder s=new StringBuilder();for(byte v:MessageDigest.getInstance("SHA-256").digest(b))s.append(String.format(java.util.Locale.US,"%02x",v&255));return s.toString();}
  static void metadata(File root,String id,JSONObject j)throws Exception{
   if(!j.has("metadata"))return;JSONObject input=j.getJSONObject("metadata"),safe=new JSONObject().put("capturedAt",Long.parseLong(id.substring(0,13))).put("available",false);
+  if(input.optBoolean("readOverlay"))safe.put("readOverlay",true);
   if(input.optBoolean("available")){double lat=input.getDouble("latitude"),lon=input.getDouble("longitude"),accuracy=input.getDouble("accuracyMeters");long at=input.getLong("locationAt"),captured=Long.parseLong(id.substring(0,13));if(!Double.isFinite(lat)||!Double.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180||accuracy<0||accuracy>500||captured-at<0||captured-at>90000)throw new IOException("invalid location metadata");safe.put("available",true).put("latitude",lat).put("longitude",lon).put("accuracyMeters",accuracy).put("locationAt",at).put("source","phone");}
   File target=new File(root,id+".meta.gcm"),temp=new File(root,id+".meta.tmp");try(FileOutputStream out=new FileOutputStream(temp)){out.write(DeviceSecrets.photos().encrypt(safe.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));out.getFD().sync();}Files.move(temp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);
  }

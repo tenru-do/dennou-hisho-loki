@@ -30,7 +30,20 @@ final class PhotoArchive {
  synchronized byte[] metadata(File file)throws IOException{
   File meta=new File(root,file.getName()+".meta.gcm");if(!meta.exists())return ("{\"capturedAt\":"+time(file)+",\"available\":false}").getBytes(java.nio.charset.StandardCharsets.UTF_8);return read(meta);
  }
- synchronized byte[] read(File file)throws IOException{
+ /** Optional capture metadata must not prevent an authenticated JPEG from transferring. */
+ synchronized byte[] metadataForTransfer(File file)throws IOException{
+  try{byte[] value=metadata(file);new org.json.JSONObject(new String(value,java.nio.charset.StandardCharsets.UTF_8));return value;}
+  catch(Exception unreadable){
+   File meta=new File(root,file.getName()+".meta.gcm");
+   if(meta.exists()){
+    if(!meta.getCanonicalFile().getParentFile().equals(root.getCanonicalFile())||meta.length()>8192)throw new IOException("撮影情報の退避対象を確認できません");
+    File recovery=new File(root,meta.getName()+".recovery");
+    if(!recovery.exists())Files.copy(meta.toPath(),recovery.toPath());
+    if(!Arrays.equals(Files.readAllBytes(meta.toPath()),Files.readAllBytes(recovery.toPath())))throw new IOException("撮影情報の退避内容が一致しません");
+   }
+   return ("{\"capturedAt\":"+time(file)+",\"available\":false,\"metadataUnavailable\":true}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+ } synchronized byte[] read(File file)throws IOException{
   if(!file.getCanonicalFile().getParentFile().equals(root.getCanonicalFile()))throw new IOException("invalid photo path");
   if(file.length()>8*1024*1024)throw new IOException("photo too large");
   byte[] bytes=Files.readAllBytes(file.toPath());if(!file.getName().endsWith(".gcm"))return bytes;
@@ -61,7 +74,15 @@ final class PhotoArchive {
    if(!old.delete())throw new IOException("元写真を削除できません");if(marker(old).exists())marker(old).delete();
   }
  }
- synchronized File save(byte[] jpeg,long timestamp)throws IOException{
+ synchronized File save(byte[] jpeg,long timestamp)throws IOException{return saveInternal(jpeg,timestamp,false);}
+ synchronized File saveRead(byte[] jpeg,long timestamp)throws IOException{return saveInternal(jpeg,timestamp,true);}
+ synchronized File[] pendingReadPhotos(){File[] flags=root.listFiles(f->f.getName().endsWith(".jpg.gcm.read-pending")||f.getName().endsWith(".jpg.read-pending"));ArrayList<File> pending=new ArrayList<>();if(flags!=null)for(File flag:flags){File f=new File(root,flag.getName().substring(0,flag.getName().length()-13));if(f.isFile())pending.add(f);}pending.sort(Comparator.comparing(File::getName));return pending.toArray(new File[0]);}
+ synchronized void markReadCopied(File photo,String sha,int total)throws IOException{
+  if(!photo.getCanonicalFile().getParentFile().equals(root.getCanonicalFile())||!photo.isFile())throw new IOException("read photo missing");
+  try{byte[] bytes=read(photo);StringBuilder hash=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(bytes))hash.append(String.format(Locale.US,"%02x",b&255));if(bytes.length!=total||!sha.equals(hash.toString()))throw new IOException("read source changed");}catch(IOException e){throw e;}catch(Exception e){throw new IOException("read source verification failed",e);}
+  File flag=new File(root,photo.getName()+".read-pending");if(flag.exists()&&!flag.delete())throw new IOException("read receipt save failed");
+ }
+ private File saveInternal(byte[] jpeg,long timestamp,boolean readPhoto)throws IOException{
   if(jpeg==null||jpeg.length<4)throw new IOException("撮影データなし");
   if(cipher!=null){try{jpeg=cipher.encrypt(jpeg);}catch(Exception e){throw new IOException("写真の暗号化に失敗",e);}}
   File[] existing=photos();long bytes=0;for(File f:existing)bytes+=f.length();
@@ -72,7 +93,8 @@ final class PhotoArchive {
   if(bytes+jpeg.length>limit||root.getUsableSpace()<reserve+jpeg.length)throw new IOException("保存容量不足：保護写真は削除しません");
   String name=String.format(Locale.US,"%013d-%s.jpg",timestamp,UUID.randomUUID())+(cipher==null?"":".gcm");File target=new File(root,name),tmp=new File(root,name+".tmp");
   try(FileOutputStream out=new FileOutputStream(tmp)){out.write(jpeg);out.getFD().sync();}
-  if(timestamp<=keepUntil){if(!marker(target).createNewFile())throw new IOException("写真を保護できません");}
+  if(timestamp<=keepUntil||readPhoto){if(!marker(target).createNewFile())throw new IOException("写真を保護できません");}
+  if(readPhoto&&!new File(root,target.getName()+".read-pending").createNewFile())throw new IOException("READ転送待ちを保存できません");
   Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);return target;
  }
 }

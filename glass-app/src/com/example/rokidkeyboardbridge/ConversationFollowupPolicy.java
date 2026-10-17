@@ -7,6 +7,7 @@ final class ConversationFollowupPolicy {
 
     static boolean referencesPrevious(String text) {
         if (text == null) return false;
+        if (ConversationTaskPolicy.continuesTask(text)) return true;
         String value = text.replaceAll("[\\s？?！!。]", "");
         if (value.isEmpty()) return false;
         if (value.matches(".*(?:前|直前|さっき|先ほど)の?(?:質問|回答|話|条件|計算).*")) return true;

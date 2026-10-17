@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"
     package="com.example.rokidgeminisecretary"
-    android:versionCode="175"
-    android:versionName="0.9.127-web-meeting-media">
+    android:versionCode="199"
+    android:versionName="0.9.151-voice-complete">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
@@ -39,6 +39,8 @@
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service android:name=".MeetingProcessingService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <activity android:name=".ImageQuestionActivity" android:exported="false" />
+        <provider android:name=".ImageQuestionCameraProvider" android:authorities="com.example.rokidgeminisecretary.image-camera" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".RecorderGalleryActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"

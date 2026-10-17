@@ -1,0 +1,7 @@
+# Windows USB launcher
+
+Windows PowerShell 5.1 is the actual runtime. Save every `.ps1` as UTF-8 with BOM. Build with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File Build-LokiUsbLauncher.ps1`; it checks script encoding, the 5.1 parser and malformed-encoding fixtures before replacing the executable. Use `-VerifyLaunch` after local configuration to test the actual executable. Pin the generated EXE or its shortcut using the Windows context menu.
+
+Copy `launcher.example.json` to `launcher.local.json` and configure your own smartphone serial. Configure `adb`/`node` only if their defaults are unavailable. The example contains no real device identifier. Obtain the phone public certificate through the existing trusted pairing procedure, verify it independently, and save it as `phone-public-certificate.local.der`. Do not download an arbitrary certificate or disable global browser certificate validation. The connection uses only the verified phone public key in a separate browser profile. Issue a Web invitation and approve the connecting PC on the phone if needed.
+
+Local configuration, the device certificate and browser profile are excluded from Git. The repository does not include private user configuration, keys, phone certificates or compiled launchers. The portable template is source/build checked; the installed user-specific launcher has separately passed actual launch and Web response checks. This template does not configure ADB or approve Android permissions on your behalf.

@@ -111,6 +111,10 @@ public final class MainActivity extends Activity {
     // roughly 683 KB inside JSON. Keep a bounded 1 MB ceiling so longer VOICE
     // turns fit without allowing arbitrarily large local bridge requests.
     private static final int MAX_REQUEST_BODY_CHARS = 1048576;
+    private static final int MAX_STT_BODY_CHARS = 4 * 1024 * 1024;
+    private final Object phoneSpeechRecognitionLock = new Object();
+    private TextView speechTranscriptView;
+    private String lastSpeechTranscript = "";
     private SharedPreferences.OnSharedPreferenceChangeListener radioControlsListener;
     private boolean syncingRadioControls;
     private static final int MAX_COMMAND_CHARS = 3000;
@@ -197,6 +201,7 @@ public final class MainActivity extends Activity {
     private TextView logView;
     private TextView customInfo;
     private EditText commandInput;
+    private ImageQuestionComposer imageComposer;
     private EditText navigationDestinationInput;
     private Button navigationHudButton;
     private EditText customInput;
@@ -262,6 +267,7 @@ public final class MainActivity extends Activity {
         final String effectiveMode;
         final long generation;
         String scheduledDeparture = "";
+        String selectionId="",selectionLabel="";
         JSONObject phaseOverview;
         final TransitJourney journey;
         final JourneyProgress progress;
@@ -310,6 +316,7 @@ public final class MainActivity extends Activity {
         restoreGlassRuntimeState();
         restoreRecentConversationLogs();
         buildUi();
+        if(state!=null){commandInput.setText(state.getString("conversationDraft",""));imageComposer.restore(state.getBundle("imageComposer"));}
         HirokidLogMonitor.requestPermission(this);
         if(!Settings.canDrawOverlays(this) && !getPreferences().getBoolean("navigation_overlay_prompted",false)) {
             getPreferences().edit().putBoolean("navigation_overlay_prompted",true).apply();
@@ -453,6 +460,9 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if(imageComposer!=null)imageComposer.close();
+        if(generatedImagePanel!=null)generatedImagePanel.close();
+        if(generatedVideoPanel!=null)generatedVideoPanel.close();
         if (radioControlsListener != null) getPreferences().unregisterOnSharedPreferenceChangeListener(radioControlsListener);
         healthHandler.removeCallbacks(healthRefresh);
         weatherHandler.removeCallbacksAndMessages(null);
@@ -466,6 +476,16 @@ public final class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    @Override protected void onSaveInstanceState(Bundle out){
+        super.onSaveInstanceState(out);
+        if(commandInput!=null)out.putString("conversationDraft",commandInput.getText().toString());
+        if(imageComposer!=null)out.putBundle("imageComposer",imageComposer.save());
+    }
+    @Override protected void onActivityResult(int code,int result,Intent data){
+        super.onActivityResult(code,result,data);
+        if(imageComposer!=null)imageComposer.result(code,result,data);
+    }
+
     private void buildUi() {
         setContentView(getResources().getIdentifier("activity_main", "layout", getPackageName()));
         LinearLayout root = (LinearLayout) findViewById(getResources().getIdentifier("main_content", "id", getPackageName()));
@@ -474,7 +494,10 @@ public final class MainActivity extends Activity {
         root.removeView(daily); root.removeView(navigation);
         root.setOrientation(LinearLayout.VERTICAL);
         View scrollContainer = (View) root.getParent();
-        scrollContainer.setOnApplyWindowInsetsListener((view, insets) -> {
+        // Insets belong to the outer frame: padding the ScrollView itself leaves
+        // its scroll-to-focus viewport extending behind the keyboard.
+        View keyboardSafeArea = (View) scrollContainer.getParent();
+        keyboardSafeArea.setOnApplyWindowInsetsListener((view, insets) -> {
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars());
                 android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
@@ -483,17 +506,17 @@ public final class MainActivity extends Activity {
                 view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
                         insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
             }
-            if (commandInput != null && commandInput.hasFocus()) {
-                view.post(() -> commandInput.requestRectangleOnScreen(
-                        new android.graphics.Rect(0, 0, commandInput.getWidth(), commandInput.getHeight()), false));
-            }
+            view.post(this::revealConversationComposer);
             return insets;
         });
-        scrollContainer.requestApplyInsets();
+        keyboardSafeArea.requestApplyInsets();
+        scrollContainer.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)-> {
+            if(b-t!=ob-ot || r-l!=or-ol)view.post(this::revealConversationComposer);
+        });
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("Rokid Secretary Phone");
+        title.setText("電脳秘書ロキ");
         title.setTextSize(18);
         title.setTextColor(Color.BLACK);
         root.addView(title);
@@ -545,6 +568,12 @@ public final class MainActivity extends Activity {
             }
         });
 
+        speechTranscriptView=new TextView(this);speechTranscriptView.setTextSize(12);speechTranscriptView.setTextColor(Color.LTGRAY);
+        speechTranscriptView.setMaxLines(3);speechTranscriptView.setEllipsize(android.text.TextUtils.TruncateAt.END);speechTranscriptView.setVisibility(View.GONE);
+        speechTranscriptView.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("音声認識した全文").setMessage(lastSpeechTranscript)
+            .setPositiveButton("入力欄で修正",(d,w)->{commandInput.setText(lastSpeechTranscript);commandInput.requestFocus();})
+            .setNegativeButton("閉じる",null).show());
+        root.addView(speechTranscriptView,new LinearLayout.LayoutParams(-1,-2));
         commandInput = new EditText(this);
         commandInput.setSingleLine(false);
         commandInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_COMMAND_CHARS)});
@@ -555,17 +584,28 @@ public final class MainActivity extends Activity {
         root.addView(commandInput);
 
         LinearLayout actionRow = new LinearLayout(this);
+        conversationActions = actionRow;
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
 
         Button sendCommand = new Button(this);
         sendCommand.setText("送信");
+        imageComposer=new ImageQuestionComposer(this,()->{
+            boolean attached=imageComposer!=null&&imageComposer.attached();
+            sendCommand.setText(attached?"画像と質問を送信":"送信");
+            sendCommand.setEnabled(imageComposer==null||!imageComposer.busy());
+            if(logScroll!=null){int height=Math.max(120,Math.min(240,Math.round(getResources().getConfiguration().screenHeightDp*0.28f)))-(attached?104:0);
+                android.view.ViewGroup.LayoutParams params=logScroll.getLayoutParams();if(params!=null){params.height=Math.round(Math.max(120,height)*getResources().getDisplayMetrics().density);logScroll.setLayoutParams(params);}}
+        });
         sendCommand.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 String text = commandInput.getText().toString().trim();
+                if(imageComposer.submit(text,()->{commandInput.setText("");updateStatus("画像付き質問を送信待ち","返信は上の会話ログに表示します");}))return;
                 if (text.length() == 0) {
                     return;
                 }
+                if(MediaGenerationContext.video(MainActivity.this,text)){try{VideoGeneration.enqueue(MainActivity.this,java.util.UUID.randomUUID().toString(),text,null,"");commandInput.setText("");updateStatus("動画生成を受け付けました","会話を続けられます。生成動画一覧で進捗・結果を確認できます");}catch(Exception e){updateStatus("動画生成を受け付けられません",e.getMessage());}return;}
+                if(ImageGeneration.handles(MainActivity.this,text)){try{ImageGeneration.enqueue(MainActivity.this,java.util.UUID.randomUUID().toString(),text,null,"");commandInput.setText("");updateStatus("画像生成を受け付けました","生成画像一覧で進捗・結果を確認できます");}catch(Exception e){updateStatus("画像生成を受け付けられません",e.getMessage());}return;}
                 // Use the same persistent queue as background/Codex commands.
                 // This makes a foreground send observable in logs and prevents
                 // an activity recreation from losing the command before the
@@ -673,7 +713,7 @@ public final class MainActivity extends Activity {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         toolsButton = new Button(this);
-        toolsButton.setText("詳細設定 ▾");
+        toolsButton.setText("設定・接続 ▾");
         toolsButton.setTextSize(12);
         toolsButton.setMinHeight(0);
         toolsButton.setPadding(4, 0, 4, 0);
@@ -686,15 +726,17 @@ public final class MainActivity extends Activity {
                 if (customPanel != null && !show) {
                     customPanel.setVisibility(View.GONE);
                 }
-                toolsButton.setText(show ? "詳細設定 ▴" : "詳細設定 ▾");
+                toolsButton.setText(show ? "設定・接続 ▴" : "設定・接続 ▾");
             }
         });
 
         root.addView(actionRow);
         // Keep conversation controls ahead of utilities as new features are added.
         commandInput.setOnFocusChangeListener((view, focused) -> {
-            if (focused) actionRow.post(() -> actionRow.requestRectangleOnScreen(
-                    new android.graphics.Rect(0, 0, actionRow.getWidth(), actionRow.getHeight()), false));
+            if (focused) view.post(this::revealConversationComposer);
+        });
+        root.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)-> {
+            if(commandInput.hasFocus() && (b-t!=ob-ot || r-l!=or-ol))view.post(this::revealConversationComposer);
         });
         root.addView(daily);
         root.addView(navigation);
@@ -718,7 +760,7 @@ public final class MainActivity extends Activity {
         radioFrequency.setEnabled(radioSwitch.isChecked() && "scheduled".equals(savedMode));
         root.addView(radioFrequency);
         TextView radioHelp = new TextView(this);
-        radioHelp.setText("定期ラジオは3/10/30分間隔。連続モードは短い発話を繰り返します。音・カメラモードは発話の合間に約4秒の周囲音・静止画をGeminiへ送ります。録音・写真は端末に保存しません。ユーザーの会話を優先します。");
+        radioHelp.setText("定期TOPICは3/10/30分間隔。音・カメラモードは周囲の音・画像をGeminiへ送ります。KEEP中の画像は直近の保存写真を縮小して使い、記録を優先します。折り畳んでもTOPICは継続します。");
         radioHelp.setTextSize(12);
         root.addView(radioHelp);
         radioSwitch.setOnCheckedChangeListener(new android.widget.CompoundButton.OnCheckedChangeListener() {
@@ -756,7 +798,8 @@ public final class MainActivity extends Activity {
         });
         if (radioControlsListener != null) getPreferences().unregisterOnSharedPreferenceChangeListener(radioControlsListener);
         radioControlsListener = (preferences, key) -> {
-            if (!key.startsWith("radio_")) return;
+            // Android may report null for an all-preferences invalidation.
+            if (key != null && !key.startsWith("radio_")) return;
             runOnUiThread(() -> {
                 syncingRadioControls = true;
                 try {
@@ -1019,12 +1062,12 @@ public final class MainActivity extends Activity {
             android.widget.RadioGroup group = new android.widget.RadioGroup(this);
             group.setOrientation(LinearLayout.HORIZONTAL);
             TextView label = new TextView(this);
-            label.setText(access ? "駅まで" : "降りてから"); mileOptions.addView(label);
+            label.setText(access ? "乗車地点まで（駅・バス乗場）" : "降りてから"); mileOptions.addView(label);
             for (String mode : new String[]{"walking", "bicycling"}) {
                 android.widget.RadioButton item = new android.widget.RadioButton(this);
                 item.setId(View.generateViewId()); item.setText("walking".equals(mode) ? "徒歩" : "自転車");
                 item.setTag(mode); group.addView(item);
-                item.setChecked(mode.equals(getPreferences().getString(key, access ? "bicycling" : "walking")));
+                item.setChecked(mode.equals(getPreferences().getString(key,"walking")));
             }
             group.setOnCheckedChangeListener((g,id) -> getPreferences().edit()
                     .putString(key,(String)g.findViewById(id).getTag()).apply());
@@ -1032,9 +1075,9 @@ public final class MainActivity extends Activity {
         }
         for (String action : new String[]{"board", "alight"}) {
             Button button = new Button(this);
-            button.setText("board".equals(action) ? "駅に到着（乗車）" : "電車を降りた（降車）");
+            button.setText("board".equals(action) ? "乗車した（電車・バス）" : "降車した（電車・バス）");
             button.setOnClickListener(v -> android.widget.Toast.makeText(this, advanceMultimodal(action)
-                    ? "次の区間を検索中" : "この操作は現在の区間では使えません", android.widget.Toast.LENGTH_SHORT).show());
+                    ? "選択経路の次の区間を準備中" : "この操作は現在の区間では使えません", android.widget.Toast.LENGTH_SHORT).show());
             mileOptions.addView(button);
         }
         mileOptions.setVisibility("transit".equals(navigationMode()) ? View.VISIBLE : View.GONE);
@@ -1186,22 +1229,69 @@ public final class MainActivity extends Activity {
         logView.setTextIsSelectable(true);
         logScroll = new ScrollView(this);
         logScroll.addView(logView);
-        logScroll.setVisibility(View.GONE);
-        Button logsButton = new Button(this);
-        logsButton.setText("会話・デバッグログ ▾");
-        logsButton.setOnClickListener(view -> {
-            boolean show = logScroll.getVisibility() != View.VISIBLE;
-            logScroll.setVisibility(show ? View.VISIBLE : View.GONE);
-            logsButton.setText(show ? "会話・デバッグログ ▴" : "会話・デバッグログ ▾");
+        logScroll.setVisibility(View.VISIBLE);
+        logScroll.setFillViewport(true);
+        logScroll.setNestedScrollingEnabled(true);
+        final float[] lastLogTouchY={0};
+        logScroll.setOnTouchListener((view,event)->{
+            int action=event.getActionMasked();
+            if(action==android.view.MotionEvent.ACTION_DOWN){lastLogTouchY[0]=event.getY();view.getParent().requestDisallowInterceptTouchEvent(true);}
+            else if(action==android.view.MotionEvent.ACTION_MOVE){int direction=event.getY()<lastLogTouchY[0]?1:-1;lastLogTouchY[0]=event.getY();view.getParent().requestDisallowInterceptTouchEvent(view.canScrollVertically(direction));}
+            else if(action==android.view.MotionEvent.ACTION_UP||action==android.view.MotionEvent.ACTION_CANCEL)view.getParent().requestDisallowInterceptTouchEvent(false);
+            return false;
         });
-        root.addView(logsButton, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(logScroll, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        // Reorder the already-wired controls without recreating their listeners or settings.
+        root.removeAllViews();
+        daily.removeView(tethering);
+        actionRow.removeView(toggleCustomButton);
+        toolsPanel.addView(toggleCustomButton,0,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(title);root.addView(status);root.addView(details);root.addView(glassStateView);
+        root.addView(tethering,new LinearLayout.LayoutParams(-1,-2));
+        TextView conversationHeading=new TextView(this);conversationHeading.setText("会話・ログ");
+        conversationHeading.setTextSize(17);conversationHeading.setTextColor(Color.BLACK);conversationHeading.setPadding(0,12,0,4);
+        root.addView(conversationHeading);
+        int logHeightDp=Math.max(120,Math.min(240,Math.round(getResources().getConfiguration().screenHeightDp*0.28f)));
+        root.addView(logScroll,new LinearLayout.LayoutParams(-1,Math.round(logHeightDp*getResources().getDisplayMetrics().density)));
+        root.addView(imageComposer.view(),new LinearLayout.LayoutParams(-1,-2));
+        generatedImagePanel=new GeneratedImagePanel(this);root.addView(generatedImagePanel.view(),new LinearLayout.LayoutParams(-1,-2));
+        generatedVideoPanel=generatedImagePanel.videoPanel;
+        root.addView(commandInput,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(actionRow,new LinearLayout.LayoutParams(-1,-2));
+        addPhoneFoldSection(root,"ナビ",navigation);
+        LinearLayout topicPanel=new LinearLayout(this);topicPanel.setOrientation(LinearLayout.VERTICAL);
+        topicPanel.addView(radioSwitch);topicPanel.addView(radioMode);topicPanel.addView(radioFrequency);topicPanel.addView(radioHelp);
+        addPhoneFoldSection(root,"TOPIC",topicPanel);
+        addPhoneFoldSection(root,"写真・記憶・共有",daily);
+        root.addView(toolsButton,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(toolsScroll,new LinearLayout.LayoutParams(-1,-2));
+        root.setFocusableInTouchMode(true);root.requestFocus();
 
 
         updateStatus("準備中", "カレンダー権限を確認しています。\nメールは通知アクセス許可後に読めます。");
         refreshCustomInfo();
         refreshLogs();
+    }
+
+    private LinearLayout conversationActions;
+    private void revealConversationComposer() {
+        if(commandInput==null || !commandInput.hasFocus() || conversationActions==null)return;
+        View parent=(View)commandInput.getParent();
+        if(!(parent.getParent() instanceof ScrollView))return;
+        android.graphics.Rect bounds=new android.graphics.Rect(
+            commandInput.getLeft(),commandInput.getTop(),
+            Math.max(commandInput.getRight(),conversationActions.getRight()),conversationActions.getBottom());
+        ((ScrollView)parent.getParent()).requestChildRectangleOnScreen(parent,bounds,true);
+    }
+
+    private void addPhoneFoldSection(LinearLayout root,String title,View content) {
+        Button heading=new Button(this);heading.setText(title+" ▾");heading.setAllCaps(false);
+        heading.setContentDescription(title+"：展開");content.setVisibility(View.GONE);
+        heading.setOnClickListener(v->{boolean open=content.getVisibility()!=View.VISIBLE;
+            content.setVisibility(open?View.VISIBLE:View.GONE);heading.setText(title+(open?" ▴":" ▾"));
+            heading.setContentDescription(title+(open?"：折り畳む":"：展開"));});
+        root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(content,new LinearLayout.LayoutParams(-1,-2));
     }
 
     private AlertDialog showNavitimeSetup() {
@@ -1210,8 +1300,7 @@ public final class MainActivity extends Activity {
         TextView help=new TextView(this);help.setText("NAVITIMEのX-RapidAPI-Keyを端末内へ保存します。空欄では保存済みのキーを維持します。形状がない区間は駅・停留所間の概略線で表示します。");panel.addView(help);
         Button signup=new Button(this);signup.setText("RapidAPIの登録ページを開く");signup.setOnClickListener(v -> {try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(NavitimeNavigationClient.SIGNUP)));}catch(Exception e){updateStatus("NAVITIME","ブラウザを開けません");}});panel.addView(signup);
         EditText key=new EditText(this);key.setSingleLine(true);key.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);key.setHint(NavitimeNavigationClient.enabled(this)?"保存済み（空欄で維持）":"X-RapidAPI-Key");panel.addView(key);
-        TextView accessLabel=new TextView(this);accessLabel.setText("駅までの移動手段（徒歩以外は5km以内の最寄り駅候補へ）");panel.addView(accessLabel);
-        android.widget.Spinner access=new android.widget.Spinner(this);String[] modes={"walking","bicycling","driving"};access.setAdapter(new android.widget.ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"徒歩","自転車","車"}));for(int i=0;i<modes.length;i++)if(modes[i].equals(prefs.getString("access_mode","walking")))access.setSelection(i);panel.addView(access);
+        TextView accessLabel=new TextView(this);accessLabel.setText("乗車地点までの移動手段はナビ欄で選びます（既定は徒歩）。最寄り駅へ自動変更しません。");panel.addView(accessLabel);
         EditText departure=new EditText(this);departure.setSingleLine(true);departure.setHint("出発日時 YYYY-MM-DDTHH:MM（空欄は今）");departure.setText(prefs.getString("departure",""));panel.addView(departure);
         android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.addView(panel);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("NAVITIME公共交通").setView(scroll).setNegativeButton("閉じる",null).setPositiveButton("保存",null).create();dialog.show();dialog.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
@@ -1220,7 +1309,7 @@ public final class MainActivity extends Activity {
             if(!time.isEmpty())try{java.time.LocalDateTime.parse(time);}catch(Exception e){departure.setError("例: 2026-10-03T08:00");return;}
             try {if(!value.isEmpty())NavitimeCredentialStore.save(this,value);if(!NavitimeNavigationClient.enabled(this)){key.setError("キーを入力してください");return;}}
             catch(Exception e){key.setError("キーを保存できません。半角のAPIキーを確認してください");return;}
-            prefs.edit().putString("departure",time).putString("access_mode",modes[access.getSelectedItemPosition()]).apply();
+            prefs.edit().putString("departure",time).apply();
             clearStoredNavigationRoute();noRouteUntil=0;navigationRouteRetryAfterMs=0;dialog.dismiss();updateStatus("NAVITIME","設定保存済み。公共交通を選びナビ開始で検索します");
         });
         return dialog;
@@ -1544,14 +1633,60 @@ public final class MainActivity extends Activity {
     }
 
     private void launchSelectedGoogleMapsNavigation() {
+        if("transit".equals(navigationMode()) && (stagedNavigationRoute==null || !stagedNavigationDestination.equals(normalizeNavigationDestination(navigationDestinationInput.getText().toString()))) && GoogleNavigationClient.enabled(this)) {
+            stagedNavigationRoute=null;stagedNavigationDestination="";
+            showSharedNavigationRouteChoices();return;
+        }
         startSelectedGoogleMapsNavigation();
     }
 
+    private final NavigationRouteChoices navigationRouteChoices=new NavigationRouteChoices();
+    private volatile JSONObject stagedNavigationRoute, selectedNavigationRoute;
+    private volatile String stagedNavigationDestination="",selectedNavigationDestination="";
+    private Location sharedChoicesOrigin;
+    private synchronized JSONObject sharedNavigationRouteChoices(String destination,String mode)throws Exception {
+        String point=GoogleNavigationClient.selectedDestinationCoordinates(destination);
+        if(point.isEmpty()) {GoogleNavigationClient.destinationCoordinates(this,destination);point=GoogleNavigationClient.selectedDestinationCoordinates(destination);}
+        Location origin=getBestAvailableLocation();
+        if(origin==null||System.currentTimeMillis()-origin.getTime()>180000)throw new Exception("google_current_location_unavailable");
+        JSONObject cached=navigationRouteChoices.cached(destination,mode,point,System.currentTimeMillis());
+        if(cached!=null && sharedChoicesOrigin!=null && origin.distanceTo(sharedChoicesOrigin)<=200)return cached;
+        JSONArray choices="transit".equals(mode)&&NavitimeNavigationClient.enabled(this)
+            ?NavitimeNavigationClient.choices(this,origin.getLatitude(),origin.getLongitude(),destination)
+            :GoogleNavigationClient.routes(this,origin.getLatitude(),origin.getLongitude(),destination,mode,true);
+        JSONObject published=navigationRouteChoices.publish(destination,mode,point,choices,System.currentTimeMillis());
+        sharedChoicesOrigin=new Location(origin);return published;
+    }
+    private void showSharedNavigationRouteChoices() {
+        final String destination=normalizeNavigationDestination(navigationDestinationInput.getText().toString());
+        final Object savedTag=navigationDestinationInput.getTag();
+        final String label=savedTag instanceof JSONObject?((JSONObject)savedTag).optString("name",destination):destination;
+        final String mode=navigationMode();
+        updateStatus("ロキ共通ルート検索","グラスとスマホで同じ候補を使用します");
+        new Thread(()->{try{
+            if(!label.equals(destination) && GoogleNavigationClient.selectedDestinationCoordinates(label).isEmpty()) {
+                double[] xy=geocodeNavigationDestination(destination);if(xy==null)throw new Exception("navigation_destination_unavailable");
+                Address address=new Address(Locale.JAPAN);address.setLatitude(xy[0]);address.setLongitude(xy[1]);GoogleNavigationClient.rememberDestination(label,address);
+            }
+            JSONObject response=sharedNavigationRouteChoices(label,mode);JSONArray choices=response.getJSONArray("choices");
+            String[] labels=new String[choices.length()];for(int i=0;i<labels.length;i++)labels[i]=choices.getJSONObject(i).getString("label");
+            runOnUiThread(()->{if(isFinishing()||isDestroyed()||!mode.equals(navigationMode())||!destination.equals(normalizeNavigationDestination(navigationDestinationInput.getText().toString())))return;
+                new AlertDialog.Builder(this).setTitle("ロキ共通の経路を選択").setItems(labels,(dialog,which)->{try{
+                    stagedNavigationRoute=navigationRouteChoices.select(choices.getJSONObject(which).getString("id"),label,mode,GoogleNavigationClient.selectedDestinationCoordinates(label),System.currentTimeMillis());
+                    stagedNavigationDestination=label;navigationDestinationInput.setText(label);startSelectedGoogleMapsNavigation();
+                }catch(Exception expired){updateStatus("経路選択の期限切れ","再検索してください");}}).setNegativeButton("キャンセル",null).show();});
+        }catch(Exception error){runOnUiThread(()->updateStatus("経路候補を取得できません",error.getMessage()));}},"SharedNavigationChoices").start();
+    }
+
     private void startSelectedGoogleMapsNavigation() {
+        JSONObject chosen=stagedNavigationRoute;
+        String chosenDestination=stagedNavigationDestination;
+        stagedNavigationRoute=null;stagedNavigationDestination="";
         navigationCompletedUntil = 0;
         navigationCompletedDestination = "";
         arrivalCandidateSince = 0;
         clearStoredNavigationRoute();
+        selectedNavigationRoute=chosen;selectedNavigationDestination=chosenDestination;
         noRouteTarget = ""; noRouteMode = "";
         navigationRouteRetryAfterMs = 0;
         try {
@@ -1598,6 +1733,18 @@ public final class MainActivity extends Activity {
                 + ("transit".equals(navigationMode()) ? MAP_ROUTE_CACHE_MS : 2L * 60L * 60L * 1000L);
         confirmedSharedNavigationSeen = false;
         Log.d("LokiGoogleNav", "map_start mode=" + mode);
+        if("transit".equals(mode) && chosen!=null && destination.equals(chosenDestination)) {
+            try {
+                String summary=chosen.optString("lokiSelectionLabel",NavigationRouteChoices.label(chosen,0));
+                Intent own=new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT|Intent.FLAG_ACTIVITY_NEW_TASK);startActivity(own);
+                NavigationStartAck launched=navigationStartAck;if(launched!=null)launched.screen();
+                updateStatus("ロキの選択経路（グラスと共通）",destination+"\n"+summary);
+                final String mapsTarget=destination;
+                new AlertDialog.Builder(this).setTitle("ロキの選択経路").setMessage(destination+"\n"+summary+"\nグラスもこの経路を表示します。Googleマップは別計算のため、選択経路の一致は保証されません。")
+                    .setPositiveButton("閉じる",null).setNeutralButton("Googleマップで別途確認",(d,w)->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.google.com/maps/dir/?api=1&destination="+Uri.encode(GoogleNavigationClient.selectedDestinationCoordinates(mapsTarget))+"&travelmode=transit")))).show();
+                return;
+            }catch(Exception failure){failNavigationStart("選択経路の表示に失敗しました");return;}
+        }
         Intent intent;
         if (destination.length() == 0) {
             intent = getPackageManager().getLaunchIntentForPackage(
@@ -1672,6 +1819,7 @@ public final class MainActivity extends Activity {
 
 
     private synchronized void clearStoredNavigationRoute() {
+        selectedNavigationRoute=null;selectedNavigationDestination="";
         googleRouteGeneration++;
         multimodalJourney = null;
         arrivalCandidateSince = 0;
@@ -1831,6 +1979,7 @@ public final class MainActivity extends Activity {
 
 
     private synchronized void prepareGoogleNavigationRoute(final String destination, final String mode, boolean clear) {
+        final JSONObject chosenRoute=destination.equals(selectedNavigationDestination)?selectedNavigationRoute:null;
         desiredGoogleRouteMode = mode;
         if (clear) multimodalJourney = null;
         if (destination.trim().length() == 0) return;
@@ -1838,6 +1987,7 @@ public final class MainActivity extends Activity {
                 && System.currentTimeMillis() < noRouteUntil) return;
         if (clear && !destination.equals(getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""))) {
             clearStoredNavigationRoute();
+            if(chosenRoute!=null){selectedNavigationRoute=chosenRoute;selectedNavigationDestination=destination;}
             getPreferences().edit().putString(KEY_MAP_ROUTE_DESTINATION, destination).apply();
         }
         if ("transit".equals(mode)) {
@@ -1875,7 +2025,7 @@ public final class MainActivity extends Activity {
                     MultimodalJourney activePlan = multimodalJourney;
                     if ("transit".equals(mode) && activePlan != null && destination.equals(activePlan.destination)
                             && activePlan.phase != MultimodalJourney.Phase.FIRST_MILE) {
-                        double[] station = activePlan.phase == MultimodalJourney.Phase.TRANSIT_LEG ? activePlan.boarding : activePlan.alighting;
+                        double[] station = activePlan.phase == MultimodalJourney.Phase.LAST_MILE ? activePlan.alighting : activePlan.boarding;
                         origin = new Location("multimodal-station");
                         origin.setLatitude(station[0]); origin.setLongitude(station[1]); origin.setTime(System.currentTimeMillis());
                     }
@@ -1888,6 +2038,7 @@ public final class MainActivity extends Activity {
                             ? new WalkingFallback.Result<JSONObject>(new JSONObject(), multimodalJourney.mode()) : WalkingFallback.fetch(mode,
                             new WalkingFallback.Request<JSONObject>() {
                                 @Override public JSONObject fetch(String requestedMode) throws Exception {
+                                    if(chosenRoute!=null && "transit".equals(requestedMode))return new JSONObject(chosenRoute.toString());
                                     Log.d("LokiGoogleNav", "route_request mode=" + requestedMode);
                                     if ("transit".equals(requestedMode) && NavitimeNavigationClient.enabled(MainActivity.this)) return NavitimeNavigationClient.route(MainActivity.this,requestOrigin.getLatitude(),requestOrigin.getLongitude(),routeTarget);
                                     return GoogleNavigationClient.route(MainActivity.this,
@@ -1898,9 +2049,10 @@ public final class MainActivity extends Activity {
                     if ("transit".equals(mode)) {
                         if (plan == null || !destination.equals(plan.destination)) {
                             plan = new MultimodalJourney(destination, GoogleNavigationClient.destinationCoordinates(MainActivity.this,destination),
-                                    getPreferences().getString("transit_access_mode","bicycling"),
+                                    getPreferences().getString("transit_access_mode","walking"),
                                     getPreferences().getString("transit_egress_mode","walking"));
                             plan.stations(fetched.value);
+                            plan.startAtBoardingStop(origin.getLatitude(),origin.getLongitude(),origin.hasAccuracy()?origin.getAccuracy():-1,origin.getTime(),System.currentTimeMillis());
                             synchronized (MainActivity.this) {
                                 if (requestGeneration != googleRouteGeneration) return;
                                 multimodalJourney = plan;
@@ -1967,6 +2119,11 @@ public final class MainActivity extends Activity {
                     GoogleRouteCache readyCache = new GoogleRouteCache(new NavigationRouteData(retained, maneuvers,
                             route.optDouble("distanceMeters", -1), googleDuration(route.optString("duration", ""))), destination, mode, fetched.mode, journey, requestGeneration);
                     readyCache.scheduledDeparture = route.optString("lokiScheduledDeparture", "");
+                    JSONObject selection=plan!=null?plan.initialTransit:chosenRoute;
+                    if(selection!=null) {
+                        readyCache.selectionId=selection.optString("lokiSelectionId");
+                        readyCache.selectionLabel=selection.optString("lokiSelectionLabel",NavigationRouteChoices.label(selection,0));
+                    }
                     synchronized (MainActivity.this) {
                         if (requestGeneration != googleRouteGeneration) return;
                         if (plan != null && plan == multimodalJourney) {
@@ -2689,7 +2846,7 @@ public final class MainActivity extends Activity {
             boolean ambientSourceState = request != null && request.startsWith("POST /ambient_source_state");
             boolean pcPair = request != null && request.startsWith("GET /pc_pair ");
             boolean pair = pcPair || (request != null && request.startsWith("GET /pair "));
-            RequestPayload payload = readRequestPayload(reader);
+            RequestPayload payload = readRequestPayload(reader, stt ? MAX_STT_BODY_CHARS : MAX_REQUEST_BODY_CHARS);
             String bodyText = payload.body;
             if (LokiWebConsole.handle(this, socket, request, bodyText, payload.webToken, payload.origin, payload.host)) return;
             if (pair) {
@@ -2715,6 +2872,25 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket, 401, "{\"ok\":false,\"error\":\"unauthorized\"}");
                 return;
             }
+            if(request.startsWith("POST /video_generate ")) {
+                try{String source=formValue(bodyText,"image");if(source.length()>800000)throw new java.io.IOException("元画像が大きすぎます");byte[] image=source.isEmpty()?null:ImageQuestions.normalize(android.util.Base64.decode(source,android.util.Base64.NO_WRAP));JSONObject result=VideoGeneration.enqueue(this,formValue(bodyText,"requestId"),formValue(bodyText,"prompt"),image,formValue(bodyText,"parent"));writeJsonResponse(socket,200,result.toString());}catch(Exception e){writeJsonResponse(socket,400,new JSONObject().put("error",e.getMessage()).toString());}return;
+            }
+            if(request.startsWith("GET /video_generation?")) {
+                try{String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");if(id.equals("latest"))id=VideoGeneration.latest(this);writeJsonResponse(socket,200,VideoGeneration.status(this,id).toString());}catch(Exception e){writeJsonResponse(socket,400,new JSONObject().put("error","動画を取得できません").toString());}return;
+            }
+            if(request.startsWith("POST /image_generate ")) {
+                try{String source=formValue(bodyText,"image");if(source.length()>800000)throw new java.io.IOException("添付画像が大きすぎます");byte[] sourceImage=source.isEmpty()?null:ImageQuestions.normalize(android.util.Base64.decode(source,android.util.Base64.NO_WRAP));JSONObject result=ImageGeneration.enqueue(this,formValue(bodyText,"requestId"),formValue(bodyText,"prompt"),sourceImage,formValue(bodyText,"parent"));writeJsonResponse(socket,200,result.toString());}
+                catch(Exception e){writeJsonResponse(socket,409,new JSONObject().put("error",e.getMessage()==null?"画像生成を受け付けられません":e.getMessage()).toString());}return;
+            }
+            if(request.startsWith("GET /image_generation?")) {
+                try{String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");if(id.equals("latest"))id=ImageGeneration.latest(this);writeJsonResponse(socket,200,ImageGeneration.status(this,id).toString());}
+                catch(Exception e){writeJsonResponse(socket,404,new JSONObject().put("error","generated_image_missing").toString());}return;
+            }
+            if(request.startsWith("GET /image_question?")) {
+                try{String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");writeJsonResponse(socket,200,ImageQuestions.read(this,id).toString());}
+                catch(Exception e){writeJsonResponse(socket,404,"{\"error\":\"image_missing_or_expired\"}");}return;
+            }
+            if(request.startsWith("POST /image_question_done ")) {ImageQuestions.complete(this,formValue(bodyText,"id"));writeJsonResponse(socket,200,"{\"ok\":true}");return;}
             if(request.startsWith("GET /calendar_write_state ")) {
                 writeJsonResponse(socket,200,new JSONObject().put("ok",true)
                         .put("permission",CalendarWriter.permitted(this)).put("calendars",CalendarWriter.calendars(this)).toString());return;
@@ -2741,7 +2917,13 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket,200,RecorderLocation.current(this).toString());return;
             }
             if (request.startsWith("POST /recorder_photo ")) {
-                try {writeJsonResponse(socket,200,RecorderPhotoStore.accept(this,new JSONObject(bodyText)).toString());}
+                try {JSONObject input=new JSONObject(bodyText),result=RecorderPhotoStore.accept(this,input);
+                    if(input.optBoolean("autoGallery")&&result.optBoolean("complete")&&!result.optBoolean("deleted")){
+                        try{ReadGalleryWriter.save(this,new File(RecorderPhotoStore.root(this),input.getString("id")+".gcm"));result.put("gallerySaved",true);}
+                        catch(ReadGalleryWriter.GalleryDeletedException deleted){result.put("gallerySaved",false).put("galleryDeleted",true);}
+                        catch(Exception unavailable){result.put("gallerySaved",false).put("galleryError","スマホのギャラリー保存を完了できません。空き容量・権限を確認してください。");}
+                    }
+                    writeJsonResponse(socket,200,result.toString());}
                 catch(Exception invalid){writeJsonResponse(socket,400,"{\"ok\":false,\"error\":\"photo_transfer_failed\"}");}
                 return;
             }
@@ -2749,11 +2931,31 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket,200,new JSONObject().put("ok",true).put("places",FavoriteDestinations.all(this)).toString());
                 return;
             }
+            if (request.startsWith("GET /navigation_routes?")) {
+                String query=queryParam(request,"destination").trim(),name=queryParam(request,"name").trim(),mode=queryParam(request,"mode");
+                MainActivity target=activeActivity;
+                try {
+                    if(target==null||target.isFinishing()||query.isEmpty()||query.length()>200||name.length()>200||!"transit".equals(mode))throw new Exception("navigation_invalid_request");
+                    String label=name.isEmpty()?query:name;
+                    if(!name.isEmpty()) {
+                        double[] xy;
+                        if(query.matches("[-+0-9.\\s]+,[-+0-9.\\s]+")) {
+                            if(!FavoriteDestinations.valid(label,query))throw new Exception("navigation_invalid_coordinates");
+                            String[] coordinateParts=query.split(",");xy=new double[]{Double.parseDouble(coordinateParts[0].trim()),Double.parseDouble(coordinateParts[1].trim())};
+                        }else xy=target.geocodeNavigationDestination(query);
+                        if(xy==null)throw new Exception("navigation_destination_unavailable");
+                        Address address=new Address(Locale.JAPAN);address.setLatitude(xy[0]);address.setLongitude(xy[1]);GoogleNavigationClient.rememberDestination(label,address);
+                    }
+                    writeJsonResponse(socket,200,target.sharedNavigationRouteChoices(label,mode).toString());
+                }catch(Exception unavailable){writeJsonResponse(socket,200,new JSONObject().put("ok",false).put("error","経路候補を取得できません。現在地・通信・地図API設定を確認してください。").toString());}
+                return;
+            }
             if (request.startsWith("GET /navigation_start?")) {
                 final String destination=queryParam(request,"destination").trim();
                 final String destinationName=queryParam(request,"name").trim();
                 final String mode=queryParam(request,"mode");
                 final String requestId=queryParam(request,"id");
+                final String routeChoiceId=queryParam(request,"routeChoice");
                 if(destination.isEmpty() || destination.length()>200 || destinationName.length()>200 || requestId.isEmpty()
                     || !java.util.Arrays.asList("walking","driving","bicycling","transit").contains(mode)) {
                     writeJsonResponse(socket,400,"{\"ok\":false}"); return;
@@ -2790,11 +2992,17 @@ public final class MainActivity extends Activity {
                                     ack.fail("スマホでLokiの「他のアプリの上に表示」を許可してください");
                                     return;
                                 }
-                                target.getPreferences().edit().putString(KEY_MAP_ROUTE_MODE,mode).apply();
                                 ack.destination=target.normalizeNavigationDestination(target.navigationDestinationInput.getText().toString());
+                                if(!routeChoiceId.isEmpty()) {
+                                    target.stagedNavigationRoute=target.navigationRouteChoices.select(routeChoiceId,ack.destination,mode,GoogleNavigationClient.selectedDestinationCoordinates(ack.destination),System.currentTimeMillis());
+                                    target.stagedNavigationDestination=ack.destination;
+                                }else if("transit".equals(mode))throw new IllegalStateException("グラスでルート候補を再検索して選択してください");
+                                target.getPreferences().edit().putString(KEY_MAP_ROUTE_MODE,mode).apply();
                                 target.launchAfterMapsNavigationExit(ack);
                             }catch(Exception failure){ack.fail("画面起動失敗: "+failure.getMessage());Log.w("LokiGoogleNav","glass_start_dispatch_failed",failure);}};
-                            if(selectedCoordinate!=null || destinationName.isEmpty()) {
+                            if(!routeChoiceId.isEmpty()) {
+                                target.navigationDestinationInput.setText(destinationName.isEmpty()?destination:destinationName);dispatch.run();
+                            }else if(selectedCoordinate!=null || destinationName.isEmpty()) {
                                 if(selectedCoordinate!=null)GoogleNavigationClient.rememberDestination(destinationName,selectedCoordinate);
                                 target.navigationDestinationInput.setText(selectedCoordinate==null?destination:destinationName);dispatch.run();
                             }else {
@@ -2934,7 +3142,7 @@ public final class MainActivity extends Activity {
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
-                    : radioState ? RadioModeManager.state(this).toString()
+                    : radioState ? RadioModeManager.state(this).put("mediaContext",MediaGenerationContext.state(this)).toString()
                     : weather ? buildRequestedWeatherJson(parseIntQuery(request, "offset", 0),
                             parseStringQuery(request, "q", "")).toString()
                     : navigationHudControl ? buildNavigationHudControlJson(
@@ -2996,7 +3204,9 @@ public final class MainActivity extends Activity {
             root.put("error", "empty_audio");
             return root;
         }
+        if(sampleRate<8000||sampleRate>48000||encoded.length()>MAX_STT_BODY_CHARS){root.put("ok",false).put("error","invalid_audio_format");return root;}
         byte[] pcm = Base64.decode(encoded, Base64.NO_WRAP);
+        if(pcm.length%2!=0||pcm.length>(long)sampleRate*2*60){root.put("ok",false).put("error","audio_duration_limit_60s");return root;}
         if (pcm == null || pcm.length < 8000) {
             root.put("ok", false);
             root.put("error", "audio_too_short");
@@ -3025,7 +3235,8 @@ public final class MainActivity extends Activity {
                 publishAmbientPlaybackTranscript(transcript, relaySource);
             }
         } else {
-            addAiLog("音声入力: " + (transcript.length() == 0 ? "(聞き取りなし)" : transcript));
+            updateSpeechTranscript(transcript,true);
+            addAiLog("音声入力: 認識確定 " + transcript.length()+"文字");
         }
         return root;
     }
@@ -3373,204 +3584,81 @@ public final class MainActivity extends Activity {
 
     private String transcribePcmWithSpeechRecognizerAttempt(final byte[] pcm,
             final int sampleRate, final boolean preferOffline) throws Exception {
-        Log.i(TAG, "phone stt start pcmBytes=" + (pcm == null ? 0 : pcm.length)
-                + " sampleRate=" + sampleRate + " offline=" + preferOffline);
-        final CountDownLatch latch = new CountDownLatch(1);
-        final CountDownLatch readyLatch = new CountDownLatch(1);
-        final String[] result = new String[] { "" };
-        final String[] partial = new String[] { "" };
-        final String[] error = new String[] { "" };
-        final int[] errorCode = new int[] { 0 };
-        final SpeechRecognizer[] recognizerHolder = new SpeechRecognizer[1];
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    SpeechRecognizer selectedRecognizer = null;
-                    if (preferOffline && Build.VERSION.SDK_INT >= 31
-                            && SpeechRecognizer.isOnDeviceRecognitionAvailable(MainActivity.this)) {
-                        try {
-                            selectedRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(
-                                    MainActivity.this);
-                        } catch (Exception onDeviceError) {
-                            Log.w(TAG, "phone stt direct on-device recognizer unavailable",
-                                    onDeviceError);
-                        }
-                    }
-                    if (selectedRecognizer == null) {
-                        selectedRecognizer = SpeechRecognizer.createSpeechRecognizer(
-                                MainActivity.this);
-                    }
-                    final SpeechRecognizer recognizer = selectedRecognizer;
-                    recognizerHolder[0] = recognizer;
-                    final ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
-                    final ParcelFileDescriptor readSide = pipe[0];
-                    final ParcelFileDescriptor writeSide = pipe[1];
-                    recognizer.setRecognitionListener(new RecognitionListener() {
-                        @Override
-                        public void onReadyForSpeech(Bundle params) {
-                            updateStatus("音声認識中", "グラスから届いた音声を文字起こししています。");
-                            readyLatch.countDown();
-                        }
-
-                        @Override
-                        public void onBeginningOfSpeech() {
-                            Log.i(TAG, "phone stt onBeginningOfSpeech");
-                        }
-
-                        @Override
-                        public void onRmsChanged(float rmsdB) {
-                        }
-
-                        @Override
-                        public void onBufferReceived(byte[] buffer) {
-                        }
-
-                        @Override
-                        public void onEndOfSpeech() {
-                            Log.i(TAG, "phone stt onEndOfSpeech");
-                        }
-
-                        @Override
-                        public void onError(int code) {
-                            Log.w(TAG, "phone stt onError code=" + code + " offline="
-                                    + preferOffline + " text=" + speechErrorText(code));
-                            errorCode[0] = code;
-                            error[0] = speechErrorText(code);
-                            try {
-                                recognizer.destroy();
-                            } catch (Exception ignored) {
-                            }
-                            latch.countDown();
-                        }
-
-                        @Override
-                        public void onResults(Bundle results) {
-                            String text = bestRecognitionText(results);
-                            if (text.length() > 0) {
-                                result[0] = text;
-                            }
-                            Log.i(TAG, "phone stt onResults textLength=" + result[0].length());
-                            try {
-                                recognizer.destroy();
-                            } catch (Exception ignored) {
-                            }
-                            latch.countDown();
-                        }
-
-                        @Override
-                        public void onPartialResults(Bundle partialResults) {
-                            String text = bestRecognitionText(partialResults);
-                            if (text.length() > 0) {
-                                partial[0] = text;
-                            }
-                            Log.i(TAG, "phone stt onPartialResults textLength=" + partial[0].length());
-                        }
-
-                        @Override
-                        public void onEvent(int eventType, Bundle params) {
-                            Log.i(TAG, "phone stt onEvent type=" + eventType);
-                        }
-
-                        @Override
-                        public void onSegmentResults(Bundle segmentResults) {
-                            String text = bestRecognitionText(segmentResults);
-                            if (text.length() > 0) {
-                                result[0] = text;
-                            }
-                            Log.i(TAG, "phone stt onSegmentResults textLength=" + result[0].length());
-                        }
-
-                        @Override
-                        public void onEndOfSegmentedSession() {
-                            Log.i(TAG, "phone stt onEndOfSegmentedSession textLength=" + result[0].length()
-                                    + " partialLength=" + partial[0].length());
-                            try {
-                                recognizer.destroy();
-                            } catch (Exception ignored) {
-                            }
-                            latch.countDown();
-                        }
-                    });
-                    Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ja-JP");
-                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ja-JP");
-                    intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-                    intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-                    intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline);
-                    intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, readSide);
-                    intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT);
-                    intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1);
-                    intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, sampleRate);
-                    if (Build.VERSION.SDK_INT >= 33) {
-                        intent.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE);
-                    }
-                    recognizer.startListening(intent);
-                    new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                OutputStream out = new ParcelFileDescriptor.AutoCloseOutputStream(writeSide);
-                                byte[] leadingSilence = new byte[Math.max(8000, sampleRate / 4 * 2)];
-                                byte[] trailingSilence = new byte[Math.max(12000, sampleRate / 2 * 2)];
-                                readyLatch.await(2000L, TimeUnit.MILLISECONDS);
-                                writePcmAtRealtimeSpeed(out, leadingSilence, sampleRate);
-                                writePcmAtRealtimeSpeed(out, pcm, sampleRate);
-                                writePcmAtRealtimeSpeed(out, trailingSilence, sampleRate);
-                                out.flush();
-                                out.close();
-                                Log.i(TAG, "phone stt audio pipe closed");
-                            } catch (Exception e) {
-                                String message = e.getMessage() == null ? "" : e.getMessage();
-                                if (message.contains("EPIPE") || message.contains("Broken pipe")) {
-                                    // SpeechRecognizer may close the read side as soon as it
-                                    // has detected end-of-speech. Keep waiting for its result.
-                                    Log.i(TAG, "phone stt audio pipe closed by recognizer");
-                                } else {
-                                    Log.w(TAG, "phone stt audio pipe error", e);
-                                    error[0] = "audio_pipe_error: " + message;
-                                    latch.countDown();
-                                }
-                            }
-                        }
-                    }, "PhoneSttAudioWriter").start();
-                } catch (Exception e) {
-                    error[0] = e.getMessage();
-                    latch.countDown();
-                }
+        synchronized(phoneSpeechRecognitionLock){return transcribePcmWithSpeechRecognizerLocked(pcm,sampleRate,preferOffline);}
+    }
+    private String transcribePcmWithSpeechRecognizerLocked(final byte[] pcm,
+            final int sampleRate, final boolean preferOffline) throws Exception {
+        Log.i(TAG,"phone stt start pcmBytes="+pcm.length+" sampleRate="+sampleRate+" offline="+preferOffline);
+        final CountDownLatch latch=new CountDownLatch(1),readyLatch=new CountDownLatch(1);
+        final SpeechTranscriptAccumulator transcript=new SpeechTranscriptAccumulator();
+        final String[] error={""};final int[] errorCode={0};
+        final SpeechRecognizer[] holder={null};final ParcelFileDescriptor[] pipeHolder={null,null};
+        final java.util.concurrent.atomic.AtomicBoolean audioDelivered=new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+        runOnUiThread(()->{try{
+            SpeechRecognizer selected=null;
+            if(preferOffline&&Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(this))
+                selected=SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+            if(selected==null)selected=SpeechRecognizer.createSpeechRecognizer(this);
+            final SpeechRecognizer recognizer=selected;holder[0]=recognizer;
+            ParcelFileDescriptor[] pipe=ParcelFileDescriptor.createPipe();pipeHolder[0]=pipe[0];pipeHolder[1]=pipe[1];
+            recognizer.setRecognitionListener(new RecognitionListener(){
+                public void onReadyForSpeech(Bundle b){readyLatch.countDown();updateStatus("音声認識中","グラスの録音全体を文字にしています。");}
+                public void onBeginningOfSpeech(){}
+                public void onRmsChanged(float v){}
+                public void onBufferReceived(byte[] b){}
+                public void onEndOfSpeech(){}
+                public void onError(int code){errorCode[0]=code;error[0]=speechErrorText(code);latch.countDown();}
+                public void onResults(Bundle b){transcript.full(bestRecognitionText(b));latch.countDown();}
+                public void onPartialResults(Bundle b){transcript.partial(bestRecognitionText(b));updateSpeechTranscript(transcript.preview(),false);}
+                public void onEvent(int type,Bundle b){}
+                public void onSegmentResults(Bundle b){transcript.segment(bestRecognitionText(b));updateSpeechTranscript(transcript.preview(),false);Log.i(TAG,"phone stt segment count="+transcript.count()+" chars="+transcript.confirmed().length());}
+                public void onEndOfSegmentedSession(){latch.countDown();}
+            });
+            Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"ja-JP");intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,"ja-JP");
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,3);intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,true);
+            intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE,preferOffline);
+            intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE,pipe[0]);
+            intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,AudioFormat.ENCODING_PCM_16BIT);
+            intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT,1);intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE,sampleRate);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,2200L);
+            intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,1600L);
+            if(Build.VERSION.SDK_INT>=33)intent.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION,RecognizerIntent.EXTRA_AUDIO_SOURCE);
+            recognizer.startListening(intent);
+            new Thread(()->{try(OutputStream out=new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1])){
+                readyLatch.await(2000L,TimeUnit.MILLISECONDS);if(cancelled.get())return;
+                writePcmAtRealtimeSpeed(out,new byte[sampleRate/2],sampleRate);
+                if(cancelled.get())return;writePcmAtRealtimeSpeed(out,pcm,sampleRate);audioDelivered.set(true);
+                writePcmAtRealtimeSpeed(out,new byte[sampleRate],sampleRate);out.flush();
+            }catch(Exception e){if(!cancelled.get()&&!audioDelivered.get()){error[0]="audio_pipe_incomplete";latch.countDown();}}
+            },"PhoneSttAudioWriter").start();
+        }catch(Exception e){error[0]="speech_start_failed: "+e.getClass().getSimpleName();latch.countDown();}});
+        try{
+            boolean completed=latch.await(SpeechTranscriptAccumulator.timeoutMs(pcm.length,sampleRate),TimeUnit.MILLISECONDS);
+            if(!completed||!audioDelivered.get()||!error[0].isEmpty()){
+                updateSpeechTranscript(transcript.preview(),false);
+                String reason=!completed?"speech_timeout_incomplete":!audioDelivered.get()?"speech_audio_incomplete":error[0];
+                throw new SpeechRecognitionFailure(errorCode[0],reason);
             }
-        });
-        boolean completed = latch.await(preferOffline ? 16L : 24L, TimeUnit.SECONDS);
-        if (!completed) {
-            Log.w(TAG, "phone stt timeout pcmBytes=" + (pcm == null ? 0 : pcm.length));
-            String salvaged = result[0].length() > 0 ? result[0] : partial[0];
-            if (salvaged.length() > 0) {
-                Log.i(TAG, "phone stt timeout but salvaged textLength=" + salvaged.length());
-                return salvaged;
-            }
-            final SpeechRecognizer recognizer = recognizerHolder[0];
-            if (recognizer != null) {
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            recognizer.cancel();
-                            recognizer.destroy();
-                        } catch (Exception ignored) {
-                        }
-                    }
-                });
-            }
-            throw new IllegalStateException("speech_timeout");
+            String result=transcript.confirmed();
+            if(result.isEmpty())throw new SpeechRecognitionFailure(SpeechRecognizer.ERROR_NO_MATCH,"no_match");
+            updateSpeechTranscript(result,true);
+            Log.i(TAG,"phone stt complete segments="+transcript.count()+" chars="+result.length()+" audioComplete=true");
+            return result;
+        }finally{
+            cancelled.set(true);for(ParcelFileDescriptor fd:pipeHolder)if(fd!=null)try{fd.close();}catch(Exception ignored){}
+            runOnUiThread(()->{if(holder[0]!=null){try{holder[0].cancel();holder[0].destroy();}catch(Exception ignored){}}});
         }
-        if (result[0].length() == 0 && partial[0].length() > 0) {
-            return partial[0];
-        }
-        if (result[0].length() == 0 && error[0].length() > 0) {
-            throw new SpeechRecognitionFailure(errorCode[0], error[0]);
-        }
-        return result[0];
+    }
+
+    private void updateSpeechTranscript(final String text,final boolean complete){
+        runOnUiThread(()->{lastSpeechTranscript=text==null?"":text;
+            if(speechTranscriptView!=null&&!lastSpeechTranscript.isEmpty()){
+                speechTranscriptView.setText((complete?"認識した内容（全文・タップで確認）\n":"認識途中（未送信）\n")+lastSpeechTranscript);
+                speechTranscriptView.setVisibility(View.VISIBLE);
+            }});
     }
 
     private void writePcmAtRealtimeSpeed(OutputStream out, byte[] audio,
@@ -3856,7 +3944,9 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private RequestPayload readRequestPayload(BufferedReader reader) throws Exception {
+    private RequestPayload readRequestPayload(BufferedReader reader) throws Exception { return readRequestPayload(reader,MAX_REQUEST_BODY_CHARS); }
+
+    private RequestPayload readRequestPayload(BufferedReader reader,int maximumBodyChars) throws Exception {
         int contentLength = 0;
         String token = "";
         String pairCode="", webToken="", origin="", host="";
@@ -3885,7 +3975,7 @@ public final class MainActivity extends Activity {
         if (contentLength <= 0) {
             RequestPayload result=new RequestPayload("", token);result.pairCode=pairCode;result.webToken=webToken;result.origin=origin;result.host=host;return result;
         }
-        if (contentLength > MAX_REQUEST_BODY_CHARS) {
+        if (contentLength > maximumBodyChars) {
             throw new IllegalArgumentException("request body too large");
         }
         char[] chars = new char[contentLength];
@@ -3998,9 +4088,19 @@ public final class MainActivity extends Activity {
         editor.apply();
     }
 
+    static boolean queueImageCommand(Context context,String command) {
+        synchronized(MainActivity.class){
+            SharedPreferences preferences=context.getSharedPreferences(PREFS,MODE_PRIVATE);
+            if(readPendingCommandsLocked(preferences).contains(command))return true;
+            if(!queueBridgeCommand(context,command,true))return false;
+            return preferences.edit().putBoolean("image_queue_flush",true).commit();
+        }
+    }
     static boolean queueBridgeCommand(Context context, String rawCommand, boolean replacePending) {
         if (context == null) return false;
         String command = shortText(rawCommand == null ? "" : rawCommand.trim(), MAX_COMMAND_CHARS);
+        if(MediaGenerationContext.video(context,command)){try{VideoGeneration.enqueue(context,java.util.UUID.randomUUID().toString(),command,null,"");return true;}catch(Exception e){addAiLog("動画生成: "+e.getMessage());return false;}}
+        if(ImageGeneration.handles(context,command)) {try{ImageGeneration.enqueue(context,java.util.UUID.randomUUID().toString(),command,null,"");return true;}catch(Exception e){addAiLog("画像生成: "+e.getMessage());return false;}}
         if (command.length() == 0) return false;
         SharedPreferences preferences = context.getSharedPreferences(PREFS, MODE_PRIVATE);
         synchronized (MainActivity.class) {
@@ -5138,6 +5238,9 @@ public final class MainActivity extends Activity {
             }
         } else arrivalCandidateSince = 0;
         result.put("routeReady", routeFresh);
+        if(routeFresh && googleCached!=null && !googleCached.selectionId.isEmpty())
+            result.put("selectedRouteId",googleCached.selectionId).put("selectedRouteLabel",googleCached.selectionLabel)
+                .put("routeSource","ロキ共通の選択経路（Googleマップとは別計算）");
         result.put("routeGeneration", routeFresh && googleCached != null ? googleCached.generation : 0L);
         if (routeFresh && googleCached != null && !googleCached.scheduledDeparture.isEmpty()) {
             String when = java.time.Instant.parse(googleCached.scheduledDeparture).atZone(java.time.ZoneId.of("Asia/Tokyo"))
@@ -5181,17 +5284,20 @@ public final class MainActivity extends Activity {
         if (plan != null) {
             result.put("phase",plan.phase.name()).put("accessMode",plan.accessMode).put("egressMode",plan.egressMode)
                     .put("routeMode",plan.mode()).put("routeTargetKind",plan.phase.name())
-                    .put("routeDestination",plan.phase==MultimodalJourney.Phase.FIRST_MILE?plan.boardingName:
+                    .put("routeDestination",plan.destination)
+                    .put("segmentDestination",plan.phase==MultimodalJourney.Phase.FIRST_MILE||plan.phase==MultimodalJourney.Phase.BOARDING?plan.boardingName:
                             plan.phase==MultimodalJourney.Phase.TRANSIT_LEG?plan.alightingName:plan.destination);
             JSONObject phaseJourney=result.optJSONObject("journey");
             if(phaseJourney!=null) {
                 phaseJourney.put("phase",plan.phase.name()).put("requestedMode",plan.mode())
+                        .put("waitingToBoard",plan.phase==MultimodalJourney.Phase.BOARDING)
                         .put("walkingFallback",!plan.mode().equals(phaseJourney.optString("effectiveMode",plan.mode())));
                 if(!phaseJourney.optBoolean("positionConfirmed")) {
-                    result.put("instruction",plan.phase==MultimodalJourney.Phase.FIRST_MILE ? "乗車駅まで"+("bicycling".equals(plan.mode())?"自転車":"徒歩")+"："+plan.boardingName
+                    result.put("instruction",plan.phase==MultimodalJourney.Phase.FIRST_MILE ? "乗車地点まで"+("bicycling".equals(plan.mode())?"自転車":"徒歩")+"："+plan.boardingName
+                            : plan.phase==MultimodalJourney.Phase.BOARDING ? "乗車地点付近・乗車待ち："+plan.boardingName
                             : plan.phase==MultimodalJourney.Phase.TRANSIT_LEG ? "公共交通："+plan.boardingName+" → "+plan.alightingName
                             : "最終目的地まで"+("bicycling".equals(plan.mode())?"自転車":"徒歩")+"："+plan.destination);
-                    result.put("detail",plan.phase==MultimodalJourney.Phase.FIRST_MILE ? "乗車駅でダイヤを再検索します" : "位置未確認・現在の区間を表示中");
+                    result.put("detail",plan.phase==MultimodalJourney.Phase.FIRST_MILE ? "選択した公共交通経路へ接続します" : "位置未確認・選択した区間を表示中");
                 }
             }
         }
@@ -5738,7 +5844,7 @@ public final class MainActivity extends Activity {
         final String action = parseStringQuery(request, "action", "open");
         if ("board".equals(action) || "alight".equals(action)) {
             boolean advanced=advanceMultimodal(action);
-            return new JSONObject().put("ok",advanced).put("message",advanced ? "次の区間を現在時刻で検索中" : "現在の区間では進行できません。経路取得を確認してください。");
+            return new JSONObject().put("ok",advanced).put("message",advanced ? "選択した経路の次の区間を準備中" : "現在の区間では進行できません。経路取得を確認してください。");
         }
         if ("stop".equals(action)) {
             return stopNavigationFromGlass();
@@ -6680,10 +6786,14 @@ public final class MainActivity extends Activity {
         refreshLogs();
     }
 
+    private GeneratedImagePanel generatedImagePanel;
+    private GeneratedVideoPanel generatedVideoPanel;
     private void refreshLogs() {
+        if(generatedImagePanel!=null)generatedImagePanel.refresh();
+        if(generatedVideoPanel!=null)generatedVideoPanel.refresh();
         if (logView == null) return;
         StringBuilder builder = new StringBuilder();
-        builder.append("AI会話ログ（端末内・直近90日＋圧縮長期記憶）\n");
+        builder.append("会話ログ（新しい順）\n");
         synchronized (LOGS) {
             if (LOGS.isEmpty()) {
                 builder.append("まだログはありません。");
@@ -6694,7 +6804,12 @@ public final class MainActivity extends Activity {
                 }
             }
         }
-        logView.setText(builder.toString());
+        String text=builder.toString();
+        if(!android.text.TextUtils.equals(logView.getText(),text)) {
+            int previousY=logScroll==null?0:logScroll.getScrollY(),previousHeight=logView.getHeight();
+            logView.setText(text);
+            if(logScroll!=null)logScroll.post(()->logScroll.scrollTo(0,previousY==0?0:Math.max(0,previousY+logView.getHeight()-previousHeight)));
+        }
     }
 
     private boolean isAiLogKind(String kind) {
