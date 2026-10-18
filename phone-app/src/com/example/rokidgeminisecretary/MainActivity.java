@@ -377,6 +377,7 @@ public final class MainActivity extends Activity {
     }
 
     private void handleSharedDestination(Intent intent) {
+        if(imageComposer!=null&&imageComposer.share(intent))return;
         if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
         String text = intent.getStringExtra(Intent.EXTRA_TEXT);
         intent.setAction(null); // Do not replay a consumed share after rotation.

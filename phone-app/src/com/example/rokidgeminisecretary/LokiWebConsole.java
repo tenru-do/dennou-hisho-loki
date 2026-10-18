@@ -18,6 +18,7 @@ final class LokiWebConsole {
     private static int attempts;
     private static final int PHOTO_PAGE_SIZE = 200;
     private static final Object PHOTO_WORK = new Object();
+    private static final java.util.concurrent.atomic.AtomicBoolean GOOGLE_PHOTO_WORK=new java.util.concurrent.atomic.AtomicBoolean();
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("loki_web_console", 0); }
     static synchronized String openCode() {
         code = String.format(Locale.US, "%06d", RANDOM.nextInt(1000000));
@@ -103,8 +104,8 @@ final class LokiWebConsole {
             if(method.equals("GET")&&path.equals("/web/icon.png")) {
                 respond(socket,200,"image/png",asset(owner,"icon.png"));return true;
             }
-            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/style.css"))) {
-                String asset=path.endsWith(".js")?"app.js":path.endsWith(".css")?"style.css":"index.html";
+            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/style.css"))) {
+                String asset=path.equals("/web/media-attachments.js")?"media-attachments.js":path.endsWith(".js")?"app.js":path.endsWith(".css")?"style.css":"index.html";
                 respond(socket,200,asset.endsWith(".js")?"text/javascript; charset=utf-8":asset.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8",asset(owner,asset));return true;
             }
             // No CORS. Reject cross-origin fetches even if a browser retained a token.
@@ -123,6 +124,16 @@ final class LokiWebConsole {
                 json(socket,200,enroll(owner,name));return true;
             }
             JSONObject session=authenticate(owner,token);if(session==null){json(socket,401,new JSONObject().put("error","スマホで接続コードを発行し、接続してください"));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/media-drop-status")) {
+                JSONObject input=new JSONObject(body),record=new JSONObject().put("time",System.currentTimeMillis());
+                JSONArray types=input.optJSONArray("types"),safeTypes=new JSONArray();if(types!=null)for(int i=0;i<Math.min(12,types.length());i++){String t=types.optString(i);if(t.matches("[a-zA-Z0-9/_+.-]{1,60}"))safeTypes.put(t);}
+                record.put("types",safeTypes).put("files",Math.max(0,Math.min(100,input.optInt("files")))).put("images",Math.max(0,Math.min(100,input.optInt("images")))).put("stage",input.optString("stage").equals("received")?"received":"failed");
+                prefs(owner).edit().putString("media_drop_status",record.toString()).apply();json(socket,200,new JSONObject().put("ok",true));return true;
+            }
+            if(method.equals("POST")&&path.equals("/web/api/google-photo-import")) {
+                if(!GOOGLE_PHOTO_WORK.compareAndSet(false,true))throw new IOException("画像の取り込み中です。少し待って再度ドロップしてください");
+                try{byte[] jpeg=GooglePhotoImport.read(new JSONObject(body).getString("url"));json(socket,200,new JSONObject().put("image",android.util.Base64.encodeToString(jpeg,android.util.Base64.NO_WRAP)));}finally{GOOGLE_PHOTO_WORK.set(false);}return true;
+            }
             Map<String,String> query=new HashMap<>();if(uri.getRawQuery()!=null)for(String part:uri.getRawQuery().split("&")){String[] q=part.split("=",2);query.put(q[0],q.length==2?URLDecoder.decode(q[1],"UTF-8"):"");}
             if(method.equals("POST")&&path.equals("/web/api/media-generate")){JSONObject input=new JSONObject(body);String rawId=input.getString("requestId"),parent=input.optString("parent"),message=input.getString("message");if(!rawId.matches("[a-zA-Z0-9-]{8,80}")||parent.isEmpty())throw new IOException("元画像を選択してください");MediaGenerationIntent.Kind kind=MediaGenerationContext.kind(owner,message,true);String requestId=digest(session.getString("hash")+":"+rawId);if(kind==MediaGenerationIntent.Kind.VIDEO)json(socket,200,VideoGeneration.enqueue(owner,requestId,message,null,parent));else if(kind==MediaGenerationIntent.Kind.IMAGE)json(socket,200,ImageGeneration.enqueue(owner,requestId,message,null,parent));else throw new IOException("元画像をどう変えるか、どんな動きを付けるか入力してください");return true;}
             if(method.equals("GET")&&path.equals("/web/api/video-generations")){json(socket,200,new JSONObject().put("items",VideoGeneration.list(owner)));return true;}
@@ -142,7 +153,7 @@ final class LokiWebConsole {
                 byte[] jpeg=ImageQuestions.normalize(android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP));
                 String rawId=input.getString("requestId");if(!rawId.matches("[a-zA-Z0-9-]{8,80}"))throw new IllegalArgumentException("invalid request id");
                 String requestId=digest(session.getString("hash")+":"+rawId);
-                json(socket,200,ImageQuestions.enqueue(owner,requestId,input.optString("message",""),jpeg));return true;
+                json(socket,200,ImageQuestions.enqueue(owner,requestId,input.optString("message",""),jpeg,input.optInt("imageCount",1)));return true;
             }
             if(method.equals("GET")&&path.equals("/web/api/photos")) {
                 int offset=Math.max(0,Integer.parseInt(query.getOrDefault("offset","0")));ArrayList<File> all=photos(owner);offset=Math.min(offset,Math.max(0,((all.size()-1)/PHOTO_PAGE_SIZE)*PHOTO_PAGE_SIZE));JSONArray items=new JSONArray();
