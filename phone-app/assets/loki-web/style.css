@@ -3,3 +3,5 @@
 .remember{display:flex;gap:10px;align-items:center}.remember input{width:22px;height:22px;margin:0}
 
 .meeting-controls{border:1px solid #345;border-radius:12px;padding:1em;margin-bottom:1em}#meetings select,#meetings input[type=file]{max-width:100%;width:100%;box-sizing:border-box}#meetingList article,#meetingImportList article{border-bottom:1px solid #345;padding:1em 0}#meetingList button,#meetingImportList button{margin:.3em}#meetingAudio{max-width:100%;width:100%}
+
+#chatDropZone{border:2px dashed #729d95;padding:12px;border-radius:10px;margin:10px 0}#chatDropZone.dragging{border-color:#afffe0;background:#284f47}#chatDropStatus{margin:6px 0;color:#f1d49e;overflow-wrap:anywhere}

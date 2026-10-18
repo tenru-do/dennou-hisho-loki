@@ -70,8 +70,8 @@ on('photosTab',()=>showTab('photos'));
 on('chatTab',async()=>{showTab('chat');await loadHistory();});
 on('meetingsTab',async()=>{showTab('meetings');await refreshMeetings();});
 $('message').addEventListener('input',()=>{sendId='';});
-let chatImageData='', chatImageUrl='', chatImageGeneration=0, chatImagePreparing=false;
-function clearChatImage(){chatImageGeneration++;chatImageData='';chatImagePreparing=false;sendId='';$('chatImage').value='';$('chatImagePreview').hidden=true;$('chatImagePreview').removeAttribute('src');$('clearChatImage').hidden=true;$('chatImageStatus').textContent='';if(chatImageUrl)URL.revokeObjectURL(chatImageUrl);chatImageUrl='';}
+let chatImageData='', chatImageUrl='', chatImageGeneration=0, chatImagePreparing=false, chatImageCount=1, chatAttachments=[], chatAttachmentVideo=false, chatAttachmentKinds=[];
+function clearChatImage(){chatImageGeneration++;chatImageData='';chatImageCount=1;chatAttachments=[];chatAttachmentVideo=false;chatAttachmentKinds=[];if($('chatAttachmentList'))$('chatAttachmentList').replaceChildren();chatImagePreparing=false;sendId='';$('chatImage').value='';$('chatImagePreview').hidden=true;$('chatImagePreview').removeAttribute('src');$('clearChatImage').hidden=true;$('chatImageStatus').textContent='';if(chatImageUrl)URL.revokeObjectURL(chatImageUrl);chatImageUrl='';}
 async function chatImageDimensions(file){
  const bytes=new Uint8Array(await file.slice(0,1048576).arrayBuffer()),d=new DataView(bytes.buffer);let width=0,height=0;
  const text=(offset,n)=>String.fromCharCode(...bytes.subarray(offset,offset+n));
@@ -98,7 +98,69 @@ async function prepareChatImage(file){
   }finally{bitmap.close();}
  }catch(e){if(epoch===chatImageGeneration){clearChatImage();note(e.message);}}finally{if(epoch===chatImageGeneration)chatImagePreparing=false;}
 }
-$('chatImage').addEventListener('change',()=>prepareChatImage($('chatImage').files[0]));on('clearChatImage',clearChatImage);
+async function normalizeChatAttachment(file){
+ if(file.size>20000000||!file.type.startsWith('image/'))throw Error('画像は1枚20MB以内にしてください');
+ const size=await chatImageDimensions(file),scale=Math.min(1,2048/Math.max(size.width,size.height));
+ const bitmap=await createImageBitmap(file,{resizeWidth:Math.max(1,Math.round(size.width*scale)),resizeHeight:Math.max(1,Math.round(size.height*scale)),resizeQuality:'high'});
+ try{const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0);for(let q=.9;q>=.3;q-=.1){const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',q));if(blob&&blob.size<=600000)return new File([blob],'attachment.jpg',{type:'image/jpeg'});}throw Error('画像が細かすぎます。範囲を切り取ってください');}finally{bitmap.close();}
+}
+function renderChatAttachmentList(){const list=$('chatAttachmentList');if(!list)return;list.replaceChildren();for(const [i,kind] of chatAttachmentKinds.entries()){const item=document.createElement('li');item.textContent=(i+1)+': '+(kind==='video'?'動画（8場面の抜粋・音声なし）':'画像');list.append(item);}}
+async function prepareChatMedia(files){
+ const list=Array.from(files);if(!list.length)return;const previous=chatAttachments.slice(),priorKinds=chatAttachmentKinds.slice();
+ const kinds=priorKinds.concat(list.map(f=>f.type.startsWith('video/')?'video':'image'));
+ if(kinds.length>6){dropStatus('画像・動画は合計6件までです。現在の添付は保持しています');return;}
+ if(kinds.filter(k=>k==='video').length>3){dropStatus('動画は合計3本までです。現在の添付は保持しています');return;}
+ const epoch=++chatImageGeneration;chatImagePreparing=true;dropStatus('添付を追加しています…');
+ try{
+  const added=[];for(const file of list){const video=file.type.startsWith('video/');const prepared=video?await createMediaOverview([file],chatImageDimensions,()=>epoch!==chatImageGeneration||!token):file;added.push(await normalizeChatAttachment(prepared));if(epoch!==chatImageGeneration||!token)return;}
+  const combined=previous.concat(added);const sheet=combined.length===1?combined[0]:await createMediaOverview(combined,chatImageDimensions,()=>epoch!==chatImageGeneration||!token,{kinds});
+  if(epoch!==chatImageGeneration||!token)return;await prepareChatImage(sheet);
+  if(chatImageData){chatImageCount=combined.length;chatAttachments=combined;chatAttachmentKinds=kinds;chatAttachmentVideo=kinds.includes('video');renderChatAttachmentList();const videos=kinds.filter(k=>k==='video').length;dropStatus(combined.length+'件を添付中（画像'+(combined.length-videos)+'枚・動画'+videos+'本）。追加できます。動画は各8場面の抜粋・音声なしです');}
+ }catch(e){if(epoch===chatImageGeneration){dropStatus(e.message);}}finally{if(epoch===chatImageGeneration)chatImagePreparing=false;}
+}
+$('chatImage').addEventListener('change',()=>{if(!$('send').disabled&&!chatImagePreparing)prepareChatMedia($('chatImage').files);});on('clearChatImage',clearChatImage);
+$('chatForm').addEventListener('paste',e=>{const files=Array.from(e.clipboardData?.files||[]).filter(f=>/^(image|video)\//.test(f.type));if(files.length){e.preventDefault();if($('send').disabled||chatImagePreparing){dropStatus('準備が終わってから画像を追加してください');return;}prepareChatMedia(files);}});
+// Capture at the window so file-input defaults and nested widgets cannot swallow a drop.
+function dropStatus(text){$('chatImageStatus').textContent=text;const status=$('chatDropStatus');if(status)status.textContent=text;note(text);}
+function attachmentDragFiles(data){const files=Array.from(data?.files||[]);if(!files.length)for(const item of Array.from(data?.items||[])){if(item.kind==='file'){const file=item.getAsFile();if(file)files.push(file);}}return files;}
+function dragSummary(data){return {types:Array.from(data?.types||[]).slice(0,12).map(t=>String(t).slice(0,60)),files:attachmentDragFiles(data).length,images:droppedGooglePhotoUrls(data).length};}
+function recordDrop(data,stage){try{const summary={...dragSummary(data),stage};if(token)api('media-drop-status',summary).catch(()=>{});}catch{}}
+window.addEventListener('dragover',e=>{e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';const zone=$('chatDropZone');if(zone)zone.classList.add('dragging');},true);
+window.addEventListener('dragleave',e=>{if(!e.relatedTarget){const zone=$('chatDropZone');if(zone)zone.classList.remove('dragging');}},true);
+window.addEventListener('drop',e=>{
+ e.preventDefault();e.stopPropagation();const zone=$('chatDropZone');if(zone)zone.classList.remove('dragging');
+ const data=e.dataTransfer;recordDrop(data,'received');
+ if(!token){dropStatus('先にロキへ接続してください。ドロップは受信しました');return;}
+ if($('send').disabled||chatImagePreparing){dropStatus('送信・画像の準備が終わってから追加してください。ドロップは受信しました');return;}
+ showTab('chat');dropStatus('ドロップを受信しました。画像を確認しています…');
+ const files=attachmentDragFiles(data);
+ if(files.length){prepareChatMedia(files).then(()=>{if(chatImageData)dropStatus(chatImageCount+'件を添付中。内容を確認して送信してください');}).catch(err=>dropStatus(err.message));return;}
+ const html=data?.getData('text/html')||'',inline=html.match(/data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+/i);
+ if(inline&&inline[0].length<=800000){try{const parts=inline[0].split(','),bytes=Uint8Array.from(atob(parts[1]),c=>c.charCodeAt(0));prepareChatMedia([new File([bytes],'dropped-image',{type:parts[0].slice(5).split(';')[0]})]);return;}catch{}}
+ importDroppedGooglePhotos(data).catch(err=>{dropStatus(err.name==='AbortError'?'Googleフォトからの画像取得がタイムアウトしました':err.message);recordDrop(data,'failed');});
+},true);
+function droppedGooglePhotoUrls(data){
+ const urls=[];const add=raw=>{try{const u=new URL(raw);if(u.protocol==='https:'&&/^lh[0-9]+\.googleusercontent\.com$/.test(u.hostname)&&!u.username&&!u.password&&(!u.port||u.port==='443')&&!u.hash&&u.pathname.length>1){if(!urls.includes(u.href))urls.push(u.href);return true;}}catch{}return false;};
+ const html=data?.getData('text/html')||'';if(html&&html.length<=1000000){const template=document.createElement('template');template.innerHTML=html;for(const img of template.content.querySelectorAll('img')){if(!add(img.getAttribute('src')))for(const source of (img.getAttribute('srcset')||'').split(','))if(add(source.trim().split(/\s+/)[0]))break;}
+  if(!urls.length)for(const match of html.matchAll(/https:\/\/lh[0-9]+\.googleusercontent\.com\/[^\s"'<>\)]+/g))add(match[0].replaceAll('&amp;','&'));
+ }
+ for(const t of ['text/uri-list','text/plain','URL','text/x-moz-url'])for(const line of (data?.getData(t)||'').split(/\r?\n/))if(!line.startsWith('#'))add(line.trim());
+ const download=data?.getData('DownloadURL')||'';const at=download.indexOf('https://');if(at>=0)add(download.slice(at));
+ return urls;
+}
+if($('chatDropStatus'))$('chatDropStatus').textContent='取り込み機能 v203：準備できました';
+async function importDroppedGooglePhotos(data){
+ const urls=droppedGooglePhotoUrls(data);showTab('chat');
+ if(!urls.length)throw Error('ドロップは届きましたが、画像データ・画像URLが含まれていません（受信形式：'+(Array.from(data?.types||[]).join('、')||'なし')+'）。写真を開いた状態で画像自体をドラッグしてください');
+ if(urls.length>6)throw Error('画像は一度に6枚までです');
+ const epoch=++chatImageGeneration,expectedToken=token;chatImagePreparing=true;dropStatus('Googleフォトの画像を取り込んでいます…');
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),60000);
+ try{
+  const files=[];for(const url of urls){const result=await api('google-photo-import',{url},controller.signal);if(epoch!==chatImageGeneration||token!==expectedToken)return;const binary=atob(result.image),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));files.push(new File([bytes],'GooglePhoto-'+(files.length+1)+'.jpg',{type:'image/jpeg'}));}
+  if(epoch!==chatImageGeneration||token!==expectedToken)return;await prepareChatMedia(files);if(chatImageData)dropStatus('Googleフォトから'+files.length+'枚を追加、合計'+chatImageCount+'件を添付中。質問を入力して送信してください');
+ }catch(err){if(epoch===chatImageGeneration){$('chatImageStatus').textContent='画像を取り込めませんでした。添付済みの画像は保持しています';throw err;}}
+ finally{clearTimeout(timer);if(epoch===chatImageGeneration)chatImagePreparing=false;}
+}
 let composingMessage=false;
 $('message').addEventListener('compositionstart',()=>{composingMessage=true;});
 $('message').addEventListener('compositionend',()=>{composingMessage=false;});
@@ -116,14 +178,15 @@ function newRequestId(){
 }
 $('chatForm').addEventListener('submit',async e=>{
  e.preventDefault();if($('send').disabled)return;const message=$('message').value.trim();const image=chatImageData;if(chatImagePreparing){note('画像の準備が終わるまでお待ちください');return;}if(!message&&!image)return;
- $('send').disabled=true;let timer;
+ $('send').disabled=true;$('chatImage').disabled=true;let timer;
  try{
+  if(generatedParent&&image)throw Error('添付を解析する場合は編集元を外してください。添付を使う生成は編集元を外して依頼してください');
   sendId=sendId||newRequestId();const controller=new AbortController();timer=setTimeout(()=>controller.abort(),15000);
-  note('送信しています…');const receipt=await api(generatedParent?'media-generate':image?'image-question':'send',{message,requestId:sendId,...(image?{image}:{}),...(generatedParent?{parent:generatedParent}:{})},controller.signal);if(receipt.videoGenerated||receipt.generated){$('resetGenerationParent').click();$('generatedPanel').open=true;await loadGenerated();}
+  note('送信しています…');const receipt=await api(generatedParent?'media-generate':image?'image-question':'send',{message,requestId:sendId,...(image?{image,imageCount:chatImageCount}:{}),...(generatedParent?{parent:generatedParent}:{})},controller.signal);if(receipt.videoGenerated||receipt.generated){$('resetGenerationParent').click();$('generatedPanel').open=true;await loadGenerated();}
   if($('message').value.trim()===message){$('message').value='';sendId='';if(image===chatImageData)clearChatImage();}
   note(receipt.videoGenerated?'動画生成を受け付けました。会話を続けられます。生成動画一覧で進捗を確認できます':receipt.generated?'画像生成を受け付けました。生成画像一覧で進捗を確認できます':'グラスへ送信待ちです。返信は共通履歴に表示されます');
  }catch(err){note(err.name==='AbortError'?'送信の確認がタイムアウトしました。接続を確認して再試行してください。同じ内容の再送は重複を防ぎます':err.message||'送信できませんでした');}
- finally{clearTimeout(timer);$('send').disabled=false;}
+ finally{clearTimeout(timer);$('send').disabled=false;$('chatImage').disabled=false;}
 });
 setInterval(()=>{if(!document.hidden)loadHistory().catch(e=>note(e.message));},5000);
 showAuth();if(token)loadPhotos().catch(e=>{note(e.message);if(!token)connectBrowser(invitation);});else connectBrowser(invitation);

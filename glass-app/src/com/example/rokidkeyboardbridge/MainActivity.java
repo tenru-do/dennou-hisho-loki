@@ -357,12 +357,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         new Thread(()->{
             String question=originalQuestion;boolean acked=false,readPhotoSaved=false;String imageStage="capture",captureContext="";
             try{
-                byte[] jpeg;
+                byte[] jpeg;int attachmentCount=1;
                 if(remote){
                     JSONObject packet=new JSONObject(fetchPhoneEndpointJson("image_question?id="+attachmentId));
                     if(packet.optBoolean("complete")){fetchPhoneEndpointJson("ack_command");acked=true;throw new IllegalStateException("image_already_complete");}
                     if(packet.getLong("expires")<System.currentTimeMillis())throw new IllegalStateException("image_expired");
-                    question=packet.getString("question");
+                    question=packet.getString("question");attachmentCount=packet.optInt("imageCount",1);if(attachmentCount<1||attachmentCount>6)throw new IllegalStateException("image_count");
                     String encoded=packet.getString("data");if(encoded.length()>800000||question.length()>2400)throw new IllegalStateException("image_bounds");
                     jpeg=Base64.decode(encoded,Base64.NO_WRAP);
                     StringBuilder sha=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(jpeg))sha.append(String.format(Locale.US,"%02x",b&255));
@@ -385,10 +385,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 }
                 if(generation!=requestGeneration)throw new InterruptedException();
                 activeGeminiPrompt=question;imageQuestionBytes.set(jpeg);imageQuestionGeneration.set(generation);imageAnswerRetryUsed.set(false);final String submitted=question;
-                String prompt=buildGeminiPromptCompact(submitted,true)+"\n"+ImageQuestionPolicy.instructions()
+                String prompt=buildGeminiPromptCompact(submitted,true)+"\n"+ImageQuestionPolicy.instructions(attachmentCount)
                     +(captureContext.isEmpty()?"":"\n<read_capture_context>\n"+captureContext+"\n</read_capture_context>");
                 imageStage="analysis";final String reply=requestGeminiWithRetry(apiKey,prompt,true);
-                final String imageReference=Base64.encodeToString(DeviceSecrets.photos().encrypt(new JSONObject().put("source","image_question_reference").put("question",submitted).put("answer",reply).put("captureContext",captureContext).toString().getBytes(StandardCharsets.UTF_8)),Base64.NO_WRAP);
+                final String imageReference=Base64.encodeToString(DeviceSecrets.photos().encrypt(new JSONObject().put("source","image_question_reference").put("imageCount",attachmentCount).put("question",submitted).put("answer",reply).put("captureContext",captureContext).toString().getBytes(StandardCharsets.UTF_8)),Base64.NO_WRAP);
                 handler.post(()->{if(generation!=requestGeneration)return;
                     getPreferences().edit().putLong("image_question_context_at",System.currentTimeMillis()).putString("image_question_reference",imageReference).apply();
                     rememberConversationTurn(submitted+"（画像添付）",reply,detectConversationTopic(submitted,reply));

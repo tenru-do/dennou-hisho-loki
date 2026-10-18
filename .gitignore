@@ -71,3 +71,6 @@ outputs/
 meeting-audio/
 meeting-import/
 *-backup.zip
+
+# Optional browser-test dependencies
+node_modules/
