@@ -319,7 +319,7 @@ public final class FullBodyMascotView extends View {
         approvedMotionPreview=-1;previewPose=-1;speechStance.begin(answer,keep);
         FullBodySemanticReaction.Reaction semantic=FullBodySemanticReaction.find(answer);
         if(semantic!=null)speechStance.semantic(semantic);
-        speechStance.scene(userContext,answer);speechExpression=speechStance.pose(answer,conversationBasePose);rememberReaction(answer);
+        speechStance.scene(userContext,answer);speechExpression=speechStance.pose(answer,conversationBasePose);speechExpression=CoolSmilePolicy.seatedPose(speechStance.kind(),seatedAtSpeech,speechExpression);rememberReaction(answer);
         boolean fresh=!keep||semantic!=null||FullBodySpeechStance.classify(answer)!=null
                 ||FullBodyScenePolicy.evaluate(userContext,answer)!=null||FullBodyConversationContinuity.posture(answer);
         if(fresh){
@@ -340,6 +340,7 @@ public final class FullBodyMascotView extends View {
         }
         else {
             speechExpression=speechStance.pose(text,continuity.holds(android.os.SystemClock.uptimeMillis())?continuity.pose():loaded);rememberReaction(text);
+            speechExpression=CoolSmilePolicy.seatedPose(speechStance.kind(),FullBodyMotionPolicy.isSeated(conversationBasePose),speechExpression);
             if(conversationMotionKind>=0 && !FullBodyConversationMotion.continues(conversationMotionKind,speechStance.kind(),speechStance.laughing())) conversationMotionKind=-1;
         }
         FullBodySpeechStance.Cue explicit=FullBodySpeechStance.classify(text);
@@ -434,7 +435,7 @@ public final class FullBodyMascotView extends View {
     private final FullBodyFaceAnimator faceAnimator=new FullBodyFaceAnimator();
     private final FullBodyRokidGlasses rokidGlasses=new FullBodyRokidGlasses();
     private final FullBodyMorphRenderer morphRenderer=new FullBodyMorphRenderer();
-    private float[] activeMorph;private float activeMorphWeight;
+    private float[] activeMorph;private float activeMorphWeight;private boolean activeMorphRigidFace;
     private final float[] seatedMorph=new float[(FullBodyMorphRenderer.COLUMNS+1)*(FullBodyMorphRenderer.ROWS+1)*2];
     private float legacyMorphScale=1;
     private void clearLegacyMorph(){activeMorph=null;activeMorphWeight=0;}
@@ -469,14 +470,14 @@ public final class FullBodyMascotView extends View {
     private void drawSingleTransition(Canvas canvas,Bitmap first,int firstPose,Bitmap second,int secondPose,long elapsed,float fraction,float amount){
         boolean target=FullBodyMorphRenderer.source(amount)==1;
         Bitmap frame=target?second:first;int pose=target?secondPose:firstPose;
-        activeMorph=morphRenderer.field(pose,target?firstPose:secondPose);
+        activeMorph=morphRenderer.field(pose,target?firstPose:secondPose);activeMorphRigidFace=CoolSmilePolicy.protectsTransition(firstPose,secondPose);
         if(activeMorph!=null && seatedMesh(pose)){
             System.arraycopy(activeMorph,0,seatedMorph,0,activeMorph.length);
             FullBodySeatedMeshPolicy.stabilize(seatedMorph,FullBodyMorphRenderer.COLUMNS,FullBodyMorphRenderer.ROWS,1,1,seatedFaceBottom(pose),true);
             activeMorph=seatedMorph;
         }
         activeMorphWeight=FullBodyMorphRenderer.weight(amount);
-        try{drawFrame(canvas,frame,pose,elapsed,fraction,1,false);}finally{activeMorph=null;activeMorphWeight=0;}
+        try{drawFrame(canvas,frame,pose,elapsed,fraction,1,false);}finally{activeMorph=null;activeMorphWeight=0;activeMorphRigidFace=false;}
     }
     private Bitmap[][] cyberCache=new Bitmap[FullBodyCyberMotion.GROUPS][];
     private boolean cyberLoading;private int cyberRequest;
@@ -890,7 +891,21 @@ public final class FullBodyMascotView extends View {
     }
     private boolean seatedMesh(int pose){return FullBodyMotionPolicy.isSeated(FullBodyClothMotion.base(pose)) || FullBodyMotionPolicy.isSeated(loaded);}
     private float seatedFaceBottom(int pose){float[] f=FullBodyFaceAnimator.features(pose);return f==null?.25f:(f[15]+Math.max(f[16]*.25f,f[18])+4)/f[1];}
-    private void stabilizeSeatedMesh(int pose,Bitmap frame){if(seatedMesh(pose))FullBodySeatedMeshPolicy.stabilize(breathMesh,FullBodyBreathPolicy.COLUMNS,FullBodyBreathPolicy.ROWS,frame.getWidth(),frame.getHeight(),seatedFaceBottom(pose),false);}
+    private void stabilizeSeatedMesh(int pose,Bitmap frame){if(seatedMesh(pose)||CoolSmilePolicy.supports(pose)||activeMorphRigidFace)FullBodySeatedMeshPolicy.stabilize(breathMesh,FullBodyBreathPolicy.COLUMNS,FullBodyBreathPolicy.ROWS,frame.getWidth(),frame.getHeight(),seatedFaceBottom(pose),false);}
+    private long inspectionClock=-1;
+    private long frameClock(){return inspectionClock>=0?inspectionClock:android.os.SystemClock.uptimeMillis();}
+    private long livingTime(){return inspectionClock>=0?inspectionClock:android.os.SystemClock.uptimeMillis()-livingStarted;}
+    static int inspectionBasePose(int pose){if((pose>=181&&pose<=185)||(pose>=276&&pose<=287))return 168;return FullBodyClothMotion.base(pose);}
+    void renderInspection(Canvas canvas,Bitmap frame,int pose,long elapsed,boolean speaking,boolean motion,Bitmap from,int fromPose,float amount){
+        int oldMode=mode,oldLoaded=loaded;boolean oldBreathing=breathingEnabled,oldMouth=animateMouth;
+        try{
+            inspectionClock=elapsed;mode=speaking?2:0;loaded=inspectionBasePose(pose);breathingEnabled=motion;animateMouth=speaking;
+            if(from!=null){morphRenderer.load(getContext());drawSingleTransition(canvas,from,fromPose,frame,pose,elapsed,FullBodyMotionPolicy.bodyHeightFraction(loaded),amount);}
+            else drawFrame(canvas,frame,pose,elapsed,FullBodyMotionPolicy.bodyHeightFraction(loaded),1,false);
+        }finally{inspectionClock=-1;mode=oldMode;loaded=oldLoaded;breathingEnabled=oldBreathing;animateMouth=oldMouth;}
+    }
+    boolean inspectionHasTransition(int from,int to){morphRenderer.load(getContext());return morphRenderer.field(from,to)!=null;}
+    void releaseInspection(){faceAnimator.clear();}
     private void drawFrame(Canvas canvas,Bitmap frame,int pose,long elapsed,float fraction,float opacity,boolean add){
         if(opacity<=0 || frame==null || frame.isRecycled())return;
         frameLayers++;
@@ -910,11 +925,11 @@ public final class FullBodyMascotView extends View {
         if(activeMorph!=null&&activeMorphWeight>0){
             float[] f=FullBodyFaceAnimator.features(pose);
             float faceBottom=f==null?.20f:(f[15]+Math.max(f[16]*.25f,f[18])+4)/f[1];
-            FullBodyBreathPolicy.resting(breathMesh,frame.getWidth(),frame.getHeight(),android.os.SystemClock.uptimeMillis()-livingStarted,faceBottom);
-            FullBodyLivingPosePolicy.apply(breathMesh,frame.getWidth(),frame.getHeight(),android.os.SystemClock.uptimeMillis()-livingStarted,faceBottom,FullBodyLivingPosePolicy.profile(pose,f));
+            FullBodyBreathPolicy.resting(breathMesh,frame.getWidth(),frame.getHeight(),livingTime(),faceBottom);
+            FullBodyLivingPosePolicy.apply(breathMesh,frame.getWidth(),frame.getHeight(),livingTime(),faceBottom,FullBodyLivingPosePolicy.profile(pose,f));
             if(FullBodyCyberMotion.groupForPose(pose)>=0&&(situationMask&4)!=0)FullBodyCyberMotion.rough(breathMesh,frame.getWidth(),frame.getHeight(),elapsed,faceBottom);
             stabilizeSeatedMesh(pose,frame);
-            morphRenderer.draw(canvas,frame,paint,activeMorph,activeMorphWeight,getWidth(),getHeight(),scale,breathMesh,breathingEnabled);morphFrames++;
+            morphRenderer.draw(canvas,frame,paint,activeMorph,activeMorphWeight,getWidth(),getHeight(),scale,breathMesh,breathingEnabled,faceBottom,CoolSmilePolicy.supports(pose)||activeMorphRigidFace);morphFrames++;
         }else if(breathingEnabled&&mode==2&&speechStance.laughing()&&pose<181&&FullBodyPoseCatalog.ALL[pose].supports(FullBodyPoseCatalog.Kind.JOY)){
             float[] laughFeatures=FullBodyFaceAnimator.features(pose);
             float laughFace=laughFeatures==null?.20f:(laughFeatures[15]+Math.max(laughFeatures[16]*.25f,laughFeatures[18])+4)/laughFeatures[1];
@@ -924,14 +939,14 @@ public final class FullBodyMascotView extends View {
         }else if(breathingEnabled){
             float[] f=FullBodyFaceAnimator.features(pose);
             float faceBottom=f==null?.20f:(f[15]+Math.max(f[16]*.25f,f[18])+4)/f[1];
-            long living=android.os.SystemClock.uptimeMillis()-livingStarted;
+            long living=livingTime();
             FullBodyBreathPolicy.resting(breathMesh,frame.getWidth(),frame.getHeight(),living,faceBottom);
             FullBodyLivingPosePolicy.apply(breathMesh,frame.getWidth(),frame.getHeight(),living,faceBottom,FullBodyLivingPosePolicy.profile(pose,f));
             stabilizeSeatedMesh(pose,frame);
             canvas.drawBitmapMesh(frame,FullBodyBreathPolicy.COLUMNS,FullBodyBreathPolicy.ROWS,breathMesh,0,null,0,paint);
         }else drawLivingBitmap(canvas,frame,FullBodyFaceAnimator.features(pose));
-        faceAnimator.draw(canvas,frame,pose,android.os.SystemClock.uptimeMillis(),mode==2&&animateMouth);
-        if(FullBodyCyberMotion.groupForPose(pose)>=0||mode==2||continuity.holds(android.os.SystemClock.uptimeMillis()))situationEffects.draw(canvas,frame,FullBodyFaceAnimator.features(pose),android.os.SystemClock.uptimeMillis(),effectiveEffects());
+        faceAnimator.draw(canvas,frame,pose,frameClock(),mode==2&&animateMouth);
+        if(FullBodyCyberMotion.groupForPose(pose)>=0||mode==2||continuity.holds(frameClock()))situationEffects.draw(canvas,frame,FullBodyFaceAnimator.features(pose),frameClock(),effectiveEffects());
         rokidGlasses.draw(canvas,frame,pose);
         canvas.restoreToCount(local);
         if(layered)canvas.restoreToCount(layer);

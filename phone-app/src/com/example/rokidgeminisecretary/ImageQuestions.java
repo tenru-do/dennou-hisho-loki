@@ -56,9 +56,12 @@ final class ImageQuestions {
     static File root(Context c){File f=new File(c.getFilesDir(),"image-questions");f.mkdirs();return f;}
     static synchronized void prune(Context c){File[] files=root(c).listFiles();if(files!=null)for(File f:files)if(System.currentTimeMillis()-f.lastModified()>TTL)f.delete();}
     static File file(Context c,String id)throws IOException{if(!id.matches("[a-f0-9-]{36}"))throw new IOException("画像IDが無効です");return new File(root(c),id+".gcm");}
-    static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg)throws Exception {return enqueue(c,requestId,question,jpeg,1);}
-    static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg,int imageCount)throws Exception {
+    static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg)throws Exception {return enqueue(c,requestId,question,jpeg,1,new org.json.JSONArray().put("image"));}
+    static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg,int imageCount)throws Exception {return enqueue(c,requestId,question,jpeg,imageCount,null);}
+    static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg,int imageCount,org.json.JSONArray sourceKinds)throws Exception {
+        org.json.JSONArray kinds=ImageAttachmentKinds.normalize(sourceKinds,imageCount);
         if(imageCount<1||imageCount>6)throw new IOException("画像枚数が無効です（1〜6枚）");
+        ConversationRecoveryStore.save(c,RecorderPhotoStore.hash(requestId.getBytes(java.nio.charset.StandardCharsets.UTF_8)),"image-question",new JSONObject().put("requestId",requestId).put("message",question).put("image",Base64.encodeToString(jpeg,Base64.NO_WRAP)).put("imageCount",imageCount).put("kinds",kinds));
         if(MediaGenerationContext.video(c,question,true))return VideoGeneration.enqueue(c,requestId,question,jpeg,"");
         if(MediaGenerationContext.kind(c,question,true)==MediaGenerationIntent.Kind.IMAGE)return ImageGeneration.enqueue(c,requestId,question,jpeg,"");
         prune(c);if(!requestId.matches("[a-zA-Z0-9-]{8,80}")||question.length()>2400||question.contains("__LOKI_")||question.contains("__CODEX_"))throw new IOException("質問は2400文字以内にしてください");
@@ -68,11 +71,11 @@ final class ImageQuestions {
         String id=UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.US_ASCII)).toString();File f=file(c,id);
         String sha=RecorderPhotoStore.hash(jpeg);
         String command="__LOKI_IMAGE__:"+new JSONObject().put("id",id);
-        if(f.exists()){JSONObject old=read(c,id);if(!old.getString("sha").equals(sha)||!old.getString("question").equals(question)||old.optInt("imageCount",1)!=imageCount)throw new IOException("同じ送信IDの内容が変わりました");if(!old.optBoolean("queued")&&!old.optBoolean("complete")){if(!MainActivity.queueImageCommand(c,command))throw new IOException("グラスの送信待ちが満杯です");old.put("queued",true);save(f,old);}return new JSONObject().put("queued",true).put("duplicate",true).put("complete",old.optBoolean("complete")).put("id",id);}
+        if(f.exists()){JSONObject old=read(c,id);if(!old.getString("sha").equals(sha)||!old.getString("question").equals(question)||old.optInt("imageCount",1)!=imageCount||!ImageAttachmentKinds.normalize(old.optJSONArray("kinds"),imageCount).toString().equals(kinds.toString()))throw new IOException("同じ送信IDの内容が変わりました");if(!old.optBoolean("queued")&&!old.optBoolean("complete")){if(!MainActivity.queueImageCommand(c,command))throw new IOException("グラスの送信待ちが満杯です");old.put("queued",true);save(f,old);}return new JSONObject().put("queued",true).put("duplicate",true).put("complete",old.optBoolean("complete")).put("id",id);}
         File[] pending=root(c).listFiles();int waiting=0,records=0;if(pending!=null)for(File saved:pending)if(saved.getName().endsWith(".gcm")){records++;JSONObject record=new JSONObject(new String(DeviceSecrets.photos().decrypt(Files.readAllBytes(saved.toPath())),java.nio.charset.StandardCharsets.UTF_8));if(!record.optBoolean("complete"))waiting++;}
         if(waiting>=12)throw new IOException("画像の送信待ちが満杯です。解析を待ってください");
         if(records>=256)throw new IOException("画像送信の短期上限に達しました。30分ほど待ってください");
-        JSONObject packet=new JSONObject().put("id",id).put("imageCount",imageCount).put("question",question).put("sha",sha).put("expires",System.currentTimeMillis()+TTL).put("data",Base64.encodeToString(jpeg,Base64.NO_WRAP));
+        JSONObject packet=new JSONObject().put("id",id).put("imageCount",imageCount).put("kinds",kinds).put("question",question).put("sha",sha).put("expires",System.currentTimeMillis()+TTL).put("data",Base64.encodeToString(jpeg,Base64.NO_WRAP));
         packet.put("queued",false);save(f,packet);
         if(!MainActivity.queueImageCommand(c,command)){f.delete();throw new IOException("グラスの送信待ちが満杯です");}
         packet.put("queued",true);save(f,packet);

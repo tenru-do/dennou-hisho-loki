@@ -3,18 +3,18 @@ package com.example.rokidkeyboardbridge;
 final class FullBodyPortraitGeometry {
  static final float[][] LANDMARKS={
 {0.397485f,0.445166f,0.605915f,0.450706f,0.478354f,0.605945f},
-{0.395886f,0.435247f,0.604780f,0.469779f,0.436626f,0.582779f},
+{0.395886f,0.435247f,0.604780f,0.469779f,0.440968f,0.607798f},
 {0.405148f,0.435171f,0.597836f,0.473243f,0.434090f,0.603803f},
 {0.393808f,0.443730f,0.602438f,0.456558f,0.475769f,0.600534f},
 {0.394124f,0.449944f,0.602132f,0.455863f,0.483597f,0.605075f},
-{0.393992f,0.441123f,0.602629f,0.465284f,0.449234f,0.598284f},
+{0.393992f,0.441123f,0.602629f,0.465284f,0.451251f,0.609211f},
 {0.393203f,0.441587f,0.601955f,0.455832f,0.472970f,0.604192f},
 {0.403197f,0.430329f,0.603869f,0.478816f,0.436443f,0.583303f},
 {0.394921f,0.440994f,0.603535f,0.458566f,0.472071f,0.605006f},
 {0.405582f,0.438993f,0.591377f,0.467829f,0.412115f,0.605632f},
 {0.393808f,0.443730f,0.602438f,0.456558f,0.475769f,0.600534f},
 {0.399704f,0.455577f,0.608304f,0.450654f,0.494920f,0.629571f},
-{0.392451f,0.444382f,0.600148f,0.463020f,0.448303f,0.611533f},
+{0.392451f,0.444382f,0.600148f,0.463020f,0.455864f,0.609484f},
 {0.400054f,0.446368f,0.609031f,0.454773f,0.482408f,0.602061f},
 {0.397485f,0.445166f,0.605915f,0.450706f,0.478354f,0.605945f},
 {0.399115f,0.439993f,0.599254f,0.456875f,0.471918f,0.606789f},
@@ -40,6 +40,6 @@ final class FullBodyPortraitGeometry {
 {0.403369f,0.445099f,0.604402f,0.462763f,0.463975f,0.600770f},
 {0.393203f,0.441587f,0.601955f,0.455832f,0.472970f,0.604192f}
  };
- static final boolean[][] CLOSED={{false,false},{true,true},{false,true},{false,false},{false,false},{false,false},{false,false},{true,true},{false,false},{true,true},{false,false},{false,false},{false,false},{true,true},{false,false},{false,false},{false,false},{false,false},{false,false},{true,true},{true,true},{true,true},{true,true},{false,false},{true,true},{true,true},{true,true},{false,false},{true,true},{true,true},{false,false},{false,false},{true,true},{true,true},{true,true},{true,true},{false,false}};
- static final boolean[] OPEN={false,true,false,false,false,false,true,false,false,true,false,true,false,false,false,false,false,false,true,true,true,true,false,false,false,false,true,true,true,true,false,false,true,true,true,false,true};
+ static final boolean[][] CLOSED={{false,false},{false,false},{false,true},{false,false},{false,false},{false,false},{false,false},{true,true},{false,false},{true,true},{false,false},{false,false},{false,false},{true,true},{false,false},{false,false},{false,false},{false,false},{false,false},{true,true},{true,true},{true,true},{true,true},{false,false},{true,true},{true,true},{true,true},{false,false},{true,true},{true,true},{false,false},{false,false},{true,true},{true,true},{true,true},{true,true},{false,false}};
+ static final boolean[] OPEN={false,false,false,false,false,false,true,false,false,true,false,true,false,false,false,false,false,false,true,true,true,true,false,false,false,false,true,true,true,true,false,false,true,true,true,false,true};
 }

@@ -1,0 +1,1 @@
+package android.content;import android.net.Uri;public class ContentProviderOperation{public ContentValues values;public static ContentProviderOperation newInsert(Uri u){return new ContentProviderOperation();}public ContentProviderOperation withValues(ContentValues v){values=v;return this;}public ContentProviderOperation build(){return this;}}

@@ -1,0 +1,1 @@
+package android.content;import android.database.Cursor;import android.net.Uri;import java.util.*;public abstract class ContentResolver{public abstract Cursor query(Uri u,String[] p,String s,String[] a,String order)throws Exception;public abstract ContentProviderResult[] applyBatch(String authority,ArrayList<ContentProviderOperation> ops)throws Exception;}

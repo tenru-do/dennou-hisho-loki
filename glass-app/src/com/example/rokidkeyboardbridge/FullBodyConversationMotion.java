@@ -1,5 +1,5 @@
 package com.example.rokidkeyboardbridge;
-/** One reaction per utterance. Never invent laughter from polite thanks. */
+/** One reaction per utterance. Seated joy uses a restrained smile, not forced laughter. */
 final class FullBodyConversationMotion {
  private static final int[] TEAR_POSES={288,289,290,291,289,292};
  private static final long[] TEAR_DURATIONS={500,400,650,350,400};
@@ -8,7 +8,7 @@ final class FullBodyConversationMotion {
   if(emotion==FullBodyPoseCatalog.Kind.CRY)return 2;
   if(!seated)return -1;
   if(emotion==FullBodyPoseCatalog.Kind.SURPRISE)return 0;
-  return emotion==FullBodyPoseCatalog.Kind.JOY&&laughing?1:-1;
+  return emotion==FullBodyPoseCatalog.Kind.JOY?1:-1;
  }
  static int kind(FullBodyPoseCatalog.Kind emotion,boolean laughing,boolean seated,String text){
   int normal=kind(emotion,laughing,seated);

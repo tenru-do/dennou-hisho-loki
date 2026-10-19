@@ -99,3 +99,67 @@ Googleフォトから実画像URLを含むドラッグをした場合、認証�
 スマホの送信待ち画像と下書きはKeystoreで暗号化します。30分を超えたデータは次の選択・送信等の整理処理で削除するため、時間経過直後の物理削除を保証するものではありません。Webの準備済み添付はページ内メモリに保持し、添付解除・送信成功（送信中に入力を変更していない場合）・接続解除で破棄します。ブラウザ・OS側の一時ファイルの管理は、それぞれの実装に依存します。
 
 ドロップ診断はスマホ内に最新1件の受信時刻・形式名・件数・処理段階だけを保存します。写真URL、HTML、ファイル名、写真や動画の内容は診断に保存しません。診断内容をGitHubへアップロードする処理はありません。
+
+
+## 秘書の受信箱（グラス554／スマホ204）
+明示的な保留依頼を受けたときだけ、依頼文と直近の会話の参照情報をスマホのアプリ専用領域へ保存します。会話に日程や出典URLがあれば保存対象となります。Android KeystoreのAES-GCMとAtomicFileを使用し、最大100件、不要な案件を自動削除しません。会話ログ削除とは独立しているため、受信箱から取消・削除してください。
+保留の保存では新しいGemini送信や予定登録を行いません。再開して予定候補を作る際は、選択した案件の参照情報を既存のGemini経路へ送ります。認証済みスマホ・Web端末は案件の内容を閲覧・整理できます。登録前確認は10分で失効し、確定した候補のみをカレンダーへ保存します。登録成否が不明な案件は自動再送しません。詳しくは[受信箱の仕様](SECRETARY-INBOX.md)を参照してください。
+
+### 文脈による受信箱の意図判定（555／205）
+通常会話とは別に、現在の発言、直近会話の抜粋（最大8000文字）、保留案件の題名・日程・条件の短い一覧、確認候補や選択中案件の概要を設定済みGoogle Geminiへ送信します。会話や案件には個人情報が含まれ得ます。画像・音声・全長期記憶・個人用カスタム指示をこの判定に追加添付しません。API利用量・待ち時間が増えます。対象と内容の候補を示し、同意後に保存・変更・取消を反映し、意図判定だけで予定を登録しません。[詳しい仕様](SECRETARY-INBOX-SEMANTIC.md)。
+
+### 返答前の文脈検査（グラス563）
+短い続きの発言では、現在の発言（最大2400文字）、参照会話（最大6000文字）、回答案（最大6000文字）を、設定済みGoogle Geminiへ追加送信して対象の一致を検査します。内容には個人情報が含まれ得ます。原文の位置を番号で照合し、必要な場合だけ回答を1回作り直します。画像・音声は追加添付しません。検査が通信障害等で利用できなければ通常の回答を続けます。診断ログに会話内容やキーを出力しません。API利用量・待ち時間が増えます。[文脈検査の仕様](CONVERSATION-CONTEXT-REVIEW.md)を参照してください。
+
+### 引き継ぎカード・会話付近の受信箱（564／207）
+選択済みの会話参照を一時的な引用カードへ整理して、通常の会話リクエスト内で設定済みGeminiへ送ります。別の判定API送信や新しい保存先は追加しません。既存受信箱の保留件数・結果要確認件数をスマホと認証済みWebへ表示し、Webには保留題名も最大2件表示します。接続解除でWeb表示を消します。進捗通知には処理段階だけを含め、引用や会話本文は含めません。[仕様と検証](CONVERSATION-HANDOFF-PROGRESS.md)を参照してください。
+
+### Webの処理段階と依頼文復元（スマホ208）
+認証済みWeb画面へ、既存の会話履歴とともにグラス全体の処理段階・通知の古さ・送信待ち件数を返します。新しい外部サービスへの送信や権限追加はありません。状態の取得でキューを消費しません。依頼文の復元は入力欄に戻すだけで、送信は別操作です。[仕様と検証](WEB-CONVERSATION-RECOVERY.md)を参照してください。
+
+### Web依頼IDと受信箱の完了通知（グラス565〜566／スマホ209）
+認証済みWebからの通常テキスト依頼にIDを付け、スマホとグラス内で受信・処理・回答表示を照合します。IDはGeminiのプロンプトへ追加せず、新しい外部送信先やAndroid権限は追加しません。終端状態のグラス内保留レコードから依頼本文を除きます。既存会話履歴の保存方針は変更しません。結果未確認時は本文を自動再実行せず、状態通知のみ再送します。受信箱の遅延応答は元の依頼ID・会話世代と照合します。[仕様と検証](WEB-REQUEST-TRACKING.md)。
+
+### 直近の画像読み取りパネル（グラス567／スマホ211）
+画像解析済みの質問・回答・添付件数・読み取り時刻を、既存の認証済み接続でグラスからスマホへ同期し、スマホ会話画面と認証済みWebに表示します。画像本体・撮影位置・APIキーは追加同期しません。スマホ側のコピーはKeystoreのAES-GCMで暗号化し、読み取りから2時間で表示を失効、失効後の参照時に削除します。グラスの会話履歴削除とは独立した短期コピーです。追加のGemini送信や権限はありません。[仕様と検証](IMAGE-REFERENCE-PANEL.md)。
+
+### 添付の種類・順序の引き継ぎ（グラス568／スマホ212）
+画像質問と短期の読み取り参照へ、番号順の「画像／動画／種類未記録」だけを追加保持します。ファイル名・元のパス・追加の画像本体は保持せず、新しい外部送信や権限は追加しません。既存の暗号化と保存期限を引き継ぎます。[仕様](IMAGE-REFERENCE-PANEL.md)。
+
+### TOPIC・AMBの発言直前判定（グラス569）
+AMBで実際に表示した短い文章を、同文抑制のため最大8件・90秒の判定窓でメモリ内に保持します。ファイル保存や追加の外部送信は行いません。「発言判定を見る」には理由と経過時間だけを表示し、会話本文・画像・音声は表示しません。録音・KEEPの保存方針は変更しません。[仕様と検証](PROACTIVE-DELIVERY.md)。
+
+### 録音優先の画像負荷調整（グラス570）
+録音の保存待ち・端末メモリ・撮影間隔に基づき任意の画像処理を待機させ、直近の理由を既存の判定画面へ表示します。理由に写真・音声・会話内容を含めず、新しい記録や外部送信を追加しません。録音とKEEPの既存保存先・保存上限は変更しません。[仕様と検証](CONCURRENT-CAPTURE-PRIORITY.md)。
+
+### 受信箱の確認状態・再開操作（スマホ213）
+既存の暗号化受信箱から、登録確認待ち・確認期限切れ・結果要確認などの表示用状態を読み取り時に算出します。確認トークンや登録候補は一覧・詳細へ出さず、表示だけで保存内容やカレンダーを変更しません。Web検索は取得済み一覧の端末内絞り込みです。再開は入力欄への復元のみで、送信・登録は別操作です。新しい外部送信・保存先・権限は追加しません。[仕様と検証](INBOX-PRESENTATION.md)。
+
+
+## Local diagnostics and transfer status (glass 574 / phone 217)
+
+The local health check uses a temporary private cache file, an existing Android Keystore key, bundled files, permission state, and queue JSON structure. It does not create a replacement key, capture media, contact an AI or routing provider, replay commands, or repair stored data. A missing key is reported as not ready.
+
+The operation overview projects existing receipts and inbox states. Conversation titles may include up to 80 characters of an existing request; the overview is restricted to the already authenticated phone/PC/glasses connection. Transfer diagnostics contain opaque batch IDs, counts, timestamps and acknowledgement states; they do not add raw photo/audio upload. Invalid records are reported without being rewritten. Startup check results are saved locally and shared with paired devices through the existing authenticated bridge. These checks are not proof of live AI, navigation, camera or microphone success.
+
+Only manifest-declared permissions are checked for readiness. Undeclared permissions are reported as not_required; the phone uses the external camera intent and does not require a CAMERA permission for this check.
+
+### Read-only process observation (phone 218 tooling)
+The optional PC tool records only elapsed time, process IDs, PSS memory and availability summaries for explicitly specified devices. Device serials are command arguments, not embedded in source or saved reports. It does not collect raw logs or media, initiate workloads, or send provider requests. Operation ordering and monotonic connection freshness add no new content collection.
+
+### Reference draft key (phone 222)
+The existing authenticated reference summary includes a SHA-256 content identifier. Native saved UI state and Web in-memory drafts keep that identifier with the question prefix to check for changes before sending. The Web reception check uses existing encrypted summaries. Keys are not sent to Gemini and no image bytes or location are added.
+
+### Queued reference identity (glass 576 / phone 223)
+The opaque reference identifier travels in the existing private command queue and tracked receipt ledger, including native reference follow-ups. Glasses validate it before dispatch and around prompt preparation. It is stripped from the user text and is not added to Gemini prompts. No extra media copy, capture, external destination, or permission is introduced.
+
+### Local reference-stop diagnostics (glass 577)
+A reference-change stop is not added as a Gemini conversation reply. Only the fixed local reason code and occurrence time are retained in private preferences and shown in the glasses diagnostics. No prompt, image, location or provider error body is added to that record. Existing historical logs are not removed.
+
+### 送信控え・明示訂正・共通進行状態（グラス580／スマホ225）
+
+スマホの送信控えは質問文と解析へ送った添付画像（動画は抜粋画像）を、アプリ専用領域でAndroid KeystoreのAES-GCMにより暗号化し、最大10件・24時間保持します。期限切れは次の参照・保存時に削除します。元動画全体は保持しません。認証済みWebとスマホで復元でき、復元だけでは再送・生成・予定登録を実行しません。通常の会話履歴を削除しても、この独立した短期コピーは期限まで残る場合があります。端末の登録解除後はWebから取得できません。
+
+グラスの前回質問の復元用コピーは暗号化し24時間で失効。明示された訂正は最大4件・2時間保持し、同じ話題の通常会話内でGeminiへ渡します。会話リセット・新しい話題では外します。追加の意図判定APIはこの保持機能にはありません。会話の完結性判定は端末内で行います。
+
+共通進行状態は固定の段階・理由コード、時刻、依頼IDだけを既存の認証済み接続で共有し、本文・画像・音声を追加しません。進行状態を読むだけで処理を再送しません。詳しくは[会話の復旧](CONVERSATION-RECOVERY-v580.md)を参照してください。

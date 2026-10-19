@@ -1,0 +1,1 @@
+package android.content;import java.util.*;public class ContentValues extends HashMap<String,Object>{public String getAsString(String k){return String.valueOf(get(k));}public Long getAsLong(String k){return Long.valueOf(get(k).toString());}}

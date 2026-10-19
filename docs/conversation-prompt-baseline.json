@@ -53,17 +53,17 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationFollowupPolicy.java",
-      "sha256": "e73aca07427039ab3903ddc4002030f6868d54c9815269a8ec4b547b21c422d2"
+      "sha256": "8afb94d8e168ad09ffb6a898513f516d70a5fd3efa73462fdafacd4d3900f8d5"
     },
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationTaskPolicy.java",
-      "sha256": "ca06040a660be0f62aafabc07ebad133387ad7f779d52974033679d81e6add8e"
+      "sha256": "dbffd6e230a8d7d1a1538afdcb5f482a3ecc528a8b5e361edb6aace234b75f25"
     },
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
-      "sha256": "23c44ad44362e543e44d0fff4aba9fbc8a893c3ce7b272e1cf591d272cf52b16",
+      "sha256": "7479a4e0f6dccd540c400b0394f5a42eba5f1782457473a5924ffbc7b227d4a1",
       "start": "    private String buildGeminiPromptCompact(String str, boolean includeHistory)",
       "end": "    private JSONObject fetchOptionalImportedMemory("
     },
@@ -77,7 +77,7 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
-      "sha256": "e1a606f95e766f727ce9451ac3b841c6101fb29ca8ca87c7326f32f22265f27a",
+      "sha256": "84450c728140cc4bc307dc32f0ecf3d8c03145f9bd7e318f8cebdfd9bff2f87d",
       "start": "    private String requestGemini(String str, String str2, String str3)",
       "end": "    // Runs on Gemini's worker;"
     },
@@ -98,12 +98,38 @@
     {
       "app": "phone",
       "path": "phone-app/src/com/example/rokidgeminisecretary/RadioModeManager.java",
-      "sha256": "f30cfc0d6cdd07694829c928f93aa5c7a6567037070e90b531b6549c783ae93a"
+      "sha256": "357ef864c75325546543af340603108632918e732da18d4b77c24128d2124aab",
+      "validation": "2026-10-19 production generate, 3 authorized live requests; docs/validation/v571-topic-provider.json"
     },
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationCompletionPolicy.java",
       "sha256": "03bd3a3615e88055ae74b18d8629da6041407420f456d9429e2b43e7e0a0eb73"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationHandoffCard.java",
+      "sha256": "29683c9a6052ecf42934002c2578bca12fb1c443823f90a7d359e5444bf34988"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationTopicBoundary.java",
+      "sha256": "d35493a354264674e5020ce8f437606c9427b77e33bb45ce8adbf821c58054f8"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/GeminiTextBudget.java",
+      "sha256": "9b17aa48107273ba5eaf6a3a1e60567201ba4efd2a93c3f18304fc61228a19d6"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationAnswerGuard.java",
+      "sha256": "354fb662455d8d1364dbe4694cfe8623f5bbb066d41baf231daeeb5ba54552a7"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationCorrections.java",
+      "sha256": "74161c85dc44d43adec66e3fdb45dd45d98feb4752383bf0160e5390554820fc"
     }
   ],
   "extensions": [
@@ -113,6 +139,29 @@
       "scope": "ConversationCompletionPolicy only; original 541/198 protected entries unchanged",
       "providerEvidence": "outputs/conversation551/provider-synthetic.txt (3 synthetic conversations; no saved private settings/history/location sent)",
       "deviceEvidence": "outputs/conversation551/context-native.txt (installed MainActivity isolated fixture)"
+    },
+    {
+      "version": 564,
+      "reviewed": "2026-10-19",
+      "scope": "Selected reference_context serialized as quoted conversation handoff; original persona and request construction unchanged. Progress labels contain no conversation contents.",
+      "providerEvidence": "docs/CONVERSATION-HANDOFF-PROGRESS.md; local outputs/conversation-v564/provider-results.json: 3/3 synthetic cases with complete compact prompt/custom settings; tools/retries disabled",
+      "deviceEvidence": "Glass v564 instrumentation; verified original context restored from pre-update backup",
+      "providerVerified": true
+    },
+    {
+      "version": 578,
+      "reviewed": "2026-10-19",
+      "scope": "Explicit topic boundary priority, negated-reset continuity, personal forgotten items, and Flash text response budget (3072 total, thinking budget 512). No fixed persona text changes.",
+      "providerEvidence": "docs/CONVERSATION-CONTINUITY-v578.md; private local outputs/conversation-continuity-v578/provider-final-results.json: 3/3 STOP. Initial run 2/3 (one MAX_TOKENS), authorized separately, no automatic retry. Actual compact builder with isolated synthetic history and normal custom settings; fixed system/runtime rules; tools, dynamic memory, images/audio/search disabled.",
+      "deviceEvidence": "Payload generated on glass v577 with staged policy classes. Real history unchanged; final v578 install/native results documented separately.",
+      "providerVerified": true
+    },
+    {
+      "version": 580,
+      "reviewed": "2026-10-19",
+      "scope": "Require STOP before any normal-text function execution/completion; encrypted bounded quoted corrections only inside continuing reference_context. Fixed persona and runtime instructions unchanged.",
+      "providerEvidence": "Private local outputs/improvements-v580/provider-results.json: 3/3 STOP on staged actual Main compact builder with normal custom settings and completion rules, synthetic history only, tools/dynamic external memory/media disabled. Explicit correction remembered and excluded across a new topic. No retries; original history unchanged.",
+      "providerVerified": true
     }
   ]
 }

@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-19",
+  "method": "RadioModeManager.generate production method, automatic scheduler disabled",
+  "model": "gemini-2.5-flash-lite",
+  "authorizedLimit": 3,
+  "sent": 3,
+  "successful": 3,
+  "calls": [
+    {
+      "successful": true,
+      "geminiCalls": 1,
+      "responseMs": 3404,
+      "messageChars": 155,
+      "recognizedChars": 0,
+      "audioAttached": true,
+      "imageAttached": false,
+      "model": "gemini-2.5-flash-lite",
+      "productionGenerateMethod": true,
+      "sourceSha256": "357ef864c75325546543af340603108632918e732da18d4b77c24128d2124aab",
+      "authorizedMaxCalls": 3,
+      "test": "actual production generate method with live microphone audio, automatic scheduler disabled"
+    },
+    {
+      "successful": true,
+      "geminiCalls": 1,
+      "responseMs": 2431,
+      "messageChars": 272,
+      "recognizedChars": 0,
+      "audioAttached": true,
+      "imageAttached": false,
+      "model": "gemini-2.5-flash-lite",
+      "productionGenerateMethod": true
+    },
+    {
+      "successful": true,
+      "geminiCalls": 1,
+      "responseMs": 4732,
+      "messageChars": 274,
+      "recognizedChars": 0,
+      "audioAttached": true,
+      "imageAttached": true,
+      "model": "gemini-2.5-flash-lite",
+      "productionGenerateMethod": true
+    }
+  ],
+  "privacy": "No raw media, transcript, credentials or location coordinates retained in this proof."
+}

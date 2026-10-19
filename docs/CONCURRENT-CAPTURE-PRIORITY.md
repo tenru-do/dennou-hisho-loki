@@ -1,0 +1,11 @@
+# Concurrent recording / KEEP / TOPIC priority (glass 570)
+
+Meeting microphone capture, audio queue, disk writer, recording limit and saved audio are unchanged. This revision adjusts only optional camera/image work and passive diagnostics.
+
+Meeting camera reservation keeps the existing mode restrictions (record-only and audio-only modes do not reserve camera). Normal optional capture spacing is 30 seconds. It becomes 60 seconds when the audio disk queue has more than 8 frames or free Java heap is below 48 MiB. Capture is skipped when stopping, more than 16 audio frames await saving, Android reports low memory, or free heap is below 32 MiB. Rejected reservations do not advance the last-camera timestamp or change audio byte counters. Camera reservations are shared by KEEP/TOPIC as before; missed KEEP slots are not queued.
+
+With KEEP active, TOPIC still never opens a second camera. It may reuse an already saved photograph only under the existing bounds: at most 15 seconds old, 30 seconds between reuse, encrypted source at most 3 MiB and sufficient decode headroom. It additionally yields before archive read/decode when meeting storage is backlogged/stopping, and rechecks KEEP's waiting flag after decryption before optional image normalization.
+
+KEEP/TOPIC now distinguish no saved frame, stale frame, reuse interval, source-size limit, memory reserve, KEEP capture/save waiting, cancellation and read failure. Meeting optional camera decisions distinguish audio-only mode, stop processing, backlog, memory pressure and the 30/60-second interval. TOPIC → 発言判定を見る includes current service status and latest relevant image/camera reason. The dialog does not start/stop recording/camera, invoke AI, or read diagnostics aloud. Reasons are latest decisions, not proof that every sensor or API is healthy.
+
+Tests cover exact interval/heap/backlog boundaries and unchanged KEEP reuse limits. Isolated Android tests invoke actual service reservation/preemption methods without starting service lifecycles, microphone capture or camera access. They verify reservations never mutate captured/saved audio counters. These fixtures do not establish long-duration physical recording stability; real simultaneous recording/capture remains a separate field test.

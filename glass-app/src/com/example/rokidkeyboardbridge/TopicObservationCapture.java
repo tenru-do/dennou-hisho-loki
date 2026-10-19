@@ -32,12 +32,12 @@ final class TopicObservationCapture {
         if ("sound".equals(mode) || "both".equals(mode)) {
             try {
                 if (context.checkSelfPermission("android.permission.RECORD_AUDIO") != 0) throw new IllegalStateException();
-                result.put("audio", Base64.encodeToString(sharedAudio == null ? audio(context, cancelled) : wav(sharedAudio.read(cancelled)), Base64.NO_WRAP));
+                result.put("audio", Base64.encodeToString(sharedAudio == null ? audio(context, cancelled, request.optInt("maxAudioMs",4000)) : wav(compatibleAudio(sharedAudio.read(cancelled),request.optInt("maxAudioMs",4000))), Base64.NO_WRAP));
                 if (sharedAudio != null) result.put("audioDuringAssistantSpeech", true);
             } catch (Exception error) { result.put("audioUnavailable", true); }
         }
         if (!cancelled.getAsBoolean() && ("vision".equals(mode) || "both".equals(mode))) {
-            PhotoRecorderService keep=PhotoRecorderService.active;
+            PhotoRecorderService keep=PhotoRecorderService.active;MeetingRecorderService meeting=MeetingRecorderService.active;
             if(keep!=null) {
                 // KEEP owns the camera and image-save cycle. Optional TOPIC vision
                 // only reads an already-saved, recent frame; never opens another camera.
@@ -46,9 +46,10 @@ final class TopicObservationCapture {
                     PhotoRecorderService.TopicPhoto saved=keep.topicPhoto(cancelled);
                     if(saved!=null){result.put("image",Base64.encodeToString(saved.jpeg,Base64.NO_WRAP))
                         .put("imageSource","keep_saved_photo").put("imageCapturedAt",saved.capturedAt);result.remove("imageSkipped");}
-                }catch(Exception unavailable){ /* KEEP continues; TOPIC retries on a later observation. */ }
-            }else if(MeetingRecorderService.active!=null&&!MeetingRecorderService.active.reserveCamera()){
-                result.put("imageSkipped","会議録音優先・撮影間隔調整");
+                    else result.put("imageSkipped",keep.topicImageWaitReason());
+                }catch(Exception unavailable){result.put("imageSkipped",keep.topicImageWaitReason()); /* KEEP continues. */ }
+            }else if(meeting!=null&&!meeting.reserveCamera()){
+                result.put("imageSkipped",meeting.cameraWaitReason());
             }else {
             try (AutoCloseable mascotPause = context instanceof MainActivity
                     ? ((MainActivity) context).pauseMascotForCamera() : () -> {}) {
@@ -64,7 +65,9 @@ final class TopicObservationCapture {
         android.util.Log.i("CameraTopic","TOPIC capture completed image="+result.has("image")+" audio="+result.has("audio"));
         return result;
     }
-    private static byte[] audio(Context context, BooleanSupplier cancelled) throws Exception {
+    private static byte[] audio(Context context, BooleanSupplier cancelled) throws Exception {return audio(context,cancelled,12000);}
+    private static byte[] compatibleAudio(byte[] pcm,int limit){if(pcm==null)return null;int maximum=(int)Math.max(4000,Math.min(12000,limit))*32;return pcm.length<=maximum?pcm:java.util.Arrays.copyOfRange(pcm,pcm.length-maximum,pcm.length);}
+    private static byte[] audio(Context context, BooleanSupplier cancelled,int limit) throws Exception {
         try (CaptureLease lease = CaptureLease.acquire(CaptureLease.MICROPHONE, cancelled)) {
         int minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         if (minimum <= 0) throw new IllegalStateException("microphone unavailable");
@@ -78,11 +81,12 @@ final class TopicObservationCapture {
             if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException();
             ByteArrayOutputStream pcm = new ByteArrayOutputStream();
             byte[] frame = new byte[640];
-            long until = SystemClock.elapsedRealtime() + 4000L;
-            while (!cancelled.getAsBoolean() && SystemClock.elapsedRealtime() < until && pcm.size() < 128000) {
-                int count = recorder.read(frame, 0, Math.min(frame.length, 128000 - pcm.size()), AudioRecord.READ_NON_BLOCKING);
+            long started = SystemClock.elapsedRealtime();
+            ObservationAudioPolicy timing=new ObservationAudioPolicy(limit);
+            while (!cancelled.getAsBoolean() && !timing.stop(SystemClock.elapsedRealtime()-started,pcm.size())) {
+                int count = recorder.read(frame, 0, Math.min(frame.length, ObservationAudioPolicy.MAX_BYTES - pcm.size()), AudioRecord.READ_NON_BLOCKING);
                 if (count < 0) throw new IllegalStateException();
-                if (count > 0) { MicrophoneRouting.boostAndLog(frame, count, "TOPIC", MediaRecorder.AudioSource.DEFAULT); pcm.write(frame, 0, count); } else Thread.sleep(5L);
+                if (count > 0) { MicrophoneRouting.boostAndLog(frame, count, "TOPIC", MediaRecorder.AudioSource.DEFAULT); pcm.write(frame, 0, count); timing.observe(SystemClock.elapsedRealtime()-started,Pcm16Gain.meanAbsolute(frame,count)); } else Thread.sleep(5L);
             }
             if (cancelled.getAsBoolean() || pcm.size() < 3200) throw new InterruptedException();
             return wav(pcm.toByteArray());
@@ -90,6 +94,7 @@ final class TopicObservationCapture {
         }
     }
     private static byte[] wav(byte[] data) {
+            if(data==null||data.length<3200||data.length>ObservationAudioPolicy.MAX_BYTES||(data.length&1)!=0)throw new IllegalArgumentException("invalid observation PCM");
             ByteBuffer wav = ByteBuffer.allocate(44 + data.length).order(ByteOrder.LITTLE_ENDIAN);
             wav.put(new byte[]{'R','I','F','F'}).putInt(36 + data.length).put(new byte[]{'W','A','V','E','f','m','t',' '});
             wav.putInt(16).putShort((short) 1).putShort((short) 1).putInt(16000).putInt(32000);

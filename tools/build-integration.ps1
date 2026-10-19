@@ -37,7 +37,7 @@ $link+=@('--java',"$build/generated")
 if(Test-Path "$source/assets") {$link+=@('-A',"$source/assets")}
 & "$bt/aapt2.exe" @link
 Check-Exit
-if($App -eq 'phone' -and (Test-Path "$source/assets/loki-web")) {
+if(($App -eq 'phone' -or $App -eq 'glass') -and (Test-Path "$source/assets")) {
     & "$env:JAVA_HOME/bin/java.exe" "$root/tools/NormalizeWebAssets.java" "$build/unsigned.apk"
     Check-Exit
 }

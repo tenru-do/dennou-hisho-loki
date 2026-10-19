@@ -19,7 +19,8 @@ final class FullBodyMorphRenderer {
  static int source(float amount){return amount<.5f?0:1;}
  static float weight(float amount){return Math.max(0,Math.min(.5f,amount<.5f?amount:1-amount));}
  float[] field(int from,int to){if(!loaded)return null;long k=key(from,to);if(k==cachedKey)return cachedField;cachedKey=k;cachedField=null;for(int i=0;i<keys.length;i++)if(keys[i]==k){cachedField=fields[i];break;}return cachedField;}
- void draw(Canvas canvas,Bitmap bitmap,Paint paint,float[] flow,float amount,int viewWidth,int viewHeight,float scale,float[] breath,boolean breathing){
+ void draw(Canvas canvas,Bitmap bitmap,Paint paint,float[] flow,float amount,int viewWidth,int viewHeight,float scale,float[] breath,boolean breathing){draw(canvas,bitmap,paint,flow,amount,viewWidth,viewHeight,scale,breath,breathing,0,false);}
+ void draw(Canvas canvas,Bitmap bitmap,Paint paint,float[] flow,float amount,int viewWidth,int viewHeight,float scale,float[] breath,boolean breathing,float faceBottom,boolean protectFace){
   int w=bitmap.getWidth(),h=bitmap.getHeight(),at=0;
   for(int row=0;row<=ROWS;row++)for(int col=0;col<=COLUMNS;col++){
    float x=w*col/(float)COLUMNS,y=h*row/(float)ROWS;
@@ -27,7 +28,8 @@ final class FullBodyMorphRenderer {
     x=(breath[a]*(1-u)+breath[b]*u)*(1-v)+(breath[d]*(1-u)+breath[e]*u)*v;
     y=(breath[a+1]*(1-u)+breath[b+1]*u)*(1-v)+(breath[d+1]*(1-u)+breath[e+1]*u)*v;
    }
-   vertices[at]=x+flow[at]*viewWidth/scale*amount;vertices[at+1]=y+flow[at+1]*viewHeight/scale*amount;at+=2;
+   float keep=protectFace?FullBodySeatedMeshPolicy.weight(row/(float)ROWS,faceBottom):1f;
+   vertices[at]=x+flow[at]*viewWidth/scale*amount*keep;vertices[at+1]=y+flow[at+1]*viewHeight/scale*amount*keep;at+=2;
   }
   canvas.drawBitmapMesh(bitmap,COLUMNS,ROWS,vertices,0,null,0,paint);
  }

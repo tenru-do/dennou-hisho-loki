@@ -1,0 +1,1 @@
+package android.content;import android.net.Uri;public class ContentProviderResult{public Uri uri;public ContentProviderResult(Uri u){uri=u;}}

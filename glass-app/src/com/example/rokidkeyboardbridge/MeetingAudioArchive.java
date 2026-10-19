@@ -27,6 +27,7 @@ final class MeetingAudioArchive implements AutoCloseable {
             long now=System.currentTimeMillis();if(now-lastSync>2000){pcm.getFD().sync();lastSync=now;}
             if(size==PART_BYTES)seal();}
     }
+    long sealedBytes(){return pcm==null?total:total-size;}
     private void seal()throws Exception {
         if(pcm==null)return;pcm.getFD().sync();pcm.close();pcm=null;
         byte[] raw=Files.readAllBytes(partial.toPath());byte[] audio=wav(raw);

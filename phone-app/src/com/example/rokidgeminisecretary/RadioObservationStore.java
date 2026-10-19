@@ -25,7 +25,7 @@ final class RadioObservationStore {
                 || requestId.isEmpty() || !requestId.equals(value.optString("requestId"))
                 || revision != value.optLong("revision") || result != null) return false;
         String audio = value.optString("audio"), image = value.optString("image");
-        if (audio.length() > 180000 || image.length() > 350000
+        if (audio.length() > 512060 || image.length() > 350000
                 || !audio.matches("[A-Za-z0-9+/=]*") || !image.matches("[A-Za-z0-9+/=]*")) return false;
         result = value; completionState="analyzing";
         return true;

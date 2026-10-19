@@ -195,13 +195,18 @@ public final class MainActivity extends Activity {
     private static String glassRuntimeMessage = "";
     private static long glassWaitUntilMs;
     private static long glassStateSentAtMs;
+    private static long glassContactElapsed,glassStateReceivedElapsed;
     private TextView status;
     private TextView details;
     private TextView glassStateView;
     private TextView logView;
     private TextView customInfo;
     private EditText commandInput;
+    private boolean recoveryNeedsConfirm;
+    private String nativeConversationRequestId="",nativeConversationRequestText="";
     private ImageQuestionComposer imageComposer;
+    private ImageReferencePanel imageReferencePanel;
+    private String imageReferenceDraftKey="",imageReferenceDraftPrefix="",imageReferenceDraftRequestId="";
     private EditText navigationDestinationInput;
     private Button navigationHudButton;
     private EditText customInput;
@@ -310,13 +315,14 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        LocalHealthCheck.start(this,false);
         activeActivity = this;
         ensureBridgeToken();
         ensureConversationMemoryArchive();
         restoreGlassRuntimeState();
         restoreRecentConversationLogs();
         buildUi();
-        if(state!=null){commandInput.setText(state.getString("conversationDraft",""));imageComposer.restore(state.getBundle("imageComposer"));}
+        if(state!=null){imageReferenceDraftRequestId=state.getString("imageReferenceDraftRequestId","");imageReferenceDraftKey=state.getString("imageReferenceDraftKey","");imageReferenceDraftPrefix=state.getString("imageReferenceDraftPrefix","");commandInput.setText(state.getString("conversationDraft",""));imageComposer.restore(state.getBundle("imageComposer"));}
         HirokidLogMonitor.requestPermission(this);
         if(!Settings.canDrawOverlays(this) && !getPreferences().getBoolean("navigation_overlay_prompted",false)) {
             getPreferences().edit().putBoolean("navigation_overlay_prompted",true).apply();
@@ -435,6 +441,7 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshCustomInfo();
+        inboxSummaryAt=0;refreshInboxSummary();
         updateMorningCollectionButton();
         if (hasLocationPermission()) {
             startBridgeForegroundService();
@@ -480,6 +487,7 @@ public final class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle out){
         super.onSaveInstanceState(out);
         if(commandInput!=null)out.putString("conversationDraft",commandInput.getText().toString());
+        out.putString("imageReferenceDraftRequestId",imageReferenceDraftRequestId);out.putString("imageReferenceDraftKey",imageReferenceDraftKey);out.putString("imageReferenceDraftPrefix",imageReferenceDraftPrefix);
         if(imageComposer!=null)out.putBundle("imageComposer",imageComposer.save());
     }
     @Override protected void onActivityResult(int code,int result,Intent data){
@@ -546,6 +554,11 @@ public final class MainActivity extends Activity {
         tethering.setMinHeight((int)(48 * getResources().getDisplayMetrics().density));
         tethering.setOnClickListener(view -> TetheringAccess.open(this));
         daily.addView(tethering, new LinearLayout.LayoutParams(-1, -2));
+        inboxButton = new Button(this);
+        inboxButton.setText("秘書の受信箱（保留案件・引き継ぎ）");
+        inboxButton.setOnClickListener(view -> new SecretaryInboxDialog(this).show());
+        daily.addView(inboxButton, new LinearLayout.LayoutParams(-1,-2));
+        Button workspace=new Button(this);workspace.setText("会話の参照先・予約候補・認識文");workspace.setOnClickListener(v->new ConversationWorkspaceDialog(this).show());daily.addView(workspace,new LinearLayout.LayoutParams(-1,-2));Button meetingHealth=new Button(this);meetingHealth.setText("録音の進捗・保存確認");meetingHealth.setOnClickListener(v->MeetingHealthDialog.show(this));daily.addView(meetingHealth,new LinearLayout.LayoutParams(-1,-2));Button operations=new Button(this);operations.setText("依頼・転送・動作チェック");operations.setOnClickListener(v->OperationOverviewDialog.show(this));daily.addView(operations,new LinearLayout.LayoutParams(-1,-2));
         Button memoryManager = new Button(this);
         memoryManager.setText("記憶マネージャー（メモ一覧）");
         memoryManager.setOnClickListener(view -> new MemoryManagerDialog(this).show());
@@ -575,6 +588,14 @@ public final class MainActivity extends Activity {
             .setPositiveButton("入力欄で修正",(d,w)->{commandInput.setText(lastSpeechTranscript);commandInput.requestFocus();})
             .setNegativeButton("閉じる",null).show());
         root.addView(speechTranscriptView,new LinearLayout.LayoutParams(-1,-2));
+        imageReferencePanel=new ImageReferencePanel(this,(text,key)->{
+            if(imageComposer!=null&&imageComposer.attached()){updateStatus("送信前の添付があります","添付を外してから参照を選んでください");return;}
+            final String before=commandInput.getText().toString();final boolean keep=ReferenceDraftPolicy.bound(before,imageReferenceDraftPrefix)&&!imageReferenceDraftKey.isEmpty();
+            final String replacement;try{replacement=ReferenceDraftPolicy.retarget(before,keep?imageReferenceDraftPrefix:"",text,2800);}catch(Exception tooLong){updateStatus("参照を変更していません",tooLong.getMessage());return;}
+            Runnable fill=()->{if(!commandInput.getText().toString().equals(before)){updateStatus("下書きが変わっています","入力は上書きしていません。参照を選び直してください。");return;}commandInput.setText(replacement);imageReferenceDraftKey=key;imageReferenceDraftPrefix=text;imageReferenceDraftRequestId=java.util.UUID.randomUUID().toString();commandInput.requestFocus();};
+            if(commandInput.length()>0)new AlertDialog.Builder(this).setMessage(keep?"書いた質問を残して、選んだ添付へ参照先を変更しますか？ 自動送信はしません。":"入力中の文章を、画像への質問の書き出しへ置き換えますか？").setPositiveButton(keep?"本文を残して変更":"置き換える",(d,w)->fill.run()).setNegativeButton("戻る",null).show();else fill.run();
+        });
+        root.addView(imageReferencePanel.view(),new LinearLayout.LayoutParams(-1,-2));
         commandInput = new EditText(this);
         commandInput.setSingleLine(false);
         commandInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_COMMAND_CHARS)});
@@ -600,21 +621,31 @@ public final class MainActivity extends Activity {
         sendCommand.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                if(recoveryNeedsConfirm){new AlertDialog.Builder(MainActivity.this).setMessage("前の依頼が実行済み・処理中の可能性があります。履歴と送信状況を確認しましたか？ 新しい依頼として送ると、予定登録や生成が重複する場合があります。").setPositiveButton("確認した・新しく送る",(d,w)->{recoveryNeedsConfirm=false;sendCommand.performClick();}).setNegativeButton("戻る",null).show();return;}
                 String text = commandInput.getText().toString().trim();
+                if(!text.equals(nativeConversationRequestText)||nativeConversationRequestId.isEmpty()){nativeConversationRequestId=java.util.UUID.randomUUID().toString();nativeConversationRequestText=text;}
+                if(!imageReferenceDraftKey.isEmpty()){
+                    if(!text.startsWith(imageReferenceDraftPrefix)){imageReferenceDraftKey="";imageReferenceDraftPrefix="";}
+                    else if((imageComposer!=null&&imageComposer.attached())||!ImageReferenceSummary.matchesKey(imageReferenceDraftKey,ImageReferenceStore.view(MainActivity.this))){updateStatus("参照が更新・失効しています","本文は残しています。最新の参照を選び直してください。まだ送信していません。");return;}
+                }
+                if(!imageReferenceDraftKey.isEmpty()&&(MediaGenerationContext.video(MainActivity.this,text)||ImageGeneration.handles(MainActivity.this,text))){updateStatus("参照付きの質問です","生成する場合は質問の書き出しを消して新しく依頼してください。まだ送信していません。");return;}
                 if(imageComposer.submit(text,()->{commandInput.setText("");updateStatus("画像付き質問を送信待ち","返信は上の会話ログに表示します");}))return;
                 if (text.length() == 0) {
                     return;
                 }
-                if(MediaGenerationContext.video(MainActivity.this,text)){try{VideoGeneration.enqueue(MainActivity.this,java.util.UUID.randomUUID().toString(),text,null,"");commandInput.setText("");updateStatus("動画生成を受け付けました","会話を続けられます。生成動画一覧で進捗・結果を確認できます");}catch(Exception e){updateStatus("動画生成を受け付けられません",e.getMessage());}return;}
-                if(ImageGeneration.handles(MainActivity.this,text)){try{ImageGeneration.enqueue(MainActivity.this,java.util.UUID.randomUUID().toString(),text,null,"");commandInput.setText("");updateStatus("画像生成を受け付けました","生成画像一覧で進捗・結果を確認できます");}catch(Exception e){updateStatus("画像生成を受け付けられません",e.getMessage());}return;}
+                if(MediaGenerationContext.video(MainActivity.this,text)){try{saveNativeGenerationRecovery(text);VideoGeneration.enqueue(MainActivity.this,nativeConversationRequestId,text,null,"");commandInput.setText("");nativeConversationRequestId="";nativeConversationRequestText="";updateStatus("動画生成を受け付けました","会話を続けられます。生成動画一覧で進捗・結果を確認できます");}catch(Exception e){updateStatus("動画生成を受け付けられません",e.getMessage());}return;}
+                if(ImageGeneration.handles(MainActivity.this,text)){try{saveNativeGenerationRecovery(text);ImageGeneration.enqueue(MainActivity.this,nativeConversationRequestId,text,null,"");commandInput.setText("");nativeConversationRequestId="";nativeConversationRequestText="";updateStatus("画像生成を受け付けました","生成画像一覧で進捗・結果を確認できます");}catch(Exception e){updateStatus("画像生成を受け付けられません",e.getMessage());}return;}
                 // Use the same persistent queue as background/Codex commands.
                 // This makes a foreground send observable in logs and prevents
                 // an activity recreation from losing the command before the
                 // glasses complete their next poll.
-                if (!queueBridgeCommand(MainActivity.this, text, true)) {
+                boolean queued;
+                try{if(!text.equals(nativeConversationRequestText)||nativeConversationRequestId.isEmpty()){nativeConversationRequestId=java.util.UUID.randomUUID().toString();nativeConversationRequestText=text;}queued=LokiWebConsole.queueReferenceConversation(MainActivity.this,!imageReferenceDraftKey.isEmpty()?imageReferenceDraftRequestId:nativeConversationRequestId,text,imageReferenceDraftKey);}catch(Exception e){updateStatus("送信を確認できません",e.getMessage());return;}
+                if (!queued) {
                     updateStatus("送信失敗", "入力を命令キューへ保存できませんでした");
                     return;
                 }
+                nativeConversationRequestId="";nativeConversationRequestText="";
                 addAiLog("ユーザー: " + text);
                 updateStatus("送信待ち", "グラスが受け取るまで保持します: " + shortText(text, 80));
                 commandInput.setText("");
@@ -623,6 +654,7 @@ public final class MainActivity extends Activity {
         actionRow.addView(sendCommand, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
+        Button recovery=new Button(this);recovery.setText("送信控え");recovery.setOnClickListener(v->showConversationRecovery());actionRow.addView(recovery,new LinearLayout.LayoutParams(0,-2,1));
         toggleCustomButton = new Button(this);
         toggleCustomButton.setText("カスタム情報");
         toggleCustomButton.setTextSize(12);
@@ -1140,6 +1172,7 @@ public final class MainActivity extends Activity {
         });
         navigationRow.addView(searchAddress, new LinearLayout.LayoutParams(0, -2, 1f));
         navigation.addView(navigationRow);
+        Button navRecovery=new Button(this);navRecovery.setText("ナビの状態・経路再取得");navRecovery.setOnClickListener(v->showNavigationRecovery());navigation.addView(navRecovery);
         try {
             Class.forName("com.example.rokidgeminisecretary.SdkPhoneBridge");
             Button sdkNavigation = new Button(this);
@@ -1257,6 +1290,8 @@ public final class MainActivity extends Activity {
         root.addView(imageComposer.view(),new LinearLayout.LayoutParams(-1,-2));
         generatedImagePanel=new GeneratedImagePanel(this);root.addView(generatedImagePanel.view(),new LinearLayout.LayoutParams(-1,-2));
         generatedVideoPanel=generatedImagePanel.videoPanel;
+        daily.removeView(inboxButton);
+        root.addView(inboxButton,new LinearLayout.LayoutParams(-1,-2));
         root.addView(commandInput,new LinearLayout.LayoutParams(-1,-2));
         root.addView(actionRow,new LinearLayout.LayoutParams(-1,-2));
         addPhoneFoldSection(root,"ナビ",navigation);
@@ -1860,6 +1895,12 @@ public final class MainActivity extends Activity {
         }
     }
 
+    JSONObject navigationHealth()throws Exception{
+        SharedPreferences p=getPreferences();Location location=getBestAvailableLocation();long now=System.currentTimeMillis(),routeAt=p.getLong(KEY_MAP_ROUTE_TIME,0L);String selected=p.getString(KEY_MAP_ROUTE_DESTINATION,""),requested=confirmedSharedDestination;
+        return NavigationHealthPolicy.snapshot(now,routeAt,location==null?0:location.getTime(),p.getString(KEY_MAP_ROUTE_ERROR,""),navigationRouteFetchInFlight,selected,requested,p.getString(KEY_MAP_ROUTE_POINTS,""));
+    }
+    private void showNavigationRecovery(){try{JSONObject health=navigationHealth();new AlertDialog.Builder(this).setTitle("ナビの状態").setMessage(health.getString("message")+"\n選択経路はロキとグラスで共有します。Googleマップの内部選択と完全一致する保証はありません。").setPositiveButton("経路を再取得",(d,w)->new AlertDialog.Builder(this).setMessage("現在地と設定済みの目的地を経路APIへ送り、経路を再取得します。目的地は維持します。再取得で経路候補が変わる場合があります。").setPositiveButton("再取得",(a,b)->retryNavigationForUser()).setNegativeButton("戻る",null).show()).setNegativeButton("閉じる",null).show();}catch(Exception e){updateStatus("ナビ状態を取得できません","位置情報の権限と接続を確認してください");}}
+    void retryNavigationForUser(){String destination=getPreferences().getString(KEY_MAP_ROUTE_DESTINATION,"");if(destination.isEmpty()&&navigationDestinationInput!=null)destination=navigationDestinationInput.getText().toString().trim();if(destination.isEmpty()){updateStatus("目的地がありません","ナビの目的地を選んでください");return;}prepareNavigationRouteAsync(destination,navigationMode());}
     private void updateNavigationHudButton() {
         if (navigationHudButton != null) {
             navigationHudButton.setText(isNavigationHudSuppressed() ? "HUD再開" : "HUD停止");
@@ -2720,6 +2761,9 @@ public final class MainActivity extends Activity {
         startServer();
     }
 
+    private void saveNativeGenerationRecovery(String text)throws Exception{ConversationRecoveryStore.save(this,RecorderPhotoStore.hash(("native-generation:"+nativeConversationRequestId).getBytes(java.nio.charset.StandardCharsets.UTF_8)),"send",new JSONObject().put("requestId",nativeConversationRequestId).put("message",text));}
+    private AlertDialog showConversationRecovery(){try{JSONArray rows=ConversationRecoveryStore.list(this);String[] titles=new String[rows.length()];for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);titles[i]=row.optString("message")+(row.optInt("imageCount")>0?"（添付あり）":"");}return new AlertDialog.Builder(this).setTitle("送信控え（24時間・最新10件）").setItems(titles,(d,index)->{try{JSONObject item=ConversationRecoveryStore.read(this,rows.getJSONObject(index).getString("id")),payload=item.getJSONObject("payload");new AlertDialog.Builder(this).setTitle("送信した内容を確認").setMessage(payload.optString("message")+"\n\n添付は送信時の画像・動画の抜粋です。送信控えは結果の確定ではありません。入力へ戻すだけでは送信しません。").setPositiveButton("入力へ戻す",(dialog,w)->{if(commandInput.length()>0||(imageComposer!=null&&imageComposer.attached())){new AlertDialog.Builder(this).setMessage("入力中の文章・添付を送信控えで置き換えますか？").setPositiveButton("置き換える",(x,y)->restoreConversationPayload(payload)).setNegativeButton("戻る",null).show();}else restoreConversationPayload(payload);}).setNegativeButton("閉じる",null).show();}catch(Exception error){updateStatus("送信控えを開けません","期限切れまたは読み取りエラーです");}}).setPositiveButton("閉じる",null).show();}catch(Exception error){updateStatus("送信控えを取得できません","保存状態を確認してください");return null;}}
+    private void restoreConversationPayload(JSONObject payload){try{if(imageComposer.busy())return;if(!payload.optString("parent").isEmpty()){updateStatus("元画像の編集依頼です","PC・タブレットの送信控えから元画像ごと復元してください。現在の入力は変更していません");return;}imageComposer.restorePayload(payload);commandInput.setText(payload.optString("message"));imageReferenceDraftKey=payload.optString("referenceKey");imageReferenceDraftPrefix=imageReferenceDraftKey.isEmpty()?"":payload.optString("message");imageReferenceDraftRequestId=java.util.UUID.randomUUID().toString();nativeConversationRequestId="";recoveryNeedsConfirm=true;commandInput.requestFocus();updateStatus("送信控えを復元","まだ送信していません。送信状況を確認してください");}catch(Exception error){updateStatus("添付を復元できません","本文・添付を確認してください");}}
     private void sendControl(String control, String label) {
         synchronized (MainActivity.class) {
             pendingControl = control;
@@ -2847,7 +2891,7 @@ public final class MainActivity extends Activity {
             boolean ambientSourceState = request != null && request.startsWith("POST /ambient_source_state");
             boolean pcPair = request != null && request.startsWith("GET /pc_pair ");
             boolean pair = pcPair || (request != null && request.startsWith("GET /pair "));
-            RequestPayload payload = readRequestPayload(reader, stt ? MAX_STT_BODY_CHARS : MAX_REQUEST_BODY_CHARS);
+            RequestPayload payload = readRequestPayload(reader, stt ? MAX_STT_BODY_CHARS : request != null && request.startsWith("POST /radio_observation ") ? 3 * 1024 * 1024 : MAX_REQUEST_BODY_CHARS);
             String bodyText = payload.body;
             if (LokiWebConsole.handle(this, socket, request, bodyText, payload.webToken, payload.origin, payload.host)) return;
             if (pair) {
@@ -2873,6 +2917,11 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket, 401, "{\"ok\":false,\"error\":\"unauthorized\"}");
                 return;
             }
+            if(request.startsWith("POST /conversation_receipt ")) {
+                JSONObject data=new JSONObject(formValue(bodyText,"request"));
+                try{writeJsonResponse(socket,200,LokiWebConsole.trackedReceipt(this,data).toString());}
+                catch(Exception invalid){writeJsonResponse(socket,409,"{\"ok\":false,\"error\":\"receipt_not_accepted\"}");}return;
+            }
             if(request.startsWith("POST /video_generate ")) {
                 try{String source=formValue(bodyText,"image");if(source.length()>800000)throw new java.io.IOException("元画像が大きすぎます");byte[] image=source.isEmpty()?null:ImageQuestions.normalize(android.util.Base64.decode(source,android.util.Base64.NO_WRAP));JSONObject result=VideoGeneration.enqueue(this,formValue(bodyText,"requestId"),formValue(bodyText,"prompt"),image,formValue(bodyText,"parent"));writeJsonResponse(socket,200,result.toString());}catch(Exception e){writeJsonResponse(socket,400,new JSONObject().put("error",e.getMessage()).toString());}return;
             }
@@ -2891,7 +2940,34 @@ public final class MainActivity extends Activity {
                 try{String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");writeJsonResponse(socket,200,ImageQuestions.read(this,id).toString());}
                 catch(Exception e){writeJsonResponse(socket,404,"{\"error\":\"image_missing_or_expired\"}");}return;
             }
+            if(request.startsWith("GET /operation_status ")){writeJsonResponse(socket,200,OperationOverview.read(this).toString());return;}
+            if(request.startsWith("POST /conversation_workspace ")){ConversationWorkspace.accept(this,new JSONObject(formValue(bodyText,"state")));writeJsonResponse(socket,200,"{\"ok\":true}");return;}
+            if(request.startsWith("GET /workspace_command?")){String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");writeJsonResponse(socket,200,ConversationWorkspace.command(this,id).toString());return;}
+            if(request.startsWith("POST /conversation_image_reference ")) {
+                try{ImageReferenceStore.accept(this,new JSONObject(formValue(bodyText,"reference")));writeJsonResponse(socket,200,"{\"ok\":true}");runOnUiThread(()->{if(imageReferencePanel!=null)imageReferencePanel.refresh();});}
+                catch(Exception invalid){writeJsonResponse(socket,409,"{\"ok\":false}");}return;
+            }
             if(request.startsWith("POST /image_question_done ")) {ImageQuestions.complete(this,formValue(bodyText,"id"));writeJsonResponse(socket,200,"{\"ok\":true}");return;}
+            if(request.startsWith("GET /secretary_intent_context ")) {
+                JSONArray raw=SecretaryInbox.list(this).getJSONArray("items"),items=new JSONArray();
+                for(int i=0;i<raw.length();i++){JSONObject j=raw.getJSONObject(i);if(!"pending".equals(j.optString("state")))continue;JSONObject small=new JSONObject();
+                    for(String k:new String[]{"id","title","date_text","conditions"}){String v=j.optString(k);small.put(k,v.length()>120?v.substring(0,120):v);}
+                    small.put("revision",j.getInt("revision")).put("state","pending");items.put(small);
+                }
+                writeJsonResponse(socket,200,new JSONObject().put("reference",secretaryReference()).put("items",items).toString());return;
+            }
+            if(request.startsWith("POST /secretary_inbox_action ")) {
+                JSONObject result;try{result=SecretaryInbox.action(this,new JSONObject(formValue(bodyText,"request")));}catch(Exception e){result=new JSONObject().put("ok",false).put("message","案件の変更を確認できません。受信箱を更新して状態を確認してください。");}
+                writeJsonResponse(socket,200,result.toString());return;
+            }
+            if(request.startsWith("GET /secretary_inbox ")) {try{writeJsonResponse(socket,200,SecretaryInbox.list(this).toString());}catch(Exception e){writeJsonResponse(socket,500,"{\"error\":\"受信箱を読み込めません。元データは保持しています。\"}");}return;}
+            if(request.startsWith("GET /secretary_inbox?")) {String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");writeJsonResponse(socket,200,SecretaryInbox.get(this,id).toString());return;}
+            if(request.startsWith("POST /secretary_inbox ")||request.startsWith("POST /secretary_inbox_review ")||request.startsWith("POST /secretary_inbox_confirm ")) {
+                JSONObject result;try{JSONObject data=new JSONObject(formValue(bodyText,"request"));
+                    result=request.startsWith("POST /secretary_inbox_review ")?SecretaryInbox.review(this,data):request.startsWith("POST /secretary_inbox_confirm ")?SecretaryInbox.confirm(this,data):SecretaryInbox.save(this,data.getString("request"),data.has("reference")?data.getString("reference"):secretaryReference(),data.getString("requestId"),data.optJSONObject("metadata"));
+                }catch(Exception e){result=new JSONObject().put("ok",false).put("message",e instanceof java.io.IOException?e.getMessage():"受信箱を更新できませんでした。元の案件は保持しています。");}
+                writeJsonResponse(socket,200,result.toString());return;
+            }
             if(request.startsWith("GET /calendar_write_state ")) {
                 writeJsonResponse(socket,200,new JSONObject().put("ok",true)
                         .put("permission",CalendarWriter.permitted(this)).put("calendars",CalendarWriter.calendars(this)).toString());return;
@@ -4028,6 +4104,7 @@ public final class MainActivity extends Activity {
     }
 
     private JSONObject buildCommandJson() throws Exception {
+        synchronized(MainActivity.class){glassContactElapsed=android.os.SystemClock.elapsedRealtime();}
         JSONObject root = new JSONObject();
         String command;
         synchronized (MainActivity.class) {
@@ -4097,11 +4174,32 @@ public final class MainActivity extends Activity {
             return preferences.edit().putBoolean("image_queue_flush",true).commit();
         }
     }
+    static boolean queueTrackedWebCommand(Context context,String id,String text){
+        return queueTrackedWebCommand(context,id,text,"");
+    }
+    static boolean queueTrackedWebCommand(Context context,String id,String text,String referenceKey){
+        String wire=TrackedWebRequest.wire(id,text,referenceKey);
+        synchronized(MainActivity.class){SharedPreferences p=context.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(p);
+            if(queue.contains(wire))return true;if(queue.size()>=MAX_PENDING_COMMANDS)return false;queue.add(wire);return commitTrackedQueue(p,queue);}
+    }
+    static boolean ackTrackedWebCommand(Context context,String id){
+        if(!TrackedWebRequest.validId(id))return false;
+        synchronized(MainActivity.class){SharedPreferences p=context.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(p);
+            if(queue.isEmpty()||!queue.get(0).startsWith(TrackedWebRequest.PREFIX+id+":"))return false;
+            queue.remove(0);return commitTrackedQueue(p,queue);}
+    }
+    private static boolean commitTrackedQueue(SharedPreferences p,ArrayList<String> queue){
+        JSONArray a=new JSONArray();for(String text:queue)a.put(text);String head=queue.isEmpty()?"":queue.get(0);
+        if(!p.edit().putString(KEY_PENDING_COMMAND_QUEUE,a.toString()).putString(KEY_PENDING_COMMAND,head).commit())return false;
+        pendingCommand=head;return true;
+    }
+
     static boolean queueBridgeCommand(Context context, String rawCommand, boolean replacePending) {
         if (context == null) return false;
         String command = shortText(rawCommand == null ? "" : rawCommand.trim(), MAX_COMMAND_CHARS);
         if(MediaGenerationContext.video(context,command)){try{VideoGeneration.enqueue(context,java.util.UUID.randomUUID().toString(),command,null,"");return true;}catch(Exception e){addAiLog("動画生成: "+e.getMessage());return false;}}
         if(ImageGeneration.handles(context,command)) {try{ImageGeneration.enqueue(context,java.util.UUID.randomUUID().toString(),command,null,"");return true;}catch(Exception e){addAiLog("画像生成: "+e.getMessage());return false;}}
+        if(command.startsWith("__LOKI_RADIO_CAPTURE__:"))try{command="__LOKI_RADIO_CAPTURE__:"+new JSONObject(command.substring("__LOKI_RADIO_CAPTURE__:".length())).put("maxAudioMs",12000);}catch(Exception malformed){return false;}
         if (command.length() == 0) return false;
         SharedPreferences preferences = context.getSharedPreferences(PREFS, MODE_PRIVATE);
         synchronized (MainActivity.class) {
@@ -4205,6 +4303,7 @@ public final class MainActivity extends Activity {
         synchronized (MainActivity.class) {
             if (sentAt >= glassStateSentAtMs) {
                 glassStateSentAtMs = sentAt;
+                glassContactElapsed=glassStateReceivedElapsed=android.os.SystemClock.elapsedRealtime();
                 glassRuntimeState = state;
                 glassRuntimeMessage = message;
                 glassWaitUntilMs = waitUntil;
@@ -4230,6 +4329,14 @@ public final class MainActivity extends Activity {
         JSONObject root = new JSONObject();
         root.put("ok", true);
         return root;
+    }
+
+    JSONObject webConversationRuntime() throws Exception {
+        synchronized(MainActivity.class){
+            return ConversationRuntimeSnapshot.build(glassRuntimeState,glassRuntimeMessage,
+                    android.os.SystemClock.elapsedRealtime(),glassContactElapsed,glassStateReceivedElapsed,
+                    glassWaitUntilMs-System.currentTimeMillis(),readPendingCommandsLocked(getPreferences()).size());
+        }
     }
 
     private void restoreGlassRuntimeState() {
@@ -4725,6 +4832,18 @@ public final class MainActivity extends Activity {
         root.put("count", entries.length());
         root.put("entries", entries);
         return root;
+    }
+
+
+    private String secretaryReference() throws Exception {
+        ArrayList<JSONObject> rows=readConversationMemory();JSONArray picked=new JSONArray();int chars=0,count=0;long now=System.currentTimeMillis();
+        for(int i=rows.size()-1;i>=0&&count<6;i--){JSONObject row=rows.get(i);long age=now-row.optLong("time");
+            if(age<0||age>2*60*60*1000L)continue;String kind=row.optString("kind");
+            if(!kind.startsWith("ユーザー")&&!"Gemini".equals(kind)&&!"直接回答".equals(kind))continue;
+            String message=row.optString("message");if(message.length()>12000||chars+message.length()>26000)break;
+            picked.put(new JSONObject().put("time",row.optLong("time")).put("kind",kind).put("message",message));chars+=message.length();count++;
+        }
+        return new JSONObject().put("order","newest_first").put("capturedAt",now).put("conversation",picked).toString();
     }
 
     private boolean memoryMatches(String message, String query) {
@@ -6789,7 +6908,31 @@ public final class MainActivity extends Activity {
 
     private GeneratedImagePanel generatedImagePanel;
     private GeneratedVideoPanel generatedVideoPanel;
+    private Button inboxButton;
+    private boolean inboxSummaryBusy;
+    private long inboxSummaryAt;
+    void composeInboxResume(String id){
+        if(!id.matches("[a-f0-9-]{36}"))return;
+        if(imageComposer!=null&&imageComposer.attached()){updateStatus("送信前の添付があります","添付を外してから保留案件を選んでください");return;}
+        String text="受信箱の案件ID:"+id+" を登録して";
+        Runnable fill=()->{commandInput.setText(text);commandInput.requestFocus();updateStatus("案件を会話欄へ戻しました","送信後に登録内容を確認します。まだ送信・登録していません。");};
+        if(commandInput.length()>0&&!commandInput.getText().toString().equals(text))new AlertDialog.Builder(this).setMessage("入力中の文章を、保留案件の確認依頼へ置き換えますか？").setPositiveButton("置き換える",(d,w)->fill.run()).setNegativeButton("戻る",null).show();else fill.run();
+    }
+    void refreshInboxSummaryNow(){inboxSummaryAt=0;refreshInboxSummary();}
+    private void refreshInboxSummary(){
+        if(inboxButton==null||inboxSummaryBusy||System.currentTimeMillis()-inboxSummaryAt<15000L)return;
+        inboxSummaryBusy=true;inboxSummaryAt=System.currentTimeMillis();
+        new Thread(()->{String label="秘書の受信箱（読み込み失敗・再確認）";
+            try{JSONArray all=SecretaryInbox.list(this).getJSONArray("items");int pending=0,uncertain=0,review=0;
+                for(int i=0;i<all.length();i++){JSONObject item=all.getJSONObject(i);if("pending".equals(item.optString("state")))pending++;if("needs_check".equals(item.optString("displayStage")))uncertain++;if("review_wait".equals(item.optString("displayStage")))review++;}
+                label="秘書の受信箱：未完了 "+pending+"件"+(review>0?"・確認待ち "+review+"件":"")+(uncertain>0?"・結果要確認 "+uncertain+"件":"");
+            }catch(Exception unavailable){}
+            final String text=label;runOnUiThread(()->{inboxSummaryBusy=false;if(!isFinishing()&&!isDestroyed())inboxButton.setText(text);});
+        },"InboxSummary").start();
+    }
     private void refreshLogs() {
+        refreshInboxSummary();
+        if(imageReferencePanel!=null)imageReferencePanel.refresh();
         if(generatedImagePanel!=null)generatedImagePanel.refresh();
         if(generatedVideoPanel!=null)generatedVideoPanel.refresh();
         if (logView == null) return;

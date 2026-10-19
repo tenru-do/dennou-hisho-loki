@@ -11,7 +11,7 @@ class NormalizeWebAssets {
                 var entries=input.entries();
                 while(entries.hasMoreElements()) {
                     ZipEntry source=entries.nextElement();String name=source.getName();
-                    if(name.startsWith("assets/loki-web"))name=name.replace('\\','/');
+                    if(name.startsWith("assets/"))name=name.replace('\\','/');
                     ZipEntry target=new ZipEntry(name);target.setMethod(source.getMethod());target.setTime(source.getTime());
                     if(source.getMethod()==ZipEntry.STORED){target.setSize(source.getSize());target.setCrc(source.getCrc());}
                     output.putNextEntry(target);if(!source.isDirectory())try(InputStream in=input.getInputStream(source)){in.transferTo(output);}output.closeEntry();

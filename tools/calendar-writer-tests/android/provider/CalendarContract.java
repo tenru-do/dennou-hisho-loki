@@ -1,0 +1,1 @@
+package android.provider;import android.net.Uri;public class CalendarContract{public static final String AUTHORITY="calendar";public static class Calendars{public static final Uri CONTENT_URI=new Uri("calendars");public static final int CAL_ACCESS_CONTRIBUTOR=500;}public static class Events{public static final Uri CONTENT_URI=new Uri("events");}}

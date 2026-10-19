@@ -19,6 +19,31 @@ final class LokiWebConsole {
     private static final int PHOTO_PAGE_SIZE = 200;
     private static final Object PHOTO_WORK = new Object();
     private static final java.util.concurrent.atomic.AtomicBoolean GOOGLE_PHOTO_WORK=new java.util.concurrent.atomic.AtomicBoolean();
+    static synchronized JSONObject trackedReceipt(Context owner,JSONObject data)throws Exception {
+        String id=data.getString("id"),event=data.getString("event");JSONArray all=new JSONArray(prefs(owner).getString("outbox","[]"));boolean found=false,changed=false,execute=false;String finalState="";
+        for(int i=0;i<all.length();i++){JSONObject old=all.getJSONObject(i);if(!id.equals(old.optString("key")))continue;
+            JSONObject next=TrackedWebRequest.receipt(old,event,data.optString("reason",""),System.currentTimeMillis());
+            finalState=next.optString("requestState");execute=TrackedWebRequest.executionGrant(old.optString("requestState"),event,finalState);
+            changed=!next.toString().equals(old.toString());all.put(i,next);found=true;break;}
+        if(!found)throw new IllegalArgumentException("Unknown request ID");
+        // Save receipt before acknowledgement. Retrying an acknowledgement can only remove the matching head ID.
+        if(changed&&!prefs(owner).edit().putString("outbox",all.toString()).commit())throw new IOException("Receipt storage failed");
+        boolean ack="RECEIVED".equals(event)&&MainActivity.ackTrackedWebCommand(owner,id);
+        return new JSONObject().put("ok",true).put("ack",ack).put("execute",execute).put("requestState",finalState);
+    }
+    static synchronized boolean queueReferenceConversation(Context c,String requestId,String text,String referenceKey)throws Exception{
+        if(!WorkspaceCommandPolicy.validId(requestId))throw new IOException("参照を選び直してください");
+        String key=digest("native-reference:"+requestId);JSONArray old=new JSONArray(prefs(c).getString("outbox","[]"));
+        for(int i=0;i<old.length();i++){JSONObject row=old.getJSONObject(i);if(key.equals(row.optString("key"))){if(!text.equals(row.optString("message"))||!referenceKey.equals(row.optString("referenceKey")))throw new IOException("前の送信内容から変わっています。送信状況を確認し、参照を選び直してください");return row.optBoolean("accepted");}}
+        if(!referenceKey.isEmpty()&&!ImageReferenceSummary.matchesKey(referenceKey,ImageReferenceStore.view(c)))throw new IOException("画像参照が更新・失効しています。選び直してください");
+        TrackedWebRequest.wire(key,text,referenceKey);
+        ConversationRecoveryStore.save(c,key,"send",new JSONObject().put("requestId",requestId).put("message",text).put("referenceKey",referenceKey));
+        JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("referenceKey",referenceKey).put("device","スマホ").put("status","受付中").put("tracked",true).put("requestState","CREATED");
+        JSONArray next=WebRequestLedger.append(old,record);if(next==null)throw new IOException("未完了の送信が100件あります。送信状況を確認してください");
+        if(!prefs(c).edit().putString("outbox",next.toString()).commit())throw new IOException("送信記録を保存できません");
+        boolean queued=MainActivity.queueTrackedWebCommand(c,key,text,referenceKey);record.put("accepted",queued).put("requestState",queued?"QUEUED":"FAILED").put("status",queued?"グラスへ送信待ち":"送信できませんでした");
+        if(!prefs(c).edit().putString("outbox",next.toString()).commit())throw new IOException("送信状態未確認です。再送前に送信状況を確認してください");return queued;
+    }
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("loki_web_console", 0); }
     static synchronized String openCode() {
         code = String.format(Locale.US, "%06d", RANDOM.nextInt(1000000));
@@ -124,6 +149,7 @@ final class LokiWebConsole {
                 json(socket,200,enroll(owner,name));return true;
             }
             JSONObject session=authenticate(owner,token);if(session==null){json(socket,401,new JSONObject().put("error","スマホで接続コードを発行し、接続してください"));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/secretary-inbox-action")){json(socket,200,SecretaryInbox.action(owner,new JSONObject(body)));return true;}
             if(method.equals("POST")&&path.equals("/web/api/media-drop-status")) {
                 JSONObject input=new JSONObject(body),record=new JSONObject().put("time",System.currentTimeMillis());
                 JSONArray types=input.optJSONArray("types"),safeTypes=new JSONArray();if(types!=null)for(int i=0;i<Math.min(12,types.length());i++){String t=types.optString(i);if(t.matches("[a-zA-Z0-9/_+.-]{1,60}"))safeTypes.put(t);}
@@ -135,7 +161,8 @@ final class LokiWebConsole {
                 try{byte[] jpeg=GooglePhotoImport.read(new JSONObject(body).getString("url"));json(socket,200,new JSONObject().put("image",android.util.Base64.encodeToString(jpeg,android.util.Base64.NO_WRAP)));}finally{GOOGLE_PHOTO_WORK.set(false);}return true;
             }
             Map<String,String> query=new HashMap<>();if(uri.getRawQuery()!=null)for(String part:uri.getRawQuery().split("&")){String[] q=part.split("=",2);query.put(q[0],q.length==2?URLDecoder.decode(q[1],"UTF-8"):"");}
-            if(method.equals("POST")&&path.equals("/web/api/media-generate")){JSONObject input=new JSONObject(body);String rawId=input.getString("requestId"),parent=input.optString("parent"),message=input.getString("message");if(!rawId.matches("[a-zA-Z0-9-]{8,80}")||parent.isEmpty())throw new IOException("元画像を選択してください");MediaGenerationIntent.Kind kind=MediaGenerationContext.kind(owner,message,true);String requestId=digest(session.getString("hash")+":"+rawId);if(kind==MediaGenerationIntent.Kind.VIDEO)json(socket,200,VideoGeneration.enqueue(owner,requestId,message,null,parent));else if(kind==MediaGenerationIntent.Kind.IMAGE)json(socket,200,ImageGeneration.enqueue(owner,requestId,message,null,parent));else throw new IOException("元画像をどう変えるか、どんな動きを付けるか入力してください");return true;}
+            if(method.equals("POST")&&path.equals("/web/api/media-generate")){JSONObject input=new JSONObject(body);String rawId=input.getString("requestId"),parent=input.optString("parent"),message=input.getString("message");if(!rawId.matches("[a-zA-Z0-9-]{8,80}")||parent.isEmpty())throw new IOException("元画像を選択してください");MediaGenerationIntent.Kind kind=MediaGenerationContext.kind(owner,message,true);String requestId=digest(session.getString("hash")+":"+rawId);ConversationRecoveryStore.save(owner,requestId,"media-generate",input);if(kind==MediaGenerationIntent.Kind.VIDEO)json(socket,200,VideoGeneration.enqueue(owner,requestId,message,null,parent));else if(kind==MediaGenerationIntent.Kind.IMAGE)json(socket,200,ImageGeneration.enqueue(owner,requestId,message,null,parent));else throw new IOException("元画像をどう変えるか、どんな動きを付けるか入力してください");return true;}
+            if(method.equals("GET")&&path.equals("/web/api/secretary-inbox")){json(socket,200,query.containsKey("id")?SecretaryInbox.get(owner,query.get("id")):SecretaryInbox.list(owner));return true;}
             if(method.equals("GET")&&path.equals("/web/api/video-generations")){json(socket,200,new JSONObject().put("items",VideoGeneration.list(owner)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/generated-video")) {String id=query.getOrDefault("id","");JSONObject j=VideoGeneration.read(owner,id);if(!"completed".equals(j.optString("state")))throw new IOException("動画がまだ完成していません");OutputStream out=socket.getOutputStream();String headers="HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nContent-Length: "+j.getInt("bytes")+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nContent-Disposition: inline; filename=\"Loki-video-"+id+".mp4\"\r\nConnection: close\r\n\r\n";out.write(headers.getBytes(StandardCharsets.US_ASCII));VideoGeneration.writeVideo(owner,id,out);out.flush();return true;}
             if(method.equals("POST")&&path.equals("/web/api/video-generate")) {JSONObject input=new JSONObject(body);String rawId=input.getString("requestId");if(!rawId.matches("[a-zA-Z0-9-]{8,80}"))throw new IOException("送信IDが無効です");byte[] image=null;String encoded=input.optString("image");if(!encoded.isEmpty()){if(encoded.length()>800000)throw new IOException("元画像が大きすぎます");image=ImageQuestions.normalize(android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP));}json(socket,200,VideoGeneration.enqueue(owner,digest(session.getString("hash")+":"+rawId),input.getString("message"),image,input.optString("parent")));return true;}
@@ -153,7 +180,7 @@ final class LokiWebConsole {
                 byte[] jpeg=ImageQuestions.normalize(android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP));
                 String rawId=input.getString("requestId");if(!rawId.matches("[a-zA-Z0-9-]{8,80}"))throw new IllegalArgumentException("invalid request id");
                 String requestId=digest(session.getString("hash")+":"+rawId);
-                json(socket,200,ImageQuestions.enqueue(owner,requestId,input.optString("message",""),jpeg,input.optInt("imageCount",1)));return true;
+                json(socket,200,ImageQuestions.enqueue(owner,requestId,input.optString("message",""),jpeg,input.optInt("imageCount",1),input.optJSONArray("kinds")));return true;
             }
             if(method.equals("GET")&&path.equals("/web/api/photos")) {
                 int offset=Math.max(0,Integer.parseInt(query.getOrDefault("offset","0")));ArrayList<File> all=photos(owner);offset=Math.min(offset,Math.max(0,((all.size()-1)/PHOTO_PAGE_SIZE)*PHOTO_PAGE_SIZE));JSONArray items=new JSONArray();
@@ -194,20 +221,33 @@ final class LokiWebConsole {
                 int deleted=0;for(File f:all){RecorderPhotoStore.delete(owner,f);deleted++;}json(socket,200,new JSONObject().put("deleted",deleted));return true;
             }
             if(method.equals("GET")&&path.equals("/web/api/delete-preview")){ArrayList<File> all=photos(owner);json(socket,200,new JSONObject().put("count",all.size()).put("revision",digest(all.toString())));return true;}
-            if(method.equals("GET")&&path.equals("/web/api/history")){json(socket,200,new JSONObject().put("items",owner.webHistory()).put("requests",new JSONArray(prefs(owner).getString("outbox","[]"))));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/operations")){json(socket,200,OperationOverview.read(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/local-health-check")){LocalHealthCheck.start(owner,true);json(socket,200,new JSONObject().put("started",true));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/workspace")){json(socket,200,ConversationWorkspace.snapshot(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/workspace-command")){json(socket,200,ConversationWorkspace.submit(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/navigation-health")){json(socket,200,owner.navigationHealth());return true;}
+            if(method.equals("POST")&&path.equals("/web/api/navigation-retry")){owner.runOnUiThread(owner::retryNavigationForUser);json(socket,200,new JSONObject().put("queued",true));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-verify")){json(socket,200,MeetingAudioStore.verify(owner,new JSONObject(body).getString("id")));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/recovery")){json(socket,200,query.containsKey("id")?ConversationRecoveryStore.read(owner,query.get("id")):new JSONObject().put("items",ConversationRecoveryStore.list(owner)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/history")){json(socket,200,new JSONObject().put("items",owner.webHistory()).put("requests",new JSONArray(prefs(owner).getString("outbox","[]"))).put("runtime",owner.webConversationRuntime()).put("imageReference",ImageReferenceStore.view(owner)).put("progress",ConversationWorkspace.snapshot(owner).optJSONObject("conversation")).put("progressFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/send")) {
                 synchronized(LokiWebConsole.class) {
                     JSONObject input=new JSONObject(body);String text=input.getString("message").trim(), requestId=input.getString("requestId");
-                    if(text.isEmpty()||text.length()>3000||text.contains("__LOKI_")||text.contains("__CODEX_")||!requestId.matches("[a-zA-Z0-9-]{8,80}"))throw new IllegalArgumentException("送信内容が無効です（最大3000文字）");
+                    if(text.isEmpty()||text.length()>2800||text.contains("__LOKI_")||text.contains("__CODEX_")||!requestId.matches("[a-zA-Z0-9-]{8,80}"))throw new IllegalArgumentException("送信内容が無効です（最大2800文字）");
+                    if(input.has("referenceKey")&&(MediaGenerationContext.video(owner,text)||ImageGeneration.handles(owner,text)))throw new IOException("参照付きの質問から生成は開始しません。生成する場合は質問の書き出しを消して新しく依頼してください");
+                    ConversationRecoveryStore.save(owner,digest(session.getString("hash")+":"+requestId),"send",input);
                     if(MediaGenerationContext.video(owner,text)){json(socket,200,VideoGeneration.enqueue(owner,digest(session.getString("hash")+":"+requestId),text,null,""));return true;}
                     if(ImageGeneration.handles(owner,text)){json(socket,200,ImageGeneration.enqueue(owner,digest(session.getString("hash")+":"+requestId),text,null,""));return true;}
                     JSONArray old=new JSONArray(prefs(owner).getString("outbox","[]"));String key=digest(session.getString("hash")+":"+requestId);
-                    for(int i=0;i<old.length();i++)if(old.getJSONObject(i).optString("key").equals(key)){boolean accepted=old.getJSONObject(i).optString("status").equals("グラスへ送信待ち");json(socket,accepted?200:409,new JSONObject().put("queued",accepted).put("duplicate",true).put("error",accepted?"":"送信完了を確認できません。スマホの送信状況を確認してください"));return true;}
+                    ConversationRecoveryStore.save(owner,key,"send",input);
+                    for(int i=0;i<old.length();i++)if(old.getJSONObject(i).optString("key").equals(key)){boolean accepted=old.getJSONObject(i).optBoolean("accepted",old.getJSONObject(i).optString("status").equals("グラスへ送信待ち"));json(socket,accepted?200:409,new JSONObject().put("queued",accepted).put("duplicate",true).put("error",accepted?"":"送信完了を確認できません。スマホの送信状況を確認してください"));return true;}
+                    if(input.has("referenceKey")&&!ImageReferenceSummary.matchesKey(input.optString("referenceKey"),ImageReferenceStore.view(owner)))throw new IOException("参照が更新・失効しています。本文を残して最新の参照を選び直してください。まだ送信していません");
                     // Persist intent before enqueue. Retries never enqueue the same browser request twice.
-                    JSONArray next=new JSONArray();for(int i=Math.max(0,old.length()-99);i<old.length();i++)next.put(old.getJSONObject(i));
-                    JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("device",session.getString("name")).put("status","受付中");next.put(record);
+                    JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("device",session.getString("name")).put("status","受付中").put("tracked",true).put("requestState","CREATED");
+                    JSONArray next=WebRequestLedger.append(old,record);
+                    if(next==null){json(socket,409,new JSONObject().put("queued",false).put("error","未完了の送信記録が100件あります。送信状況を確認してください。追加送信はしていません"));return true;}
                     if(!prefs(owner).edit().putString("outbox",next.toString()).commit())throw new IOException("送信記録を保存できません");
-                    boolean queued=MainActivity.queueBridgeCommand(owner,text,true);record.put("status",queued?"グラスへ送信待ち":"送信できませんでした（再入力してください）");
+                    boolean queued=MainActivity.queueTrackedWebCommand(owner,key,text,input.optString("referenceKey"));record.put("accepted",queued).put("requestState",queued?"QUEUED":"FAILED").put("status",queued?"グラスへ送信待ち":"送信できませんでした（再入力してください）");
                     if(!prefs(owner).edit().putString("outbox",next.toString()).commit())throw new IOException("送信状態を保存できません");
                     json(socket,queued?200:409,new JSONObject().put("queued",queued).put("error",queued?"":"グラスの送信待ちが満杯です"));
                 }return true;

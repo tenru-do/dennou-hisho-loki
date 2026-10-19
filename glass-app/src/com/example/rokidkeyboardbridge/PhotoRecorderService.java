@@ -9,21 +9,25 @@ public final class PhotoRecorderService extends Service {
  private volatile boolean stopped; private Thread worker; private PhotoArchive archive;
  private int interval=5000;private PowerManager.WakeLock wake;
  private final java.util.concurrent.locks.ReentrantLock imageWork=new java.util.concurrent.locks.ReentrantLock(true);
+ private volatile String topicImageDecision="";
+ String topicImageWaitReason(){return MeetingCameraPolicy.label(topicImageDecision);}
  private volatile boolean captureWaiting;private File latestPhoto;private long latestPhotoAt,latestPhotoWall,lastTopicUse;
  static final class TopicPhoto {final byte[] jpeg;final long capturedAt;TopicPhoto(byte[] jpeg,long at){this.jpeg=jpeg;capturedAt=at;}}
  TopicPhoto topicPhoto(java.util.function.BooleanSupplier cancelled)throws Exception {
-  if(stopped||active!=this||captureWaiting||!imageWork.tryLock())return null;
+  if(stopped||active!=this){topicImageDecision="CANCELLED";return null;}if(captureWaiting||!imageWork.tryLock()){topicImageDecision="KEEP_WAIT";return null;}
   try {
-   if(stopped||active!=this||cancelled.getAsBoolean()||latestPhoto==null)return null;
+   if(stopped||active!=this||cancelled.getAsBoolean()){topicImageDecision="CANCELLED";return null;}if(latestPhoto==null){topicImageDecision="NO_FRAME";return null;}
+   MeetingRecorderService meeting=MeetingRecorderService.active;if(meeting!=null){String blocked=meeting.optionalImageBlockReason();if(!blocked.isEmpty()){topicImageDecision=blocked;return null;}}
    android.app.ActivityManager.MemoryInfo info=new android.app.ActivityManager.MemoryInfo();
    ((android.app.ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(info);
    Runtime runtime=Runtime.getRuntime();long free=runtime.maxMemory()-(runtime.totalMemory()-runtime.freeMemory()),now=SystemClock.elapsedRealtime();
-   if(!KeepTopicImagePolicy.canReuse(now,latestPhotoAt,lastTopicUse,latestPhoto.length(),free,info.lowMemory,captureWaiting))return null;
-   byte[] source=archive.read(latestPhoto);if(cancelled.getAsBoolean())return null;
+   topicImageDecision=KeepTopicImagePolicy.reason(now,latestPhotoAt,lastTopicUse,latestPhoto.length(),free,info.lowMemory,captureWaiting);if(!topicImageDecision.isEmpty())return null;
+   byte[] source=archive.read(latestPhoto);if(cancelled.getAsBoolean()){topicImageDecision="CANCELLED";return null;}if(captureWaiting){topicImageDecision="KEEP_WAIT";return null;}
    byte[] small=ImageQuestionBitmap.normalize(source,640,250000);
-   if(stopped||active!=this||cancelled.getAsBoolean())return null;
-   lastTopicUse=SystemClock.elapsedRealtime();return new TopicPhoto(small,latestPhotoWall);
-  }catch(OutOfMemoryError pressure){return null;
+   if(stopped||active!=this||cancelled.getAsBoolean()){topicImageDecision="CANCELLED";return null;}
+   topicImageDecision="READY";lastTopicUse=SystemClock.elapsedRealtime();return new TopicPhoto(small,latestPhotoWall);
+  }catch(OutOfMemoryError pressure){topicImageDecision="LOW_MEMORY";return null;
+  }catch(Exception error){topicImageDecision="READ_ERROR";throw error;
   }finally{imageWork.unlock();}
  }
  public IBinder onBind(Intent intent){return null;}
@@ -57,7 +61,7 @@ public final class PhotoRecorderService extends Service {
    long wait=next-SystemClock.elapsedRealtime();if(wait>0)Thread.sleep(wait);if(stopped)break;next=SystemClock.elapsedRealtime()+interval;
    // Other local camera features take priority; missed slots are never queued.
    if(CaptureLease.CAMERA.availablePermits()==0){status="カメラ使用中・撮影待ち";continue;}
-   if(MeetingRecorderService.active!=null&&!MeetingRecorderService.active.reserveCamera()){status="会議録音優先・撮影待機";continue;}
+   MeetingRecorderService meeting=MeetingRecorderService.active;if(meeting!=null&&!meeting.reserveCamera()){status="会議録音優先："+meeting.cameraWaitReason();continue;}
    captureWaiting=true;try{imageWork.lockInterruptibly();}finally{captureWaiting=false;}
    try {
    if(stopped)break;
