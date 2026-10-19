@@ -47,7 +47,8 @@ final class ApprovedFaceRenderer {
         float blink=phase<.24f ? .12f+.88f*Math.abs(phase-.12f)/.12f : 1f;
         float articulation=(float)(.5+.35*Math.sin(now/113.0)+.15*Math.sin(now/67.0));
         boolean smile=cell==1||cell==2||cell==5||cell==7||cell==12||cell==29||cell==30;
-        float mouth=speaking?(smile?.45f+1.8f*articulation:.72f+.75f*articulation):1f+(smile?.14f:.025f)*(float)Math.sin(now/750.0);
+        boolean stableSmile=CoolSmilePolicy.portrait(cell);
+        float mouth=stableSmile?1f:speaking?(smile?.72f+.70f*articulation:.72f+.75f*articulation):1f+(smile?.14f:.025f)*(float)Math.sin(now/750.0);
         float closedScale=1f+.18f*(float)Math.sin(now/900.0);
         float leftScale=FullBodyPortraitGeometry.CLOSED[cell][0]?closedScale:blink;
         float rightScale=FullBodyPortraitGeometry.CLOSED[cell][1]?closedScale:blink;
@@ -56,7 +57,7 @@ final class ApprovedFaceRenderer {
             float x=col/(float)cols,y=row/(float)rows,dy=0f;
             for(int eye=0;eye<2;eye++) {
                 float scale=eye==0?leftScale:rightScale;
-                dy+=warp(x,y,f[eye*2],f[eye*2+1],.08f,.045f,scale);
+                dy+=warp(x,y,f[eye*2],f[eye*2+1],stableSmile?.065f:.08f,stableSmile?.025f:.045f,scale);
                 if(FullBodyPortraitGeometry.CLOSED[cell][eye]){
                     float dx=(x-f[eye*2])/.07f,ey=(y-f[eye*2+1])/.03f;
                     dy+=.0035f*(float)Math.sin(now/450.0)*Math.max(0f,1f-dx*dx-ey*ey);
@@ -72,7 +73,7 @@ final class ApprovedFaceRenderer {
             float eyeDistance=(float)Math.hypot(f[2]-f[0],f[3]-f[1]);
             float rx=Math.max(.021f,Math.min(.048f,eyeDistance*.20f))*destination.width();
             float gap=(.003f+.012f*articulation)*destination.height();
-            int save=canvas.save();canvas.rotate((float)Math.toDegrees(Math.atan2(f[3]-f[1],f[2]-f[0])),x,y);
+            int save=canvas.save();canvas.rotate((float)Math.toDegrees(Math.atan2(f[3]-f[1],f[2]-f[0]))+(stableSmile?CoolSmilePolicy.mouthEyeAngle():0),x,y);
             contour.reset();contour.moveTo(x-rx,y);contour.cubicTo(x-rx*.5f,y-gap,x+rx*.5f,y-gap,x+rx,y);
             contour.cubicTo(x+rx*.5f,y+gap,x-rx*.5f,y+gap,x-rx,y);contour.close();
             motionInk.setColor(Color.rgb(0,18,20));motionInk.setStyle(Paint.Style.FILL);canvas.drawPath(contour,motionInk);
@@ -80,7 +81,7 @@ final class ApprovedFaceRenderer {
         }
     }
     ApprovedFaceRenderer(Context context) {
-        try (InputStream stream = context.getAssets().open("loki_face_fullbody_v506.png")) {
+        try (InputStream stream = context.getAssets().open("loki_face_cool_v559.png")) {
             Bitmap original=BitmapFactory.decodeStream(stream);
             if(original==null)throw new IllegalStateException("Full-body portrait atlas missing");
             atlas=FullBodyPortraitInk.render(original);

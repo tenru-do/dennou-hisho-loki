@@ -31,7 +31,9 @@ final class RadioPlaybackController {
     private VoiceTransport voice;
     private AmbientTap ambientTap;
     private static final class AmbientTap {
-        final ByteArrayOutputStream pcm = new ByteArrayOutputStream(128000);
+        final ByteArrayOutputStream pcm = new ByteArrayOutputStream(ObservationAudioPolicy.MAX_BYTES);
+        final ObservationAudioPolicy timing=new ObservationAudioPolicy();
+        final long started=SystemClock.elapsedRealtime();
         boolean finished, failed;
     }
     synchronized boolean isSpeaking() { return speaking && !capturing; }
@@ -43,7 +45,7 @@ final class RadioPlaybackController {
             token = generation; ambientTap = tap;
         }
         try {
-            long until = SystemClock.elapsedRealtime() + 5000L;
+            long until = SystemClock.elapsedRealtime() + ObservationAudioPolicy.MAX_MS + 1500L;
             while (!cancelled.getAsBoolean() && SystemClock.elapsedRealtime() < until) {
                 synchronized (this) {
                     if (token != generation || tap.failed || capturing) throw new InterruptedException("radio observation cancelled");
@@ -172,8 +174,9 @@ final class RadioPlaybackController {
                     synchronized (this) {
                         if (ambientTap != null && token == generation) {
                             AmbientTap tap = ambientTap;
-                            tap.pcm.write(buffer, 0, Math.min(n, 128000 - tap.pcm.size()));
-                            if (tap.pcm.size() >= 128000) { tap.finished = true; ambientTap = null; }
+                            tap.pcm.write(buffer, 0, Math.min(n, ObservationAudioPolicy.MAX_BYTES - tap.pcm.size()));
+                            tap.timing.observe(SystemClock.elapsedRealtime()-tap.started,Pcm16Gain.meanAbsolute(buffer,n));
+                            if (tap.timing.stop(SystemClock.elapsedRealtime()-tap.started,tap.pcm.size())) { tap.finished = true; ambientTap = null; }
                         }
                     }
                     lead.write(buffer, 0, n);

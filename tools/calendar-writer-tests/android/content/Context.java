@@ -1,0 +1,1 @@
+package android.content;public abstract class Context{public abstract int checkSelfPermission(String p);public abstract ContentResolver getContentResolver();}

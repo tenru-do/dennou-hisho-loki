@@ -1,0 +1,12 @@
+package com.example.rokidkeyboardbridge;
+import android.content.*;import org.json.*;
+final class TransferProgressStore {
+ static final java.util.Set<String> active=new java.util.HashSet<>();
+ static SharedPreferences prefs(Context c){return c.getSharedPreferences("transfer_progress",0);}
+ static synchronized String begin(Context c,String kind)throws Exception{if(!kind.matches("photo|meeting"))throw new IllegalArgumentException();String id=java.util.UUID.randomUUID().toString();JSONObject j=new JSONObject().put("kind",kind).put("batchId",id).put("phase","RUNNING").put("startedAt",System.currentTimeMillis());save(c,j);active.add(id);return id;}
+ static void save(Context c,JSONObject value)throws Exception{JSONObject safe=TransferProgressPolicy.safe(value.put("updatedAt",System.currentTimeMillis()));if(!prefs(c).edit().putString(safe.getString("kind"),safe.toString()).commit())throw new java.io.IOException("転送状況を保存できません");}
+ static synchronized void update(Context c,String kind,String id,String phase,int expected,int confirmed,int retained,int failed,int deferred,int units,int done)throws Exception{JSONObject j=new JSONObject(prefs(c).getString(kind,"{}"));if(!id.equals(j.optString("batchId")))throw new IllegalStateException("別の転送へ変わっています");j.put("phase",phase).put("expected",expected).put("confirmed",confirmed).put("retained",retained).put("failed",failed).put("deferred",deferred).put("unitsExpected",units).put("unitsConfirmed",done);save(c,j);if(!phase.equals("RUNNING"))active.remove(id);}
+ static synchronized void failed(Context c,String kind,String id){try{JSONObject j=new JSONObject(prefs(c).getString(kind,"{}"));if(id.equals(j.optString("batchId"))){j.put("phase","FAILED");save(c,j);}}catch(Exception ignored){}finally{active.remove(id);}}
+ static synchronized JSONArray snapshot(Context c){JSONArray out=new JSONArray();for(String kind:new String[]{"photo","meeting"})try{JSONObject j=TransferProgressPolicy.safe(new JSONObject(prefs(c).getString(kind,"{}")));if(j.optString("phase").equals("RUNNING")&&!active.contains(j.optString("batchId")))j.put("phase","INTERRUPTED");out.put(j);}catch(Exception missing){}return out;}
+ private TransferProgressStore(){}
+}

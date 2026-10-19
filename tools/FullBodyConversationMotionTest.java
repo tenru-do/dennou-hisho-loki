@@ -4,7 +4,7 @@ public final class FullBodyConversationMotionTest {
  public static void main(String[] args){
   if(FullBodyConversationMotion.kind(SURPRISE,false,true)!=0)throw new AssertionError("seated surprise");
   if(FullBodyConversationMotion.kind(JOY,true,true)!=1)throw new AssertionError("seated laughter");
-  if(FullBodyConversationMotion.kind(JOY,false,true)!=-1)throw new AssertionError("polite thanks");
+  if(FullBodyConversationMotion.kind(JOY,false,true)!=1)throw new AssertionError("seated restrained smile without laughter");
   if(FullBodyConversationMotion.kind(SURPRISE,false,false)!=-1)throw new AssertionError("standing unchanged");
   if(FullBodyConversationMotion.kind(REFUSE,false,true)!=-1)throw new AssertionError("refusal preempts laughter");
   for(String text:new String[]{"お、おやめください…っ…","そのようなご要望にはお応えできかねます","い、いや…っ…！","わたくしは「お、おやめください」と制止します。"}){

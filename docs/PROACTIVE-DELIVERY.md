@@ -1,0 +1,11 @@
+# Final proactive delivery checks (glass 569)
+
+AMB scene reactions now use one final decision for display, expression/mouth activation and TTS. If display is rejected, scene TTS is not started. Both scene and legacy AMB results retain the conversation generation captured before analysis; results from before a new conversation are discarded at delivery. Scene "previous reaction" context is updated only after delivery is accepted.
+
+The final gate prioritizes foreground/lifecycle state, navigation, post-user-action pause, VOICE/recognizer state, active conversation/speech, pending legacy or tracked user requests, and a focused nonempty draft. A terminal tracked receipt awaiting metadata acknowledgement is not treated as an unfinished user request. TOPIC's existing playback/buffer checks now also defer to pending requests and focused drafts. Recording-only MTG behavior, TOPIC+recording modes and KEEP scheduling/capture are unchanged.
+
+AMB remembers at most eight displayed normalized texts in memory. Within 90 seconds, equivalent text differing only by punctuation, reaction tags, AMB headers and a few fixed conversational fillers can be suppressed. It does not do semantic similarity matching. Changed digits and negated facts are preserved. Literal warning terms (danger, warning, evacuation, emergency, fire, accident, caution in Japanese) bypass duplicate suppression; this is not a safety classifier. Very long text is not added to the duplicate cache. A result rejected before display is not added.
+
+TOPIC → 発言判定を見る shows the last relevant gate decision and elapsed age without reading it aloud or replacing the conversation answer. It contains no transcript. This reports final delivery decisions only, not microphone/camera/API health. API cost/frequency and upstream topic novelty generation are unchanged; no model request or prompt alteration is introduced.
+
+Verification: 22 new host checks cover each gate, normalized repeats, expiry, bounded cache, changed numbers/negation, warning exemptions and backward clock handling. Isolated Android tests call the actual scene delivery method with blocked states and verify no answer replacement or TTS generation change. These tests do not record surroundings or send to Gemini. Naturalness of real scene reactions and long simultaneous recording remain separate field tests.

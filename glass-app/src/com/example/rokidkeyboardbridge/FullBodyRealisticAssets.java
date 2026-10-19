@@ -36,6 +36,8 @@ final class FullBodyRealisticAssets {
  static int topStrayRows(int id){return id==259?20:id==260?9:id==261?1:id==262?2:id==263?18:0;}
  static Bitmap decode(ZipFile apk,int id,int sample)throws Exception {
   if(id<0||id>=REGIONS.length)throw new IllegalArgumentException("Fullbody frame "+id);
+  if(CoolSmilePolicy.supports(id))try(InputStream input=apk.getInputStream(apk.getEntry("assets/cool-smile-v561/frame-"+id+".png"))){BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=sample;return BitmapFactory.decodeStream(input,null,options);}
+
   try(InputStream input=apk.getInputStream(apk.getEntry("assets/"+NAMES[SHEET[id]]))){
    BitmapRegionDecoder decoder=BitmapRegionDecoder.newInstance(input,false);
    try{int[]r=REGIONS[id];BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=sample;options.inMutable=true;

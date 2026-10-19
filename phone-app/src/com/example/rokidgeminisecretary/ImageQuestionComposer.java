@@ -105,22 +105,23 @@ final class ImageQuestionComposer {
  boolean submit(String question,Runnable sent){
   if(working)return true;if(image==null)return false;
   if(question.length()>2400){status.setText("画像付きの質問は2400文字以内にしてください");return true;}
-  final byte[] selected=image;final int selectedCount=imageCount;
+  final byte[] selected=image;final int selectedCount=imageCount;final org.json.JSONArray selectedKinds=attachmentKinds.isEmpty()?null:new org.json.JSONArray(attachmentKinds);
   if(requestId.isEmpty()||!question.equals(submittedQuestion))requestId=UUID.randomUUID().toString();submittedQuestion=question;final String id=requestId;
   busy(true);status.setText("画像と質問を送信しています…");
   new Thread(()->{try{
-   org.json.JSONObject receipt=ImageQuestions.enqueue(host,id,question,selected,selectedCount);try{draft().delete();}catch(Exception ignored){}
+   org.json.JSONObject receipt=ImageQuestions.enqueue(host,id,question,selected,selectedCount,selectedKinds);try{draft().delete();}catch(Exception ignored){}
    if(!receipt.optBoolean("duplicate"))MainActivity.addAiLog("ユーザー: "+(question.isEmpty()?"この画像の内容を教えて":question)+"（画像添付・送信待ち）");
    host.runOnUiThread(()->{if(!live())return;busy(false);clear();sent.run();status.setText(receipt.optBoolean("videoGenerated")?"動画生成を受け付けました。会話を続けられます。生成動画一覧で進捗と結果を確認できます。":receipt.optBoolean("generated")?"画像生成を受け付けました。生成画像一覧で進捗と結果を確認できます。":receipt.optBoolean("complete")?"同じ画像と質問は送信済みです。上の会話ログをご確認ください。":"グラスへ送信待ちです。返信は上の会話ログに表示します。");});
   }catch(Exception e){host.runOnUiThread(()->{if(live()){status.setText("送信を確認できませんでした。画像を残しています。同じ内容で再送できます。");busy(false);}});}},"LokiInlineImageSend").start();return true;
  }
+ void restorePayload(org.json.JSONObject payload)throws Exception{if(working)throw new IOException("添付の準備中です");String encoded=payload.optString("image");byte[] next=encoded.isEmpty()?null:ImageQuestions.normalize(android.util.Base64.decode(encoded,2));int count=payload.optInt("imageCount",1);org.json.JSONArray kinds=ImageAttachmentKinds.normalize(payload.optJSONArray("kinds"),count);clear();if(next==null)return;image=next;imageCount=count;for(int i=0;i<kinds.length();i++)attachmentKinds.add(kinds.getString(i));videoAttachment=attachmentKinds.contains("video");showImage();status.setText("送信時の添付を復元。動画は抜粋画像です。まだ送信していません");update();}
  Bundle save(){Bundle b=new Bundle();b.putInt("imageCount",imageCount);b.putBoolean("video",videoAttachment);b.putString("draft",draftId);b.putString("camera",cameraId);b.putString("request",requestId);b.putString("submitted",submittedQuestion);return b;}
  void restore(Bundle b){if(b==null)return;String id=b.getString("draft","");if(!id.matches("[a-f0-9-]{36}"))return;draftId=id;videoAttachment=b.getBoolean("video",false);imageCount=Math.max(1,Math.min(6,b.getInt("imageCount",1)));
   String camera=b.getString("camera","");cameraId=camera.matches("[a-f0-9-]{36}")?camera:"";requestId=b.getString("request","");submittedQuestion=b.getString("submitted","");
   try{File file=draft();if(!file.isFile()||System.currentTimeMillis()-file.lastModified()>ImageQuestions.TTL)return;}catch(Exception ignored){return;}
   busy(true);new Thread(()->{try{byte[] restored=DeviceSecrets.photos().decrypt(java.nio.file.Files.readAllBytes(draft().toPath()));
    byte[] restoredImage=restored;java.util.ArrayList<byte[]> parts=new java.util.ArrayList<>();java.util.ArrayList<String> restoredKinds=new java.util.ArrayList<>();boolean video=videoAttachment;
-   if(restored.length>0&&restored[0]=='{'){org.json.JSONObject json=new org.json.JSONObject(new String(restored,java.nio.charset.StandardCharsets.UTF_8));restoredImage=android.util.Base64.decode(json.getString("image"),android.util.Base64.NO_WRAP);org.json.JSONArray array=json.getJSONArray("parts");if(array.length()>6)throw new IOException("draft bounds");for(int i=0;i<array.length();i++)parts.add(android.util.Base64.decode(array.getString(i),android.util.Base64.NO_WRAP));video=json.optBoolean("video");org.json.JSONArray types=json.optJSONArray("kinds");for(int i=0;i<array.length();i++)restoredKinds.add(types!=null&&"video".equals(types.optString(i))?"video":"image");}
+   if(restored.length>0&&restored[0]=='{'){org.json.JSONObject json=new org.json.JSONObject(new String(restored,java.nio.charset.StandardCharsets.UTF_8));restoredImage=android.util.Base64.decode(json.getString("image"),android.util.Base64.NO_WRAP);org.json.JSONArray array=json.getJSONArray("parts");if(array.length()>6)throw new IOException("draft bounds");for(int i=0;i<array.length();i++)parts.add(android.util.Base64.decode(array.getString(i),android.util.Base64.NO_WRAP));video=json.optBoolean("video");org.json.JSONArray types=json.optJSONArray("kinds");for(int i=0;i<array.length();i++)restoredKinds.add(types==null?"unknown":types.optString(i,"unknown"));}
    final byte[] restoredFinal=restoredImage;final boolean restoredVideo=video;
    host.runOnUiThread(()->{if(!live())return;image=restoredFinal;attachmentImages.clear();attachmentImages.addAll(parts);attachmentKinds.clear();attachmentKinds.addAll(restoredKinds);videoAttachment=restoredVideo;if(!parts.isEmpty())imageCount=parts.size();showImage();status.setText("添付画像を復元しました。内容を確認して送信してください");busy(false);});
   }catch(Exception e){host.runOnUiThread(()->{if(live()){status.setText("画像を再選択してください");busy(false);}});}},"LokiInlineImageRestore").start();

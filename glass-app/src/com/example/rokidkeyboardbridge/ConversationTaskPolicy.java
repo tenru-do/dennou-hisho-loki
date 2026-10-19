@@ -3,8 +3,8 @@ package com.example.rokidkeyboardbridge;
 /** Repair turns retain the user's unfinished task rather than restarting clarification. */
 final class ConversationTaskPolicy {
     static boolean continuesTask(String text) {
-        if(text==null || text.matches("(?s).*(別の話|話題を変|会話をリセット|新しい話題).*"))return false;
-        return text.matches("(?s).*(文脈無視|文脈を無視|さっき伝えた|先ほど伝えた|繰り返せと|なんで.*教え|なんで.*止め|なんで.*とめ|とっとと.*提案|先回りして.*調べ|調べるべき|調べろ|検索しろ).*");
+        if(text==null || ConversationTopicBoundary.reset(text))return false;
+        return text.matches("(?s).*(話題を変えない|話題を変えず|話をそらさない|文脈無視|文脈を無視|さっき伝えた|先ほど伝えた|繰り返せと|なんで.*教え|なんで.*止め|なんで.*とめ|とっとと.*提案|先回りして.*調べ|調べるべき|調べろ|検索しろ).*");
     }
     static boolean emptyRepair(String prompt,String answer,boolean reference) {
         if(!reference || !continuesTask(prompt) || answer==null)return false;

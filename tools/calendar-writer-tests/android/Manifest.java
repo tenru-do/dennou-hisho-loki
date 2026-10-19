@@ -1,0 +1,1 @@
+package android;public class Manifest{public static class permission{public static final String READ_CALENDAR="read",WRITE_CALENDAR="write";}}

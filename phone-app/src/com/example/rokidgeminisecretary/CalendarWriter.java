@@ -53,9 +53,9 @@ final class CalendarWriter {
             if(v.getAsString("description").length()>10000||v.getAsString("eventLocation").length()>500)throw new IllegalArgumentException("予定の説明が長すぎます。");
             boolean duplicate=false;
             try(Cursor rows=c.getContentResolver().query(CalendarContract.Events.CONTENT_URI,new String[]{"_id"},
-                    "calendar_id=? AND title=? AND dtstart=? AND dtend=? AND deleted=0",
-                    new String[]{""+calendar,title,""+start,""+end},null)){duplicate=rows!=null&&rows.moveToFirst();}
-            for(ContentValues prior:values)if(prior.getAsString("title").equals(title)&&prior.getAsLong("dtstart")==start&&prior.getAsLong("dtend")==end)duplicate=true;
+                    "calendar_id=? AND title=? AND dtstart=? AND dtend=? AND allDay=? AND deleted=0",
+                    new String[]{""+calendar,title,""+start,""+end,allDay?"1":"0"},null)){if(rows==null)throw new java.io.IOException("既存予定を確認できないため登録していません。スマホのカレンダーを確認してから再操作してください。");duplicate=rows.moveToFirst();}
+            for(ContentValues prior:values)if(prior.getAsString("title").equals(title)&&prior.getAsLong("dtstart")==start&&prior.getAsLong("dtend")==end&&prior.getAsLong("allDay")== (allDay?1:0))duplicate=true;
             if(duplicate){existing++;continue;}
             values.add(v);batch.add(ContentProviderOperation.newInsert(CalendarContract.Events.CONTENT_URI).withValues(v).build());
         }
@@ -64,10 +64,10 @@ final class CalendarWriter {
         if(results.length!=batch.size())throw new IllegalStateException("保存結果を確認できません。再送する前にカレンダーを確認してください。");
         for(int i=0;i<results.length;i++) {
             Uri uri=results[i].uri;
-            try(Cursor row=uri==null?null:c.getContentResolver().query(uri,new String[]{"title","dtstart","dtend","calendar_id"},null,null,null)) {
+            try(Cursor row=uri==null?null:c.getContentResolver().query(uri,new String[]{"title","dtstart","dtend","calendar_id","allDay"},null,null,null)) {
                 ContentValues v=values.get(i);
                 if(row==null||!row.moveToFirst()||!v.getAsString("title").equals(row.getString(0))
-                        ||row.getLong(1)!=v.getAsLong("dtstart")||row.getLong(2)!=v.getAsLong("dtend")||row.getLong(3)!=calendar)
+                        ||row.getLong(1)!=v.getAsLong("dtstart")||row.getLong(2)!=v.getAsLong("dtend")||row.getLong(3)!=calendar||row.getLong(4)!=v.getAsLong("allDay"))
                     throw new IllegalStateException("保存結果を確認できません。カレンダーを確認してください。");
             }
         }
