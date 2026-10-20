@@ -202,8 +202,11 @@ public final class MainActivity extends Activity {
     private TextView logView;
     private TextView customInfo;
     private EditText commandInput;
+    private long conversationDraftRevision;
     private boolean recoveryNeedsConfirm;
     private String nativeConversationRequestId="",nativeConversationRequestText="";
+    private SharedPreferences.OnSharedPreferenceChangeListener composerReceiptListener;
+    private TextView composerReceipts;
     private ImageQuestionComposer imageComposer;
     private ImageReferencePanel imageReferencePanel;
     private String imageReferenceDraftKey="",imageReferenceDraftPrefix="",imageReferenceDraftRequestId="";
@@ -468,6 +471,8 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        DeviceTuning.restore(this);
+        if(composerReceiptListener!=null)getSharedPreferences("loki_web_console",0).unregisterOnSharedPreferenceChangeListener(composerReceiptListener);
         if(imageComposer!=null)imageComposer.close();
         if(generatedImagePanel!=null)generatedImagePanel.close();
         if(generatedVideoPanel!=null)generatedVideoPanel.close();
@@ -502,25 +507,31 @@ public final class MainActivity extends Activity {
         LinearLayout navigation = (LinearLayout) findViewById(getResources().getIdentifier("navigation_actions", "id", getPackageName()));
         root.removeView(daily); root.removeView(navigation);
         root.setOrientation(LinearLayout.VERTICAL);
-        View scrollContainer = (View) root.getParent();
-        // Insets belong to the outer frame: padding the ScrollView itself leaves
-        // its scroll-to-focus viewport extending behind the keyboard.
-        View keyboardSafeArea = (View) scrollContainer.getParent();
-        keyboardSafeArea.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars());
-                android.graphics.Insets ime = insets.getInsets(android.view.WindowInsets.Type.ime());
-                view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
-            } else {
-                view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                        insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+        View keyboardSafeArea = (View) root.getParent();
+        if(android.os.Build.VERSION.SDK_INT>=30){
+            getWindow().setDecorFitsSystemWindows(false);
+            android.view.WindowInsetsController bars=getWindow().getInsetsController();
+            if(bars!=null)bars.setSystemBarsAppearance(
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        }
+        keyboardSafeArea.setOnApplyWindowInsetsListener((view,insets)->{
+            if(android.os.Build.VERSION.SDK_INT>=30){
+                android.graphics.Insets bars=insets.getInsets(android.view.WindowInsets.Type.systemBars());
+                android.graphics.Insets ime=insets.getInsets(android.view.WindowInsets.Type.ime());
+                view.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,ime.bottom));
+                conversationImeVisible=insets.isVisible(android.view.WindowInsets.Type.ime());
+            }else{
+                // adjustResize already removes the IME on older Android versions.
+                view.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),
+                    insets.getSystemWindowInsetRight(),insets.getStableInsetBottom());
             }
-            view.post(this::revealConversationComposer);
-            return insets;
+            updateConversationUtilities();
+            return android.os.Build.VERSION.SDK_INT>=30?android.view.WindowInsets.CONSUMED:insets;
         });
         keyboardSafeArea.requestApplyInsets();
-        scrollContainer.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,or,ob)-> {
-            if(b-t!=ob-ot || r-l!=or-ol)view.post(this::revealConversationComposer);
+        root.addOnLayoutChangeListener((view,l,t,rr,b,ol,ot,or,ob)->{
+            if(b-t!=ob-ot)updateConversationUtilities();
         });
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
@@ -558,7 +569,7 @@ public final class MainActivity extends Activity {
         inboxButton.setText("秘書の受信箱（保留案件・引き継ぎ）");
         inboxButton.setOnClickListener(view -> new SecretaryInboxDialog(this).show());
         daily.addView(inboxButton, new LinearLayout.LayoutParams(-1,-2));
-        Button workspace=new Button(this);workspace.setText("会話の参照先・予約候補・認識文");workspace.setOnClickListener(v->new ConversationWorkspaceDialog(this).show());daily.addView(workspace,new LinearLayout.LayoutParams(-1,-2));Button meetingHealth=new Button(this);meetingHealth.setText("録音の進捗・保存確認");meetingHealth.setOnClickListener(v->MeetingHealthDialog.show(this));daily.addView(meetingHealth,new LinearLayout.LayoutParams(-1,-2));Button operations=new Button(this);operations.setText("依頼・転送・動作チェック");operations.setOnClickListener(v->OperationOverviewDialog.show(this));daily.addView(operations,new LinearLayout.LayoutParams(-1,-2));
+        Button workspace=new Button(this);workspace.setText("会話の参照先・予約候補・認識文");workspace.setOnClickListener(v->new ConversationWorkspaceDialog(this).show());daily.addView(workspace,new LinearLayout.LayoutParams(-1,-2));Button meetingHealth=new Button(this);meetingHealth.setText("録音の進捗・保存確認");meetingHealth.setOnClickListener(v->MeetingHealthDialog.show(this));daily.addView(meetingHealth,new LinearLayout.LayoutParams(-1,-2));Button quiet=new Button(this);quiet.setText("グラスの静かな時間");quiet.setOnClickListener(v->{JSONObject quietState=ConversationWorkspace.snapshot(this);if(!quietState.optBoolean("connected")){updateStatus("グラスの状態を確認できません","接続して開き直してください");return;}QuietHoursDialog.show(this,quietState.optJSONObject("quiet")==null?new JSONObject():quietState.optJSONObject("quiet"),config->{try{ConversationWorkspace.submit(this,new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("action","quiet_config").put("baseRevision",config.getLong("baseRevision")).put("config",QuietHoursPolicy.checked(config)));updateStatus("静かな時間の設定を送信待ち","反映後、開き直して確認してください");}catch(Exception e){throw new IllegalArgumentException("設定を送れません。接続・状態を確認してください");}});});daily.addView(quiet,new LinearLayout.LayoutParams(-1,-2));Button records=new Button(this);records.setText("記録の横断検索・読み取り訂正");records.setOnClickListener(v->UnifiedRecordsDialog.show(this));daily.addView(records,new LinearLayout.LayoutParams(-1,-2));Button departure=new Button(this);departure.setText("出発前チェック（端末内の状態）");departure.setOnClickListener(v->DepartureDialog.show(this));daily.addView(departure,new LinearLayout.LayoutParams(-1,-2));Button tuning=new Button(this);tuning.setText("このスマホの音量・負荷・設定取り消し");tuning.setOnClickListener(v->DeviceTuning.show(this,()->refreshLogs()));daily.addView(tuning,new LinearLayout.LayoutParams(-1,-2));Button operations=new Button(this);operations.setText("依頼・転送・動作チェック");operations.setOnClickListener(v->OperationOverviewDialog.show(this));daily.addView(operations,new LinearLayout.LayoutParams(-1,-2));
         Button memoryManager = new Button(this);
         memoryManager.setText("記憶マネージャー（メモ一覧）");
         memoryManager.setOnClickListener(view -> new MemoryManagerDialog(this).show());
@@ -597,6 +608,7 @@ public final class MainActivity extends Activity {
         });
         root.addView(imageReferencePanel.view(),new LinearLayout.LayoutParams(-1,-2));
         commandInput = new EditText(this);
+        commandInput.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){conversationDraftRevision++;}public void afterTextChanged(android.text.Editable s){}});
         commandInput.setSingleLine(false);
         commandInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_COMMAND_CHARS)});
         commandInput.setMinLines(1);
@@ -615,8 +627,8 @@ public final class MainActivity extends Activity {
             boolean attached=imageComposer!=null&&imageComposer.attached();
             sendCommand.setText(attached?"画像と質問を送信":"送信");
             sendCommand.setEnabled(imageComposer==null||!imageComposer.busy());
-            if(logScroll!=null){int height=Math.max(120,Math.min(240,Math.round(getResources().getConfiguration().screenHeightDp*0.28f)))-(attached?104:0);
-                android.view.ViewGroup.LayoutParams params=logScroll.getLayoutParams();if(params!=null){params.height=Math.round(Math.max(120,height)*getResources().getDisplayMetrics().density);logScroll.setLayoutParams(params);}}
+            if(attached&&utilityToggle!=null)utilityToggle.setText("添付あり・その他 ▾");
+
         });
         sendCommand.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -629,7 +641,8 @@ public final class MainActivity extends Activity {
                     else if((imageComposer!=null&&imageComposer.attached())||!ImageReferenceSummary.matchesKey(imageReferenceDraftKey,ImageReferenceStore.view(MainActivity.this))){updateStatus("参照が更新・失効しています","本文は残しています。最新の参照を選び直してください。まだ送信していません。");return;}
                 }
                 if(!imageReferenceDraftKey.isEmpty()&&(MediaGenerationContext.video(MainActivity.this,text)||ImageGeneration.handles(MainActivity.this,text))){updateStatus("参照付きの質問です","生成する場合は質問の書き出しを消して新しく依頼してください。まだ送信していません。");return;}
-                if(imageComposer.submit(text,()->{commandInput.setText("");updateStatus("画像付き質問を送信待ち","返信は上の会話ログに表示します");}))return;
+                final String submittedDraft=commandInput.getText().toString();final long submittedDraftRevision=conversationDraftRevision;
+                if(imageComposer.submit(text,()->completeSubmittedImageDraft(submittedDraft,submittedDraftRevision)))return;
                 if (text.length() == 0) {
                     return;
                 }
@@ -1266,41 +1279,62 @@ public final class MainActivity extends Activity {
         logScroll.setVisibility(View.VISIBLE);
         logScroll.setFillViewport(true);
         logScroll.setNestedScrollingEnabled(true);
-        final float[] lastLogTouchY={0};
-        logScroll.setOnTouchListener((view,event)->{
-            int action=event.getActionMasked();
-            if(action==android.view.MotionEvent.ACTION_DOWN){lastLogTouchY[0]=event.getY();view.getParent().requestDisallowInterceptTouchEvent(true);}
-            else if(action==android.view.MotionEvent.ACTION_MOVE){int direction=event.getY()<lastLogTouchY[0]?1:-1;lastLogTouchY[0]=event.getY();view.getParent().requestDisallowInterceptTouchEvent(view.canScrollVertically(direction));}
-            else if(action==android.view.MotionEvent.ACTION_UP||action==android.view.MotionEvent.ACTION_CANCEL)view.getParent().requestDisallowInterceptTouchEvent(false);
-            return false;
-        });
-
-        // Reorder the already-wired controls without recreating their listeners or settings.
+        // The composer and log are screen siblings: neither scrolls the other away.
         root.removeAllViews();
         daily.removeView(tethering);
         actionRow.removeView(toggleCustomButton);
         toolsPanel.addView(toggleCustomButton,0,new LinearLayout.LayoutParams(-1,-2));
-        root.addView(title);root.addView(status);root.addView(details);root.addView(glassStateView);
-        root.addView(tethering,new LinearLayout.LayoutParams(-1,-2));
-        TextView conversationHeading=new TextView(this);conversationHeading.setText("会話・ログ");
-        conversationHeading.setTextSize(17);conversationHeading.setTextColor(Color.BLACK);conversationHeading.setPadding(0,12,0,4);
-        root.addView(conversationHeading);
-        int logHeightDp=Math.max(120,Math.min(240,Math.round(getResources().getConfiguration().screenHeightDp*0.28f)));
-        root.addView(logScroll,new LinearLayout.LayoutParams(-1,Math.round(logHeightDp*getResources().getDisplayMetrics().density)));
-        root.addView(imageComposer.view(),new LinearLayout.LayoutParams(-1,-2));
-        generatedImagePanel=new GeneratedImagePanel(this);root.addView(generatedImagePanel.view(),new LinearLayout.LayoutParams(-1,-2));
-        generatedVideoPanel=generatedImagePanel.videoPanel;
         daily.removeView(inboxButton);
-        root.addView(inboxButton,new LinearLayout.LayoutParams(-1,-2));
+        TextView composerHeading=new TextView(this);composerHeading.setText("ロキへのコメント");
+        composerHeading.setTextSize(14);composerHeading.setTextColor(Color.BLACK);
+        root.addView(composerHeading,new LinearLayout.LayoutParams(-1,-2));
+        commandInput.setHint("ロキに話しかける…");
         root.addView(commandInput,new LinearLayout.LayoutParams(-1,-2));
+        Button attach=new Button(this);attach.setText("添付");attach.setTextSize(12);
+        attach.setOnClickListener(v->{
+            utilityOpen=true;
+            ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(commandInput.getWindowToken(),0);
+            updateConversationUtilities();
+        });
+        actionRow.addView(attach,new LinearLayout.LayoutParams(0,-2,1));
         root.addView(actionRow,new LinearLayout.LayoutParams(-1,-2));
-        addPhoneFoldSection(root,"ナビ",navigation);
+        composerReceipts=new TextView(this);composerReceipts.setTextSize(11);composerReceipts.setMaxLines(2);composerReceipts.setEllipsize(android.text.TextUtils.TruncateAt.END);composerReceipts.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("直近の送信状況").setMessage(composerReceipts.getText()).setNeutralButton("直近の入力を訂正",(d,w)->beginRecentCorrection()).setPositiveButton("閉じる",null).show());root.addView(composerReceipts,new LinearLayout.LayoutParams(-1,-2));if(composerReceiptListener==null){composerReceiptListener=(prefs,key)->{if("outbox".equals(key))runOnUiThread(()->{if(!isDestroyed())refreshComposerReceipts();});};getSharedPreferences("loki_web_console",0).registerOnSharedPreferenceChangeListener(composerReceiptListener);}
+        TextView conversationHeading=new TextView(this);conversationHeading.setText("会話ログ");
+        conversationHeading.setTextSize(14);conversationHeading.setTextColor(Color.BLACK);
+        root.addView(conversationHeading,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(logScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        status.setTextSize(12);status.setMaxLines(1);status.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        root.addView(status,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout quick=new LinearLayout(this);quick.setOrientation(LinearLayout.HORIZONTAL);
+        tethering.setText("テザリング");tethering.setTextSize(12);
+        quick.addView(tethering,new LinearLayout.LayoutParams(0,-2,1));
+        utilityToggle=new Button(this);utilityToggle.setText("添付・その他 ▾");utilityToggle.setTextSize(12);
+        utilityToggle.setOnClickListener(v->{utilityOpen=!utilityOpen;updateConversationUtilities();});
+        quick.addView(utilityToggle,new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(quick,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout utilityBody=new LinearLayout(this);utilityBody.setOrientation(LinearLayout.VERTICAL);
+        utilityBody.addView(imageComposer.view(),new LinearLayout.LayoutParams(-1,-2));
+        generatedImagePanel=new GeneratedImagePanel(this);utilityBody.addView(generatedImagePanel.view(),new LinearLayout.LayoutParams(-1,-2));
+        generatedVideoPanel=generatedImagePanel.videoPanel;
+        utilityBody.addView(imageReferencePanel.view(),new LinearLayout.LayoutParams(-1,-2));
+        utilityBody.addView(speechTranscriptView,new LinearLayout.LayoutParams(-1,-2));
+        utilityBody.addView(inboxButton,new LinearLayout.LayoutParams(-1,-2));
+        Button localNotes=new Button(this);localNotes.setText("端末内メモ・通信待ち");
+        localNotes.setOnClickListener(v->OfflineNotesDialog.show(this,()->commandInput.getText().toString(),()->imageComposer.attached(),()->imageComposer.busy(),text->commandInput.setText(text)));
+        utilityBody.addView(localNotes,new LinearLayout.LayoutParams(-1,-2));
+        Button audioState=new Button(this);audioState.setText("音声・Bluetoothの状態");audioState.setOnClickListener(v->AudioRouteStatusDialog.show(this));utilityBody.addView(audioState,new LinearLayout.LayoutParams(-1,-2));
+        addPhoneFoldSection(utilityBody,"ナビ",navigation);
         LinearLayout topicPanel=new LinearLayout(this);topicPanel.setOrientation(LinearLayout.VERTICAL);
         topicPanel.addView(radioSwitch);topicPanel.addView(radioMode);topicPanel.addView(radioFrequency);topicPanel.addView(radioHelp);
-        addPhoneFoldSection(root,"TOPIC",topicPanel);
-        addPhoneFoldSection(root,"写真・記憶・共有",daily);
-        root.addView(toolsButton,new LinearLayout.LayoutParams(-1,-2));
-        root.addView(toolsScroll,new LinearLayout.LayoutParams(-1,-2));
+        addPhoneFoldSection(utilityBody,"TOPIC",topicPanel);
+        addPhoneFoldSection(utilityBody,"写真・記憶・共有",daily);
+        utilityBody.addView(toolsButton,new LinearLayout.LayoutParams(-1,-2));
+        utilityBody.addView(toolsScroll,new LinearLayout.LayoutParams(-1,-2));
+        utilityBody.addView(title);utilityBody.addView(details);utilityBody.addView(glassStateView);
+        conversationUtilities=new ScrollView(this);conversationUtilities.setFillViewport(false);
+        conversationUtilities.addView(utilityBody);conversationUtilities.setVisibility(View.GONE);
+        root.addView(conversationUtilities,new LinearLayout.LayoutParams(-1,0));
+        updateConversationUtilities();
         root.setFocusableInTouchMode(true);root.requestFocus();
 
 
@@ -1310,14 +1344,22 @@ public final class MainActivity extends Activity {
     }
 
     private LinearLayout conversationActions;
-    private void revealConversationComposer() {
-        if(commandInput==null || !commandInput.hasFocus() || conversationActions==null)return;
-        View parent=(View)commandInput.getParent();
-        if(!(parent.getParent() instanceof ScrollView))return;
-        android.graphics.Rect bounds=new android.graphics.Rect(
-            commandInput.getLeft(),commandInput.getTop(),
-            Math.max(commandInput.getRight(),conversationActions.getRight()),conversationActions.getBottom());
-        ((ScrollView)parent.getParent()).requestChildRectangleOnScreen(parent,bounds,true);
+    private ScrollView conversationUtilities;
+    private Button utilityToggle;
+    private boolean utilityOpen,conversationImeVisible;
+    private void updateConversationUtilities(){
+        if(conversationUtilities==null)return;
+        boolean visible=utilityOpen&&!conversationImeVisible;
+        int available=((View)conversationUtilities.getParent()).getHeight();
+        int height=visible?Math.max(0,Math.min(Math.round(220*getResources().getDisplayMetrics().density),available/3)):0;
+        android.view.ViewGroup.LayoutParams p=conversationUtilities.getLayoutParams();
+        if(p!=null&&p.height!=height){p.height=height;conversationUtilities.setLayoutParams(p);}
+        conversationUtilities.setVisibility(visible?View.VISIBLE:View.GONE);
+        if(utilityToggle!=null)utilityToggle.setText((imageComposer!=null&&imageComposer.attached()?"添付あり・その他":"添付・その他")+(visible?" ▴":" ▾"));
+    }
+    private void revealConversationComposer(){
+        if(commandInput!=null&&commandInput.hasFocus()&&commandInput.getSelectionEnd()>=0)
+            commandInput.bringPointIntoView(commandInput.getSelectionEnd());
     }
 
     private void addPhoneFoldSection(LinearLayout root,String title,View content) {
@@ -2762,8 +2804,15 @@ public final class MainActivity extends Activity {
     }
 
     private void saveNativeGenerationRecovery(String text)throws Exception{ConversationRecoveryStore.save(this,RecorderPhotoStore.hash(("native-generation:"+nativeConversationRequestId).getBytes(java.nio.charset.StandardCharsets.UTF_8)),"send",new JSONObject().put("requestId",nativeConversationRequestId).put("message",text));}
-    private AlertDialog showConversationRecovery(){try{JSONArray rows=ConversationRecoveryStore.list(this);String[] titles=new String[rows.length()];for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);titles[i]=row.optString("message")+(row.optInt("imageCount")>0?"（添付あり）":"");}return new AlertDialog.Builder(this).setTitle("送信控え（24時間・最新10件）").setItems(titles,(d,index)->{try{JSONObject item=ConversationRecoveryStore.read(this,rows.getJSONObject(index).getString("id")),payload=item.getJSONObject("payload");new AlertDialog.Builder(this).setTitle("送信した内容を確認").setMessage(payload.optString("message")+"\n\n添付は送信時の画像・動画の抜粋です。送信控えは結果の確定ではありません。入力へ戻すだけでは送信しません。").setPositiveButton("入力へ戻す",(dialog,w)->{if(commandInput.length()>0||(imageComposer!=null&&imageComposer.attached())){new AlertDialog.Builder(this).setMessage("入力中の文章・添付を送信控えで置き換えますか？").setPositiveButton("置き換える",(x,y)->restoreConversationPayload(payload)).setNegativeButton("戻る",null).show();}else restoreConversationPayload(payload);}).setNegativeButton("閉じる",null).show();}catch(Exception error){updateStatus("送信控えを開けません","期限切れまたは読み取りエラーです");}}).setPositiveButton("閉じる",null).show();}catch(Exception error){updateStatus("送信控えを取得できません","保存状態を確認してください");return null;}}
-    private void restoreConversationPayload(JSONObject payload){try{if(imageComposer.busy())return;if(!payload.optString("parent").isEmpty()){updateStatus("元画像の編集依頼です","PC・タブレットの送信控えから元画像ごと復元してください。現在の入力は変更していません");return;}imageComposer.restorePayload(payload);commandInput.setText(payload.optString("message"));imageReferenceDraftKey=payload.optString("referenceKey");imageReferenceDraftPrefix=imageReferenceDraftKey.isEmpty()?"":payload.optString("message");imageReferenceDraftRequestId=java.util.UUID.randomUUID().toString();nativeConversationRequestId="";recoveryNeedsConfirm=true;commandInput.requestFocus();updateStatus("送信控えを復元","まだ送信していません。送信状況を確認してください");}catch(Exception error){updateStatus("添付を復元できません","本文・添付を確認してください");}}
+    private AlertDialog showConversationRecovery(){try{JSONArray rows=ConversationRecoveryStore.list(this);String[] titles=new String[rows.length()];for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);titles[i]=row.optString("message")+(row.optInt("imageCount")>0?"（添付あり）":"");}return new AlertDialog.Builder(this).setTitle("送信控え（24時間・最新10件）").setItems(titles,(d,index)->{try{JSONObject item=ConversationRecoveryStore.read(this,rows.getJSONObject(index).getString("id")),payload=item.getJSONObject("payload");new AlertDialog.Builder(this).setTitle("送信した内容を確認").setMessage(payload.optString("message")+"\n\n添付は送信時の画像・動画の抜粋です。送信控えは結果の確定ではありません。入力へ戻すだけでは送信しません。").setPositiveButton("入力へ戻す",(dialog,w)->{confirmConversationRecovery(payload);}).setNegativeButton("閉じる",null).show();}catch(Exception error){updateStatus("送信控えを開けません","期限切れまたは読み取りエラーです");}}).setPositiveButton("閉じる",null).show();}catch(Exception error){updateStatus("送信控えを取得できません","保存状態を確認してください");return null;}}
+    private boolean completeSubmittedImageDraft(String submittedDraft,long submittedRevision){boolean same=ComposerDraftPolicy.unchanged(submittedDraft,commandInput.getText().toString(),submittedRevision,conversationDraftRevision,0,0,false);if(same)commandInput.setText("");updateStatus("画像付き質問を送信待ち",same?"返信は下の会話ログに表示します":"送信中に編集した本文は残しました。返信は下の会話ログに表示します");return same;}
+    private void confirmConversationRecovery(JSONObject payload){
+        if(imageComposer.busy()){updateStatus("添付を処理中です","完了してから送信控えを選び直してください。入力は変更していません");return;}
+        final String expected=commandInput.getText().toString();final long textRevision=conversationDraftRevision,attachmentRevision=imageComposer.revision();
+        Runnable apply=()->restoreConversationPayload(payload,expected,textRevision,attachmentRevision);
+        if(!expected.isEmpty()||imageComposer.attached())new AlertDialog.Builder(this).setMessage("入力中の文章・添付を送信控えで置き換えますか？").setPositiveButton("置き換える",(d,w)->apply.run()).setNegativeButton("戻る",null).show();else apply.run();
+    }
+    private void restoreConversationPayload(JSONObject payload,String expected,long textRevision,long attachmentRevision){try{if(!ComposerDraftPolicy.unchanged(expected,commandInput.getText().toString(),textRevision,conversationDraftRevision,attachmentRevision,imageComposer.revision(),imageComposer.busy())){updateStatus("復元を止めました","確認中に本文・添付が変わりました。現在の入力は残しています。送信控えを選び直してください");return;}if(!payload.optString("parent").isEmpty()){updateStatus("元画像の編集依頼です","PC・タブレットの送信控えから元画像ごと復元してください。現在の入力は変更していません");return;}String recovered=payload.optString("message");if(recovered.length()>MAX_COMMAND_CHARS)throw new IllegalArgumentException("本文が長すぎます");imageComposer.restorePayload(payload);commandInput.setText(recovered);imageReferenceDraftKey=payload.optString("referenceKey");imageReferenceDraftPrefix=imageReferenceDraftKey.isEmpty()?"":payload.optString("message");imageReferenceDraftRequestId=java.util.UUID.randomUUID().toString();nativeConversationRequestId="";recoveryNeedsConfirm=true;commandInput.requestFocus();updateStatus("送信控えを復元","まだ送信していません。送信状況を確認してください");}catch(Exception error){updateStatus("添付を復元できません","本文・添付を確認してください");}}
     private void sendControl(String control, String label) {
         synchronized (MainActivity.class) {
             pendingControl = control;
@@ -2968,6 +3017,7 @@ public final class MainActivity extends Activity {
                 }catch(Exception e){result=new JSONObject().put("ok",false).put("message",e instanceof java.io.IOException?e.getMessage():"受信箱を更新できませんでした。元の案件は保持しています。");}
                 writeJsonResponse(socket,200,result.toString());return;
             }
+            if(request.startsWith("POST /calendar_preview ")){JSONObject result;try{result=CalendarWriter.preview(this,new JSONObject(formValue(bodyText,"request")));}catch(Exception error){result=new JSONObject().put("ok",false).put("message","候補・日時・カレンダーの読み取りを確認できません。登録はしていません。");}writeJsonResponse(socket,200,result.toString());return;}
             if(request.startsWith("GET /calendar_write_state ")) {
                 writeJsonResponse(socket,200,new JSONObject().put("ok",true)
                         .put("permission",CalendarWriter.permitted(this)).put("calendars",CalendarWriter.calendars(this)).toString());return;
@@ -4483,6 +4533,10 @@ public final class MainActivity extends Activity {
                 .replace('\r', ' ').replaceAll("\\s+", " ").trim();
         return text.length() <= max ? text : text.substring(0, max) + "…";
     }
+
+    JSONArray localRecordConversations(){java.util.ArrayList<JSONObject> all=readConversationMemory();all.addAll(readConversationArchive());return new JSONArray(all);}
+    private long cachedLocationAt(){long at=0;try{android.location.LocationManager manager=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);if(manager!=null)for(String provider:manager.getProviders(true)){try{android.location.Location location=manager.getLastKnownLocation(provider);if(location!=null)at=Math.max(at,location.getTime());}catch(Exception ignored){}}}catch(Exception ignored){}return at;}
+    JSONObject localDeparture()throws Exception{GoogleRouteCache cached=googleRouteCache;boolean route=cached!=null&&cached.generation==googleRouteGeneration&&System.currentTimeMillis()>=cached.time&&System.currentTimeMillis()-cached.time<=MAP_ROUTE_CACHE_MS;JSONObject nav=MailNotificationService.recentTransitJson();return DeviceReadiness.snapshot(this,nav.optBoolean("navigationActive"),route,cachedLocationAt());}
 
     JSONArray webHistory() {
         ArrayList<JSONObject> all=readConversationMemory();JSONArray out=new JSONArray();
@@ -6930,7 +6984,13 @@ public final class MainActivity extends Activity {
             final String text=label;runOnUiThread(()->{inboxSummaryBusy=false;if(!isFinishing()&&!isDestroyed())inboxButton.setText(text);});
         },"InboxSummary").start();
     }
+    void beginRecentCorrection(){try{JSONObject state=ConversationWorkspace.snapshot(this);JSONObject candidate=CorrectionDraft.select(state.optBoolean("connected")?state.optJSONObject("recognition"):null,new JSONArray(getSharedPreferences("loki_web_console",0).getString("outbox","[]")),System.currentTimeMillis());if(!candidate.optBoolean("available")){updateStatus("訂正対象がありません","15分以内の認識文・送信本文を確認できません。送信控えから対象を選んでください");return;}if(imageComposer!=null&&(imageComposer.attached()||imageComposer.busy())){updateStatus("添付を保護しました","添付のある依頼は送信控えから復元してください。現在の入力は変更していません");return;}String before=commandInput.getText().toString();long revision=conversationDraftRevision;String text=candidate.getString("text");new AlertDialog.Builder(this).setTitle("直近の入力を訂正").setMessage(candidate.getString("source")+"\n"+text+"\n入力欄へ戻します。過去の回答・登録を取り消す操作ではありません。まだ送信しません。").setPositiveButton("入力欄へ戻す",(dialog,which)->{if(revision!=conversationDraftRevision||!before.equals(commandInput.getText().toString())||(imageComposer!=null&&(imageComposer.attached()||imageComposer.busy()))){updateStatus("復元を止めました","確認中に本文・添付が変わりました。入力は残しています");return;}commandInput.setText(text);nativeConversationRequestId="";imageReferenceDraftKey="";imageReferenceDraftPrefix="";recoveryNeedsConfirm=true;commandInput.requestFocus();updateStatus("訂正用に戻しました","本文のみ復元しました。内容を修正して送信してください");}).setNegativeButton("閉じる",null).show();}catch(Exception error){updateStatus("訂正対象を確認できません","送信・履歴の変更はしていません");}}
+
+    private void updateDeviceTuning(){if(!DeviceTuning.prefs(this).getBoolean("enabled",false)){DeviceTuning.tick(this,false,false);return;}try{JSONObject state=MeetingControl.status(this).getJSONObject("state");if(state.optBoolean("recording")&&!state.optBoolean("connected"))return;boolean meeting=state.optBoolean("connected")&&state.optBoolean("recording");boolean navigation=MailNotificationService.recentTransitJson().optBoolean("navigationActive")||confirmedSharedUntil>System.currentTimeMillis()&&!confirmedSharedDestination.isEmpty();DeviceTuning.tick(this,meeting,navigation);}catch(Exception ignored){}}
+
+    private void refreshComposerReceipts(){updateDeviceTuning();if(composerReceipts==null)return;String value;try{value=ComposerReceiptSummary.describe(new JSONArray(getSharedPreferences("loki_web_console",0).getString("outbox","[]")));}catch(Exception e){value="送信記録を取得できません。自動再送はしていません";}if(!android.text.TextUtils.equals(composerReceipts.getText(),value))composerReceipts.setText(value);}
     private void refreshLogs() {
+        refreshComposerReceipts();
         refreshInboxSummary();
         if(imageReferencePanel!=null)imageReferencePanel.refresh();
         if(generatedImagePanel!=null)generatedImagePanel.refresh();
@@ -6957,7 +7017,7 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isAiLogKind(String kind) {
-        return "ユーザー".equals(kind)
+        return "システム通知".equals(kind) || "ユーザー".equals(kind)
                 || "ユーザー音声".equals(kind)
                 || "Gemini".equals(kind)
                 || "直接回答".equals(kind)

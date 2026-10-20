@@ -1,0 +1,10 @@
+package com.example.rokidkeyboardbridge;
+import org.json.*;import android.util.AtomicFile;import java.io.*;import java.nio.charset.StandardCharsets;
+/** Per-session encrypted bookmarks. Does not read, rewrite or pause PCM audio. */
+final class BookmarkStore {
+ static JSONObject checked(JSONObject b)throws Exception{String id=b.getString("id"),label=b.optString("label").trim();long position=b.getLong("audioMs");if(!id.matches("[a-f0-9-]{36}")||label.isEmpty()||label.length()>120||position<0||position>7200000)throw new IOException("しおりの内容を確認してください");return new JSONObject().put("id",id).put("audioMs",position).put("label",label).put("at",Math.max(0,b.optLong("at")));}
+ static synchronized JSONArray read(File folder)throws Exception{AtomicFile f=new AtomicFile(new File(folder,"bookmarks.gcm"));if(!f.getBaseFile().exists()&&!new File(f.getBaseFile()+".bak").exists())return new JSONArray();byte[] bytes=f.readFully();if(bytes.length>100000)throw new IOException("しおり記録が大きすぎます");JSONArray raw=new JSONArray(new String(DeviceSecrets.photos().decrypt(bytes),StandardCharsets.UTF_8));if(raw.length()>100)throw new IOException("しおり件数が不正です");JSONArray out=new JSONArray();for(int i=0;i<raw.length();i++)out.put(checked(raw.getJSONObject(i)));return out;}
+ static synchronized void append(File folder,JSONObject input)throws Exception{JSONObject b=checked(input);JSONArray all=read(folder);for(int i=0;i<all.length();i++)if(all.getJSONObject(i).getString("id").equals(b.getString("id"))){if(!all.getJSONObject(i).toString().equals(b.toString()))throw new IOException("しおりIDが競合しています");return;}if(all.length()>=100)throw new IOException("しおりは会議ごとに100件までです");all.put(b);AtomicFile f=new AtomicFile(new File(folder,"bookmarks.gcm"));FileOutputStream out=null;try{out=f.startWrite();out.write(DeviceSecrets.photos().encrypt(all.toString().getBytes(StandardCharsets.UTF_8)));f.finishWrite(out);}catch(Exception e){if(out!=null)f.failWrite(out);throw e;}}
+ static boolean phrase(String s){return s!=null&&s.replaceAll("[\\s。！!？?]", "").matches("ここ重要|ここが重要|ここ大事|ここをしおり|しおりをつけて");}
+ private BookmarkStore(){}
+}

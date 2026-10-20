@@ -1,9 +1,9 @@
 """Export Android-rendered frames for local inspection. Requires a matching development build."""
 from pathlib import Path
-import argparse,subprocess,os,json,zipfile,tarfile,shutil,hashlib,re,time,uuid,xml.etree.ElementTree as ET
+import argparse,subprocess,os,json,zipfile,tarfile,shutil,hashlib,re,time,uuid,sys,xml.etree.ElementTree as ET
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--serial',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--poses',default='all');args=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--serial',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--poses',default='all');p.add_argument('--audit',action='store_true');args=p.parse_args()
  if args.poses not in ('all','routes') and not re.fullmatch(r'\d+(,\d+)*',args.poses):p.error('--poses must be all, routes or comma-separated IDs')
  root=Path(__file__).resolve().parents[2];src=Path(__file__).parent.resolve();dest=args.output.resolve()
  if dest.exists() and any(dest.iterdir()):p.error('Output folder must be new or empty')
@@ -31,6 +31,8 @@ def main():
  command(bt/'zipalign.exe','-f','4',build/'unsigned.apk',build/'aligned.apk')
  command(j/'java.exe','-jar',bt/'lib/apksigner.jar','sign','--ks',Path.home()/'.android/debug.keystore','--ks-key-alias','androiddebugkey','--ks-pass','pass:android','--key-pass','pass:android','--out',build/'test.apk',build/'aligned.apk')
  remote='/data/local/tmp/loki-motion-review.dex';run=uuid.uuid4().hex[:12];folder='cache/motion-review-'+run
+ completed=False;renderEnded=False
+ (dest/'export-state.json').write_text(json.dumps({'run':run,'folder':folder,'serial':args.serial,'apkSha256':sha,'selection':args.poses,'phase':'rendering'},indent=2),encoding='utf-8')
  try:
   device('push',build/'dex/classes.dex',remote);device('shell','chmod','444',remote);device('install','-r',build/'test.apk')
   print('Rendering native frames; no microphone, camera, API calls or conversation data.',flush=True)
@@ -40,37 +42,24 @@ def main():
     time.sleep(2)
     if time.monotonic()-last>25:
      print('Native rendering continues...',flush=True);last=time.monotonic()
-   stdout,stderr=task.communicate();result=stdout.decode('utf-8','replace');(dest/'native-result.txt').write_text(result,encoding='utf-8')
+   stdout,stderr=task.communicate();result=stdout.decode('utf-8','replace');renderEnded='INSTRUMENTATION_CODE:' in result;(dest/'native-result.txt').write_text(result,encoding='utf-8')
    if task.returncode or 'failure=' in result or 'INSTRUMENTATION_CODE: -1' not in result:raise RuntimeError('Native export failed: '+result[:1600])
   archive=dest/'native-frames.tar'
   with archive.open('wb') as out:
    q=subprocess.run([str(adb),'-s',args.serial,'exec-out','run-as',pkg,'tar','-cf','-','-C',folder,'.'],stdout=out,stderr=subprocess.PIPE)
    if q.returncode:raise RuntimeError('Frame transfer failed')
-  with tarfile.open(archive) as tar:
-   total=0
-   for member in tar:
-    target=(dest/member.name).resolve();total+=member.size
-    if not target.is_relative_to(dest) or member.issym() or member.islnk() or member.size>8_000_000 or total>1_000_000_000:raise RuntimeError('Unsafe frame archive')
-    if member.isdir():target.mkdir(parents=True,exist_ok=True)
-    elif member.isfile():
-     target.parent.mkdir(parents=True,exist_ok=True)
-     with tar.extractfile(member) as inp,target.open('wb') as out:shutil.copyfileobj(inp,out)
-  archive.unlink()
-  data=json.loads((dest/'manifest.json').read_text(encoding='utf-8'));data['apkSha256']=sha
-  count=0
-  for entry in data['entries']:
-   for frames in entry['stages'].values():
-    for f in frames:
-     if not re.fullmatch(r'frames/[a-z0-9-]+\.png',f['file']):raise RuntimeError('Unexpected frame path')
-     if not (dest/f['file']).read_bytes().startswith(b'\x89PNG'):raise RuntimeError('Invalid frame PNG')
-     count+=1
-  (dest/'manifest.json').write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8');(dest/'manifest.js').write_text('window.MOTION_REVIEW='+json.dumps(data,ensure_ascii=False)+';',encoding='utf-8')
-  for f in ['index.html','review.js','review.css']:shutil.copy2(src/f,dest/f)
+  from export_transfer import extract_and_finish
+  data=extract_and_finish(archive,dest,src,sha,{'type':'glasses_android_canvas','model':'RG-glasses','glassesHardwareTest':True,'wearingTest':False})
+  archive.unlink();completed=True;count=sum(len(frames) for entry in data['entries'] for frames in entry['stages'].values())
+  if args.audit:subprocess.run([sys.executable,str(src/'audit.py'),'--review',str(dest),'--output',str(dest/'auto-audit')],check=True)
   # Remove only the UUID-named directory created by this invocation, within this application's cache.
   resolved=device('shell','run-as',pkg,'readlink','-f',folder)
   if resolved in ['/data/user/0/'+pkg+'/'+folder,'/data/data/'+pkg+'/'+folder]:device('shell','run-as',pkg,'rm','-rf',folder)
   print(f'PASS {len(data["entries"])} images, {count} native frames. Open {dest/"index.html"}',flush=True)
  finally:
-  try:device('uninstall','com.example.lokimotionreview');device('shell','rm','-f',remote);device('shell','am','start','-n',pkg+'/.MainActivity')
-  except Exception:print('Diagnostic cleanup/normal launch needs checking.',flush=True)
+  if not (completed or renderEnded):
+   print('Export interrupted; retain its UUID-named render output and diagnostic until recovery. See export-state.json.',flush=True)
+  else:
+   try:device('uninstall','com.example.lokimotionreview');device('shell','rm','-f',remote);device('shell','am','start','-n',pkg+'/.MainActivity')
+   except Exception:print('Diagnostic cleanup/normal launch needs checking.',flush=True)
 if __name__=='__main__':main()

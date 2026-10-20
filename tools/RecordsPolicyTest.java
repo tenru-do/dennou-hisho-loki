@@ -1,0 +1,10 @@
+package com.example.rokidgeminisecretary;
+import org.json.*;
+public class RecordsPolicyTest {
+ static int n;static void ok(boolean v){n++;if(!v)throw new AssertionError("records "+n);}
+ public static void main(String[] args)throws Exception{
+ ok(QuietHoursPolicy.inside(1320,1320,420));ok(QuietHoursPolicy.inside(0,1320,420));ok(!QuietHoursPolicy.inside(420,1320,420));ok(!QuietHoursPolicy.inside(1319,1320,420));ok(QuietHoursPolicy.inside(800,0,0));ok(!QuietHoursPolicy.inside(-1,0,0));ok(!QuietHoursPolicy.inside(1440,0,0));ok(QuietHoursPolicy.minute("23:59")==1439);try{QuietHoursPolicy.minute("24:00");ok(false);}catch(IllegalArgumentException e){ok(true);}
+ JSONObject q=new JSONObject().put("enabled",true).put("second",true).put("start",1320).put("end",420).put("start2",600).put("end2",660).put("allow","error,codex");q=QuietHoursPolicy.checked(q);ok(QuietHoursPolicy.muted(q,0,"topic"));ok(!QuietHoursPolicy.muted(q,0,"error"));ok(!QuietHoursPolicy.muted(q,0,"codex"));ok(QuietHoursPolicy.muted(q,600,"ambient"));ok(!QuietHoursPolicy.muted(q,660,"topic"));q.put("enabled",false);ok(!QuietHoursPolicy.muted(q,0,"topic"));try{QuietHoursPolicy.checked(new JSONObject(q.toString()).put("allow","topic"));ok(false);}catch(IllegalArgumentException e){ok(true);}try{QuietHoursPolicy.checked(new JSONObject(q.toString()).put("start",1440));ok(false);}catch(IllegalArgumentException e){ok(true);}
+ ok(RecordSearchPolicy.matches("ＲＥＡＤ 家族 予定", "read　家族"));ok(RecordSearchPolicy.matches("予定は10月です", "予定 10月"));ok(!RecordSearchPolicy.matches("家族だけ", "家族 予定"));ok(!RecordSearchPolicy.matches("anything", " "));ok(!RecordSearchPolicy.matches("x".repeat(161), "x".repeat(161)));ok(RecordSearchPolicy.matches("ABC abc", "ＡＢＣ"));ok(!RecordSearchPolicy.matches(null, "abc"));System.out.println("PASS records policy "+n);
+ }
+}

@@ -38,14 +38,16 @@ final class TopicObservationCapture {
         }
         if (!cancelled.getAsBoolean() && ("vision".equals(mode) || "both".equals(mode))) {
             PhotoRecorderService keep=PhotoRecorderService.active;MeetingRecorderService meeting=MeetingRecorderService.active;
-            if(keep!=null) {
+            String resource=keep==null&&meeting==null?ResourceLoad.optional(context):"";
+            if(!resource.isEmpty()){result.put("imageSkipped",resource);}
+            else if(keep!=null) {
                 // KEEP owns the camera and image-save cycle. Optional TOPIC vision
                 // only reads an already-saved, recent frame; never opens another camera.
                 result.put("imageSkipped","KEEP撮影・保存優先：画像判定は待機中");
                 try {
-                    PhotoRecorderService.TopicPhoto saved=keep.topicPhoto(cancelled);
+                    PhotoRecorderService.TopicPhoto saved=keep.awaitTopicPhoto(cancelled);
                     if(saved!=null){result.put("image",Base64.encodeToString(saved.jpeg,Base64.NO_WRAP))
-                        .put("imageSource","keep_saved_photo").put("imageCapturedAt",saved.capturedAt);result.remove("imageSkipped");}
+                        .put("imageSource","keep_saved_photo").put("imageCapturedAt",saved.capturedAt).put("imageAgeMs",saved.ageMs);result.remove("imageSkipped");}
                     else result.put("imageSkipped",keep.topicImageWaitReason());
                 }catch(Exception unavailable){result.put("imageSkipped",keep.topicImageWaitReason()); /* KEEP continues. */ }
             }else if(meeting!=null&&!meeting.reserveCamera()){
@@ -54,7 +56,10 @@ final class TopicObservationCapture {
             try (AutoCloseable mascotPause = context instanceof MainActivity
                     ? ((MainActivity) context).pauseMascotForCamera() : () -> {}) {
                 if (context.checkSelfPermission("android.permission.CAMERA") != 0) throw new IllegalStateException();
-                result.put("image", Base64.encodeToString(photo(context,cancelled), Base64.NO_WRAP));
+                long capturedAt=System.currentTimeMillis(),captureStart=SystemClock.elapsedRealtime();
+                byte[] fresh=photo(context,cancelled);long age=SystemClock.elapsedRealtime()-captureStart;
+                if(age<0||age>15000)result.put("imageSkipped","取得に時間がかかったため画像を使用しません");
+                else result.put("image", Base64.encodeToString(fresh, Base64.NO_WRAP)).put("imageSource","topic_camera").put("imageCapturedAt",capturedAt).put("imageAgeMs",age);
             } catch (Exception error) {
                 if(PhotoRecorderService.active!=null)result.put("imageSkipped","KEEP撮影開始を優先：画像判定は待機中");
                 else result.put("imageUnavailable", true);

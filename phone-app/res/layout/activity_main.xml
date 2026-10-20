@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/keyboard_safe_area" android:layout_width="match_parent" android:layout_height="match_parent">
-<ScrollView
-    android:layout_width="match_parent" android:layout_height="match_parent"
-    android:fillViewport="true">
     <LinearLayout android:id="@+id/main_content" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:orientation="vertical"
-        android:padding="16dp" android:focusableInTouchMode="true">
+        android:layout_height="match_parent" android:orientation="vertical"
+        android:padding="8dp" android:focusableInTouchMode="true">
         <LinearLayout android:id="@+id/daily_actions" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:orientation="vertical" />
         <LinearLayout android:id="@+id/navigation_actions" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:orientation="vertical" />
     </LinearLayout>
-</ScrollView>
 </FrameLayout>

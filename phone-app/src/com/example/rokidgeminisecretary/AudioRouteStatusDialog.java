@@ -1,0 +1,8 @@
+package com.example.rokidgeminisecretary;
+import android.app.*;import android.content.*;import android.media.*;import android.widget.*;
+/** Local read-only observation; never requests focus, plays, pauses or changes routes. */
+final class AudioRouteStatusDialog {
+ static String read(Context c){try{AudioManager audio=(AudioManager)c.getSystemService(Context.AUDIO_SERVICE);boolean a2dp=false,sco=false,ble=false;for(AudioDeviceInfo device:audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)){int type=device.getType();a2dp|=type==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP;sco|=type==AudioDeviceInfo.TYPE_BLUETOOTH_SCO;ble|=type==AudioDeviceInfo.TYPE_BLE_HEADSET||type==AudioDeviceInfo.TYPE_BLE_SPEAKER;}int mode=audio.getMode();String modeName=mode==AudioManager.MODE_NORMAL?"通常":mode==AudioManager.MODE_IN_CALL?"通話":mode==AudioManager.MODE_IN_COMMUNICATION?"音声通信":"その他";return "Bluetoothの音楽出力："+(a2dp?"接続あり":"検出なし")+"\nBluetoothの通話出力："+(sco?"接続あり":"検出なし")+"\nBluetooth LE音声："+(ble?"接続あり":"検出なし")+"\nメディア再生："+(audio.isMusicActive()?"検出あり":"検出なし")+"\n音声モード："+modeName+"\n\n接続の検出と実際の再生先は異なる場合があります。この画面では再生・停止・音量や接続先の変更はしません。";}catch(Exception e){return "音声状態を取得できませんでした。再生や設定は変更していません。";}}
+ static void show(Activity owner){TextView text=new TextView(owner);text.setPadding(20,12,20,12);text.setText(read(owner));AlertDialog dialog=new AlertDialog.Builder(owner).setTitle("音声・Bluetoothの状態").setView(text).setNeutralButton("更新",null).setPositiveButton("閉じる",null).create();dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(b->text.setText(read(owner))));dialog.show();}
+ private AudioRouteStatusDialog(){}
+}

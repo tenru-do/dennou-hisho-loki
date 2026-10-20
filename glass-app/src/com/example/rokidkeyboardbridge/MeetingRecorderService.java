@@ -11,6 +11,8 @@ public final class MeetingRecorderService extends Service {
     private final MeetingPcmRing ring=new MeetingPcmRing();private PowerManager.WakeLock wake;
     private long started,lastCamera;private volatile long captured,saved,sealed,speechUntil;private volatile int level;
     org.json.JSONObject progress(){try{return MeetingProgressPolicy.snapshot(captured,saved,sealed,queue.size(),SystemClock.elapsedRealtime()-started,level);}catch(Exception e){return new org.json.JSONObject();}}
+    volatile String recordingId="";private final ArrayBlockingQueue<org.json.JSONObject> bookmarks=new ArrayBlockingQueue<>(64);private final java.util.HashSet<String> marked=new java.util.HashSet<>();
+    synchronized boolean mark(String id,String label,String expectedSession)throws Exception{if(stopping||done||recordingId.isEmpty()||!recordingId.equals(expectedSession)||captured<=0)throw new java.io.IOException("録音が開始済みか確認してください");if(marked.contains(id))return true;if(marked.size()>=100)throw new java.io.IOException("しおりは100件までです");org.json.JSONObject item=BookmarkStore.checked(new org.json.JSONObject().put("id",id).put("label",label).put("audioMs",captured/32).put("at",System.currentTimeMillis()));if(!bookmarks.offer(item))throw new java.io.IOException("しおりの保存待ちです");marked.add(id);return true;}
     public IBinder onBind(Intent i){return null;}
     public void onCreate(){super.onCreate();((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel("loki_meeting","ロキの会議録音",NotificationManager.IMPORTANCE_LOW));}
     private Notification notification(){PendingIntent stop=PendingIntent.getActivity(this,882,new Intent(this,MainActivity.class).setAction("loki.meeting.controls"),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);return new Notification.Builder(this,"loki_meeting").setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentTitle("ロキ：会議録音中（最大2時間）").setContentText(status).setOngoing(true).setContentIntent(stop).build();}
@@ -32,7 +34,7 @@ public final class MeetingRecorderService extends Service {
         cameraDecision=MeetingCameraPolicy.reason(mode,stopping,pending,lowMemory,freeHeap,now,lastCamera);
         if(!cameraDecision.isEmpty())return false;lastCamera=now;cameraDecision="READY";return true;
     }
-    synchronized boolean reserveCamera(){ActivityManager.MemoryInfo info=new ActivityManager.MemoryInfo();((ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(info);Runtime runtime=Runtime.getRuntime();long free=runtime.maxMemory()-(runtime.totalMemory()-runtime.freeMemory());return applyCameraDecision(SystemClock.elapsedRealtime(),queue.size(),info.lowMemory,free);}
+    synchronized boolean reserveCamera(){String load=ResourceLoad.optional(this);if(!load.isEmpty()){cameraDecision="RESOURCE_LOAD";return false;}ActivityManager.MemoryInfo info=new ActivityManager.MemoryInfo();((ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(info);Runtime runtime=Runtime.getRuntime();long free=runtime.maxMemory()-(runtime.totalMemory()-runtime.freeMemory());return applyCameraDecision(SystemClock.elapsedRealtime(),queue.size(),info.lowMemory,free);}
     private void capture(){AudioRecord mic=null;
         try(CaptureLease lease=CaptureLease.acquire(CaptureLease.MICROPHONE,()->stopping)){
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);int min=AudioRecord.getMinBufferSize(16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
@@ -50,8 +52,8 @@ public final class MeetingRecorderService extends Service {
         finally{if(mic!=null){try{mic.stop();}catch(Exception ignored){}mic.release();}done=true;}
     }
     private void store(){try(MeetingAudioArchive archive=new MeetingAudioArchive(this)){
-        new Thread(this::capture,"MeetingMic").start();
-        while(!done||!queue.isEmpty()){byte[] b=queue.poll(200,TimeUnit.MILLISECONDS);if(b!=null){if(archive.folder.getUsableSpace()<50000000)throw new java.io.IOException("空き容量不足");archive.append(b);saved+=b.length;sealed=archive.sealedBytes();}org.json.JSONObject item;while((item=topics.poll())!=null)archive.topic(item);}
+        recordingId=archive.folder.getName();new Thread(this::capture,"MeetingMic").start();
+        while(!done||!queue.isEmpty()||!bookmarks.isEmpty()){byte[] b=queue.poll(200,TimeUnit.MILLISECONDS);if(b!=null){if(archive.folder.getUsableSpace()<50000000)throw new java.io.IOException("空き容量不足");archive.append(b);saved+=b.length;sealed=archive.sealedBytes();}org.json.JSONObject item;while((item=topics.poll())!=null)archive.topic(item);while((item=bookmarks.poll())!=null){boolean success=true;try{BookmarkStore.append(archive.folder,item);}catch(Exception markError){success=false;}MainActivity host=MainActivity.recorderHost.get();if(host!=null)host.onMeetingBookmarkSaved(item.optString("id"),item.optLong("audioMs"),success);}}
         archive.meta.put("capturedBytes",captured).put("writtenBytes",saved);archive.finish(reason);lastSaveSucceeded=saved>0&&saved==captured&&(reason.equals("終了操作")||reason.equals("最大2時間に到達"));sealed=archive.sealedBytes();status="会議録音保存済み："+reason+" / "+saved/32000+"秒";
     }catch(Exception e){reason="保存エラー："+(e instanceof java.io.IOException?e.getMessage():e.getClass().getSimpleName());stopping=true;status=reason+"（保存済み区間は保持）";}
     finally{stopping=true;if(active==this)active=null;new Handler(Looper.getMainLooper()).post(this::stopSelf);}}

@@ -76,6 +76,7 @@ final class RadioPlaybackController {
                            final VoiceTransport transport, final Listener listener) {
         play(new String[]{text}, new long[]{durationMs}, transport, listener);
     }
+    synchronized void play(final String[] chunks,final long[] durations,final VoiceTransport transport,final Listener listener,boolean silent){if(!silent){play(chunks,durations,transport,listener);return;}stop();final int token=generation;main.post(()->{if(token==generation)listener.onStarted();});int chars=0;for(String chunk:chunks)chars+=chunk.length();main.postDelayed(()->{if(token==generation)listener.onFinished();},Math.max(5000,Math.min(30000,chars*90L)));}
     synchronized void play(final String[] chunks, final long[] durations,
                            final VoiceTransport transport, final Listener listener) {
         if (chunks.length == 0 || chunks.length != durations.length) throw new IllegalArgumentException("empty speech");

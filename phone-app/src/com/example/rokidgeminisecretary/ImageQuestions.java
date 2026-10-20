@@ -56,15 +56,27 @@ final class ImageQuestions {
     static File root(Context c){File f=new File(c.getFilesDir(),"image-questions");f.mkdirs();return f;}
     static synchronized void prune(Context c){File[] files=root(c).listFiles();if(files!=null)for(File f:files)if(System.currentTimeMillis()-f.lastModified()>TTL)f.delete();}
     static File file(Context c,String id)throws IOException{if(!id.matches("[a-f0-9-]{36}"))throw new IOException("画像IDが無効です");return new File(root(c),id+".gcm");}
+    /** Reject malformed requests before recovery writes or image/video generation routing. */
+    static void validateInput(String requestId,String question,byte[] jpeg)throws IOException {
+        if(requestId==null||!requestId.matches("[a-zA-Z0-9-]{8,80}"))throw new IOException("送信IDが無効です。画面を開き直して送信してください");
+        if(question==null||question.length()>2400)throw new IOException("画像付きの質問は2400文字以内にしてください");
+        if(question.contains("__LOKI_")||question.contains("__CODEX_"))throw new IOException("内部制御用の文字列は送信できません");
+        if(jpeg==null||jpeg.length==0||jpeg.length>MAX_IMAGE)throw new IOException("添付画像が空か大きすぎます。画像を選び直してください");
+        BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(jpeg,0,jpeg.length,bounds);
+        if(bounds.outWidth<1||bounds.outHeight<1||(long)bounds.outWidth*bounds.outHeight>80000000L)throw new IOException("添付画像を読み取れません。画像を選び直してください");
+        BitmapFactory.Options preview=new BitmapFactory.Options();while(Math.max(bounds.outWidth,bounds.outHeight)/Math.max(1,preview.inSampleSize)>256)preview.inSampleSize=Math.max(1,preview.inSampleSize)*2;
+        Bitmap decoded=BitmapFactory.decodeByteArray(jpeg,0,jpeg.length,preview);if(decoded==null)throw new IOException("添付画像が壊れています。画像を選び直してください");decoded.recycle();
+    }
     static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg)throws Exception {return enqueue(c,requestId,question,jpeg,1,new org.json.JSONArray().put("image"));}
     static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg,int imageCount)throws Exception {return enqueue(c,requestId,question,jpeg,imageCount,null);}
     static synchronized JSONObject enqueue(Context c,String requestId,String question,byte[] jpeg,int imageCount,org.json.JSONArray sourceKinds)throws Exception {
+        validateInput(requestId,question,jpeg);
         org.json.JSONArray kinds=ImageAttachmentKinds.normalize(sourceKinds,imageCount);
         if(imageCount<1||imageCount>6)throw new IOException("画像枚数が無効です（1〜6枚）");
         ConversationRecoveryStore.save(c,RecorderPhotoStore.hash(requestId.getBytes(java.nio.charset.StandardCharsets.UTF_8)),"image-question",new JSONObject().put("requestId",requestId).put("message",question).put("image",Base64.encodeToString(jpeg,Base64.NO_WRAP)).put("imageCount",imageCount).put("kinds",kinds));
         if(MediaGenerationContext.video(c,question,true))return VideoGeneration.enqueue(c,requestId,question,jpeg,"");
         if(MediaGenerationContext.kind(c,question,true)==MediaGenerationIntent.Kind.IMAGE)return ImageGeneration.enqueue(c,requestId,question,jpeg,"");
-        prune(c);if(!requestId.matches("[a-zA-Z0-9-]{8,80}")||question.length()>2400||question.contains("__LOKI_")||question.contains("__CODEX_"))throw new IOException("質問は2400文字以内にしてください");
+        prune(c);
         if(question.trim().isEmpty())question=imageCount>1?"添付した"+imageCount+"件それぞれの内容を、番号順に教えて。画像・動画の場面一覧を別々に説明してください。":"この画像の内容を教えて。文字と日時は正確に読み取り、不鮮明な箇所は確認してください。";
         // Stable key prevents a browser retry from enqueuing another image question.
         String key=RecorderPhotoStore.hash(requestId.getBytes(java.nio.charset.StandardCharsets.UTF_8));

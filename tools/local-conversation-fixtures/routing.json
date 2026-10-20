@@ -1,0 +1,52 @@
+[
+  {
+    "id": "quoted-stop",
+    "input": "「ナビを停止して」と言ったらどうなる？",
+    "discussion": true
+  },
+  {
+    "id": "negated-stop",
+    "input": "ナビを停止しないで",
+    "discussion": true
+  },
+  {
+    "id": "conditional-stop",
+    "input": "ナビを停止したら音声も止まる？",
+    "discussion": true
+  },
+  {
+    "id": "direct-stop",
+    "input": "ナビを停止して",
+    "discussion": false
+  },
+  {
+    "id": "direct-resume",
+    "input": "ナビを再開して",
+    "discussion": false
+  },
+  {
+    "id": "reset-discussion",
+    "input": "会話をリセットする方法は？",
+    "discussion": true
+  },
+  {
+    "id": "named-news",
+    "input": "そーねｗ、えっとね ニュース教えて",
+    "discussion": false
+  },
+  {
+    "id": "plain-context",
+    "input": "年間では？",
+    "discussion": false
+  },
+  {
+    "id": "negative-without-de",
+    "input": "ナビを停止しない",
+    "discussion": true
+  },
+  {
+    "id": "whether-to-stop",
+    "input": "KEEPを停止するかどうか迷っている",
+    "discussion": true
+  }
+]
