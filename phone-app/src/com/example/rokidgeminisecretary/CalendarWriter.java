@@ -26,6 +26,16 @@ final class CalendarWriter {
         }
         return out;
     }
+    /** Reads existing events only. No insert, update, delete or sync request. */
+    static JSONObject preview(Context c,JSONObject request)throws Exception{
+        JSONObject checked=CalendarDraftEdits.apply(request,request);String summary=CalendarReviewSummary.describe(checked);
+        if(!permitted(c))return new JSONObject().put("ok",false).put("message",summary+"\n重複確認：カレンダー権限がありません。まだ登録していません。");
+        String name=checked.getString("calendar_name");long calendar=-1;int matches=0;JSONArray choices=calendars(c);for(int i=0;i<choices.length();i++){JSONObject row=choices.getJSONObject(i);if(name.equals(row.getString("name"))){matches++;calendar=row.getLong("id");}}if(matches!=1)return new JSONObject().put("ok",false).put("message",summary+"\n登録先を一意に確認できません。同期・書き込み権限・同名カレンダーを確認してください。");
+        int exact=0,overlap=0;JSONArray events=checked.getJSONArray("events");for(int i=0;i<events.length();i++){JSONObject e=events.getJSONObject(i);boolean day=e.getBoolean("all_day");long a=timestamp(e.getString("start"),day),b=timestamp(e.getString("end"),day);boolean duplicate=false;
+            try(Cursor rows=c.getContentResolver().query(CalendarContract.Events.CONTENT_URI,new String[]{"title","dtstart","dtend","allDay"},"calendar_id=? AND dtstart<? AND dtend>? AND deleted=0",new String[]{""+calendar,""+b,""+a},null)){if(rows==null)throw new java.io.IOException("重複確認を取得できません。まだ登録していません");while(rows.moveToNext()){if(e.getString("title").equals(rows.getString(0))&&a==rows.getLong(1)&&b==rows.getLong(2)&&(day?1:0)==rows.getLong(3))duplicate=true;else overlap++;}}
+            for(int j=0;j<i;j++){JSONObject prior=events.getJSONObject(j);if(prior.getString("title").equals(e.getString("title"))&&timestamp(prior.getString("start"),prior.getBoolean("all_day"))==a&&timestamp(prior.getString("end"),prior.getBoolean("all_day"))==b&&prior.getBoolean("all_day")==day)duplicate=true;}if(duplicate)exact++;
+        }return new JSONObject().put("ok",true).put("exactDuplicates",exact).put("overlappingMatches",overlap).put("message",summary+"\n同一予定候補："+exact+"件 / 時間帯が重なる既存予定との組合せ："+overlap+"件\nまだ登録していません。重複は登録直前にも再確認します。繰り返し予定の各回や未同期の予定はこの確認に含まれません。");
+    }
     static synchronized JSONObject save(Context c,JSONObject request) throws Exception {
         if(!permitted(c))return new JSONObject().put("ok",false).put("message","スマホのロキにカレンダーの読み書き権限を許可してください。まだ登録していません。");
         String name=request.getString("calendar_name").trim();

@@ -66,7 +66,7 @@ final class JourneyHud {
                     .put("routeArrival", time(journey.optString("finalArrivalTime")) + "予定");
             if(journey.optBoolean("waitingToBoard"))out.put("instruction","乗車地点付近・乗車待ち")
                 .put("detail",out.optString("detail")+" / 乗車したら「乗車した」で区間を進めます");
-            return out;
+            return withTransitHealth(out,journey);
         }
         // No mixing Google Maps' independently selected trip with this API journey.
         for (String key : new String[]{"nextDistance", "afterNextInstruction", "afterNextDistance",
@@ -120,8 +120,9 @@ final class JourneyHud {
                         .put("afterNextDistance", time(next.optString("departureTime")) + "発予定");
             }
         }
-        return out;
+        return withTransitHealth(out,journey);
     }
+    static JSONObject withTransitHealth(JSONObject out,JSONObject journey)throws JSONException{JSONArray stops=journey.optJSONArray("transitStops");if(stops==null||stops.length()==0)return out;JSONObject leg=journey.optJSONObject("currentLeg");String update=time(journey.optLong("fetchedAt")>0?java.time.Instant.ofEpochMilli(journey.optLong("fetchedAt")).toString():"");String extra="経路取得 "+update;String next=out.optString("nextStation");long age=System.currentTimeMillis()-out.optLong("time");boolean sameLine=leg!=null&&!leg.optString("lineName").isEmpty()&&leg.optString("lineName").equals(out.optString("line"));extra+=" / "+(!next.isEmpty()&&age>=0&&age<=120000&&sameLine?"次駅 "+next+(out.optBoolean("estimated")?"（推定）":"（通知）"):"次駅未確認（更新情報・路線照合待ち）");if(leg!=null&&"TRANSIT".equals(leg.optString("travelMode"))){int remaining=leg.optInt("remainingStopCount",-1);extra+=" / "+(remaining>=0?"残り"+remaining+"駅":"残駅数未取得（途中駅の通過情報なし）");if(leg.optString("arrivalTime").isEmpty())extra+=" / 降車時刻：経路API未提供";if(leg.optInt("stopCount",-1)<0)extra+=" / 区間駅数：経路API未提供";}else extra+=" / 残駅数：乗車区間の確認待ち";return out.put("detail",out.optString("detail")+" / "+extra);}
     private static String minutes(double seconds) {
         return (long)Math.ceil(seconds / 60.0) + "分";
     }

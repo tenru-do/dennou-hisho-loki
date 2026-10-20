@@ -53,7 +53,8 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationFollowupPolicy.java",
-      "sha256": "8afb94d8e168ad09ffb6a898513f516d70a5fd3efa73462fdafacd4d3900f8d5"
+      "sha256": "6decaa6c5a95f2019f86a14bbd9229bd21f4d767c02e1d0f3e913b45df0798ef",
+      "validation": "docs/RELIABILITY-v593.md; isolated production-payload capture + candidate class; Gemini 3/3 on 2026-10-20; tools disabled; no real history"
     },
     {
       "app": "glass",

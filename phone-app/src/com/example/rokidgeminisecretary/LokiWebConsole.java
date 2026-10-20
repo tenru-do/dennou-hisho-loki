@@ -129,8 +129,8 @@ final class LokiWebConsole {
             if(method.equals("GET")&&path.equals("/web/icon.png")) {
                 respond(socket,200,"image/png",asset(owner,"icon.png"));return true;
             }
-            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/style.css"))) {
-                String asset=path.equals("/web/media-attachments.js")?"media-attachments.js":path.endsWith(".js")?"app.js":path.endsWith(".css")?"style.css":"index.html";
+            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/local-records.js")||path.equals("/web/style.css"))) {
+                String asset=path.equals("/web/local-records.js")?"local-records.js":path.equals("/web/media-attachments.js")?"media-attachments.js":path.endsWith(".js")?"app.js":path.endsWith(".css")?"style.css":"index.html";
                 respond(socket,200,asset.endsWith(".js")?"text/javascript; charset=utf-8":asset.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8",asset(owner,asset));return true;
             }
             // No CORS. Reject cross-origin fetches even if a browser retained a token.
@@ -194,6 +194,14 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/meeting-import-cancel")){MeetingMediaImport.cancel(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
             if(method.equals("GET")&&path.equals("/web/api/meeting-control")){json(socket,200,MeetingControl.status(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/meeting-control")){json(socket,200,MeetingControl.queue(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/local-records")){json(socket,200,UnifiedRecords.search(owner,query.getOrDefault("q","")));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/reading-history")){JSONArray list=ReadingHistory.list(owner),items=new JSONArray();for(int i=list.length()-1;i>=0;i--){JSONObject row=list.getJSONObject(i);items.put(new JSONObject().put("id",row.getString("id")).put("at",row.optLong("at")).put("question",row.optString("question")).put("correctionCount",row.getJSONArray("corrections").length()));}json(socket,200,new JSONObject().put("items",items));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/reading-detail")){json(socket,200,ReadingHistory.get(owner,query.getOrDefault("id","")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/reading-correct")){JSONObject input=new JSONObject(body);json(socket,200,ReadingHistory.correct(owner,input.getString("id"),input.getInt("revision"),input.getString("changeId"),input.getString("field"),input.optString("before"),input.getString("after")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/reading-delete")){ReadingHistory.delete(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/departure-check")){json(socket,200,DepartureDialog.read(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-action-candidates")){JSONObject actionPacket=new JSONObject(body);json(socket,200,MeetingActions.preview(owner,actionPacket.getString("id")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-action-save")){JSONObject actionPacket=new JSONObject(body);json(socket,200,MeetingActions.save(owner,actionPacket.getString("id"),actionPacket.getString("sourceHash"),actionPacket.getInt("index"),actionPacket.getString("text")));return true;}
             if(method.equals("GET")&&path.equals("/web/api/meetings")){json(socket,200,new JSONObject().put("items",MeetingAudioStore.list(owner)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/meeting-audio")){
                 File f=MeetingAudioStore.folder(owner,query.getOrDefault("id",""));JSONObject m=MeetingAudioStore.meta(f);int index=Integer.parseInt(query.getOrDefault("part","0"));if(index>=m.getJSONArray("parts").length())throw new IOException("invalid recording part");respond(socket,200,"audio/wav",MeetingAudioStore.audio(f,index));return true;
@@ -223,6 +231,7 @@ final class LokiWebConsole {
             if(method.equals("GET")&&path.equals("/web/api/delete-preview")){ArrayList<File> all=photos(owner);json(socket,200,new JSONObject().put("count",all.size()).put("revision",digest(all.toString())));return true;}
             if(method.equals("GET")&&path.equals("/web/api/operations")){json(socket,200,OperationOverview.read(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/local-health-check")){LocalHealthCheck.start(owner,true);json(socket,200,new JSONObject().put("started",true));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/calendar-preview")){try{json(socket,200,CalendarWriter.preview(owner,new JSONObject(body)));}catch(Exception error){json(socket,400,new JSONObject().put("error","候補・日時・カレンダーを確認できません。登録していません"));}return true;}
             if(method.equals("GET")&&path.equals("/web/api/workspace")){json(socket,200,ConversationWorkspace.snapshot(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/workspace-command")){json(socket,200,ConversationWorkspace.submit(owner,new JSONObject(body)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/navigation-health")){json(socket,200,owner.navigationHealth());return true;}

@@ -15,7 +15,7 @@ final class ImageReferenceSummary {
  static JSONObject checked(JSONObject input)throws Exception{
   long at=input.getLong("at");int count=input.getInt("imageCount");String question=input.getString("question"),answer=input.getString("answer");
   if(at<=0||count<1||count>6||question.length()>2400||answer.length()>24000||answer.trim().isEmpty())throw new IllegalArgumentException("Invalid image reference");
-  return new JSONObject().put("at",at).put("imageCount",count).put("kinds",ImageAttachmentKinds.normalize(input.optJSONArray("kinds"),count)).put("question",question).put("answer",answer);
+  JSONObject checked=new JSONObject().put("at",at).put("imageCount",count).put("kinds",ImageAttachmentKinds.normalize(input.optJSONArray("kinds"),count)).put("question",question).put("answer",answer);if(input.has("selectedAt"))checked.put("selectedAt",Math.max(at,input.optLong("selectedAt",at)));if(input.optLong("capturedAt")>0&&input.optLong("capturedAt")<=at)checked.put("capturedAt",input.optLong("capturedAt"));String thumbnail=input.optString("thumbnail");if(thumbnail.length()<=24000&&thumbnail.matches("[A-Za-z0-9+/=]*")&&!thumbnail.isEmpty())checked.put("thumbnail",thumbnail);return checked;
  }
  static JSONObject view(JSONObject input,long now)throws Exception{
   JSONObject data=checked(input);long at=data.getLong("at");if(now<at||now-at>=TTL)return new JSONObject().put("available",false);

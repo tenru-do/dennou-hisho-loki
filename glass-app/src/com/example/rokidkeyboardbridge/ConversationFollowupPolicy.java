@@ -10,6 +10,7 @@ final class ConversationFollowupPolicy {
         if (ConversationTaskPolicy.continuesTask(text)) return true;
         String value = text.replaceAll("[\\s？?！!。]", "");
         if (value.isEmpty()) return false;
+        if(value.matches("(?:それ|これ|その場合|その条件|ほか|他)(?:は|では|なら|に|には|いくら|どう|ある|何|も|だと|について|になる)*"))return true;
         if (value.matches(".*(?:前|直前|さっき|先ほど)の?(?:質問|回答|話|条件|計算).*")) return true;
         if (value.matches("(?:もう)?(?:忘れた|忘れちゃった|覚えてない|忘れてる|忘れたの)")) return true;
         if(value.matches(".*(?:さっき|先ほど|直前|前)の?(?:こと|件).*(?:忘れ|覚えてない).*"))return true;

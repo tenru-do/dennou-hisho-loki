@@ -7,9 +7,9 @@ final class ConversationProgressPolicy {
  }
  static String failure(String stage,Throwable error,boolean safety,String code){
   if(error instanceof LocalConversationStop)return error.getMessage();
-  if(safety)return "安全判定で停止。このやり取りは履歴に保存しません";
+  if(safety)return ConversationFailurePolicy.detail(error,"SAFETY_STOP");
   return "停止："+ConversationFailurePolicy.stageLabel(ConversationFailurePolicy.stage(stage))+"。"
-    +ConversationFailurePolicy.detail(ConversationFailurePolicy.validCode(code)?code:"PROCESSING");
+    +ConversationFailurePolicy.detail(error,ConversationFailurePolicy.validCode(code)?code:"PROCESSING");
  }
  private ConversationProgressPolicy(){}
 }

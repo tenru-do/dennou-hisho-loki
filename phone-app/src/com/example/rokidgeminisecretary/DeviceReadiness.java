@@ -1,0 +1,9 @@
+package com.example.rokidgeminisecretary;
+import android.content.*;import android.os.*;import org.json.*;
+/** Local only, no location acquisition, route request, cleanup, or radio change. */
+final class DeviceReadiness {
+ static JSONObject snapshot(Context c,boolean nav,boolean route,long locationAt)throws Exception{int battery=-1;Intent b=c.registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));if(b!=null){int level=b.getIntExtra("level",-1),scale=b.getIntExtra("scale",0);if(level>=0&&scale>0)battery=Math.min(100,level*100/scale);}long now=System.currentTimeMillis();return new JSONObject().put("battery",battery).put("freeBytes",c.getFilesDir().getUsableSpace()).put("navigationActive",nav).put("routeReady",route).put("locationAgeMs",locationAt>0&&now>=locationAt?now-locationAt:-1).put("at",now);}
+ static JSONObject safe(JSONObject v)throws Exception{return new JSONObject().put("battery",Math.max(-1,Math.min(100,v.optInt("battery",-1)))).put("freeBytes",Math.max(-1,v.optLong("freeBytes",-1))).put("navigationActive",v.optBoolean("navigationActive")).put("routeReady",v.optBoolean("routeReady")).put("locationAgeMs",Math.max(-1,Math.min(86400000,v.optLong("locationAgeMs",-1)))).put("at",Math.max(0,v.optLong("at")));}
+ static String describe(JSONObject v,boolean fresh){String prefix=fresh?"":"最後に受信した状態（現在は未確認）\n";int battery=v.optInt("battery",-1);long free=v.optLong("freeBytes",-1),age=v.optLong("locationAgeMs",-1);return prefix+"電池："+(battery<0?"未確認":battery+"%"+(battery<30?"・出発前の充電を検討":""))+"\n空き容量："+(free<0?"未確認":String.format(java.util.Locale.JAPAN,"%.2f GiB",free/1073741824d)+(free<300000000?"・記録容量に注意":""))+"\n現在地："+(age<0?"未確認":age/1000+"秒前"+(age>90000?"・更新待ち":""))+"\n経路："+(v.optBoolean("routeReady")?"取得データあり":"未取得・確認が必要")+" / 案内："+(v.optBoolean("navigationActive")?"開始状態の記録あり":"未開始・状態未確認")+"\nチェックだけでは現在地の取得・経路検索・ナビ開始は行いません。";}
+ private DeviceReadiness(){}
+}

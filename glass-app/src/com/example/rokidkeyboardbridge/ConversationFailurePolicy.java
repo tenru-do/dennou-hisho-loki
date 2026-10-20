@@ -8,6 +8,7 @@ final class ConversationFailurePolicy {
         String transport = "";
         Throwable cause = error;
         for (int depth = 0; cause != null && depth < 8; depth++, cause = cause.getCause()) {
+            if (cause instanceof ContentRestrictionPolicy.Stop) return "UNKNOWN".equals(((ContentRestrictionPolicy.Stop)cause).category)?"MODEL_DECLINED":"SAFETY_STOP";
             if (cause instanceof ConversationAnswerGuard.Incomplete) return ((ConversationAnswerGuard.Incomplete) cause).reason;
             if (cause instanceof LocalConversationStop) return "REFERENCE_CHANGED";
             // HTTP/provider metadata is supplied separately by the activity.
@@ -40,7 +41,8 @@ final class ConversationFailurePolicy {
     static String detail(String code) {
         switch (code) {
             case "REFERENCE_CHANGED": return LocalConversationStop.message(code);
-            case "SAFETY_STOP": return "安全判定で停止しました。このやり取りは会話履歴に保存しません。";
+            case "SAFETY_STOP": return ContentRestrictionPolicy.message("回答","CONTENT")+"このやり取りは会話履歴に保存しません。";
+            case "MODEL_DECLINED": return ContentRestrictionPolicy.message("回答","UNKNOWN");
             case "TIMEOUT": return "通信の応答待ちで時間切れになりました。送信状況を確認してから再送してください。";
             case "CONNECTION": return "接続できませんでした。Wi-Fiとスマホの接続を確認してください。";
             case "INTERRUPTED": return "処理が中断しました。送信状況を確認してから操作してください。";
@@ -55,6 +57,12 @@ final class ConversationFailurePolicy {
             case "NO_ANSWER": return "Geminiから有効な回答を取得できませんでした。";
             default: return "会話の処理を完了できませんでした。依頼・転送・動作チェックと送信状況を確認してください。";
         }
+    }
+
+    static String detail(Throwable error,String code){
+        if("SAFETY_STOP".equals(code)||"MODEL_DECLINED".equals(code))
+            return ContentRestrictionPolicy.message("回答",ContentRestrictionPolicy.reason(error))+"このやり取りは会話履歴に保存しません。";
+        return detail(code);
     }
 
     static String stage(String value) {
@@ -76,7 +84,7 @@ final class ConversationFailurePolicy {
     }
 
     static boolean validCode(String code) {
-        return code != null && code.matches("REFERENCE_CHANGED|SAFETY_STOP|TIMEOUT|CONNECTION|INTERRUPTED|RATE_LIMIT|AUTHORIZATION|BILLING|MODEL_UNAVAILABLE|SERVICE_UNAVAILABLE|API_REJECTED|OUTPUT_LIMIT|INCOMPLETE_RESPONSE|NO_ANSWER|PROCESSING");
+        return code != null && code.matches("REFERENCE_CHANGED|SAFETY_STOP|MODEL_DECLINED|TIMEOUT|CONNECTION|INTERRUPTED|RATE_LIMIT|AUTHORIZATION|BILLING|MODEL_UNAVAILABLE|SERVICE_UNAVAILABLE|API_REJECTED|OUTPUT_LIMIT|INCOMPLETE_RESPONSE|NO_ANSWER|PROCESSING");
     }
 
     static JSONObject record(String code, String stage, long at) throws org.json.JSONException {

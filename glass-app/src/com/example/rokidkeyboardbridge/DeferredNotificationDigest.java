@@ -1,0 +1,12 @@
+package com.example.rokidkeyboardbridge;
+import org.json.*;import java.util.*;
+/** Fixed bound and original expiry. Questions stay pending at the sender until seen. */
+final class DeferredNotificationDigest {
+ static JSONArray alive(JSONArray rows,long now)throws Exception{JSONArray result=new JSONArray();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&CodexNotificationPolicy.fresh(row.optLong("issuedAt"),now))result.put(new JSONObject(row.toString()));}return result;}
+ static JSONArray add(JSONArray rows,String id,String message,String kind,long issued,long now)throws Exception{if(id==null||id.isEmpty()||id.length()>200||message==null||message.length()>2400||!CodexNotificationPolicy.safe(message)||!CodexNotificationPolicy.kind(kind)||!CodexNotificationPolicy.fresh(issued,now))return null;JSONArray live=alive(rows,now);for(int i=0;i<live.length();i++)if(id.equals(live.getJSONObject(i).optString("id")))return live;if(live.length()>=20)return null;live.put(new JSONObject().put("id",id).put("message",message).put("kind",kind).put("issuedAt",issued).put("read",false));return live;}
+ static boolean seen(JSONArray rows,String id){for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&id.equals(row.optString("id")))return row.optBoolean("read");}return false;}
+ static JSONArray unread(JSONArray rows,long now)throws Exception{ArrayList<JSONObject> sorted=new ArrayList<>();JSONArray live=alive(rows,now);for(int i=0;i<live.length();i++)if(!live.getJSONObject(i).optBoolean("read"))sorted.add(live.getJSONObject(i));sorted.sort((a,b)->Boolean.compare(!a.optString("kind").equals("question"),!b.optString("kind").equals("question")));return new JSONArray(sorted);}
+ static JSONArray markRead(JSONArray current,JSONArray shown,long now)throws Exception{JSONArray out=alive(current,now);Set<String> ids=new HashSet<>();for(int i=0;i<shown.length();i++)ids.add(shown.getJSONObject(i).optString("id"));for(int i=0;i<out.length();i++)if(ids.contains(out.getJSONObject(i).optString("id")))out.getJSONObject(i).put("read",true);return out;}
+ static String label(JSONArray rows,long now)throws Exception{JSONArray pending=unread(rows,now);int questions=0;for(int i=0;i<pending.length();i++)if(pending.getJSONObject(i).optString("kind").equals("question"))questions++;return pending.length()==0?"":"保留通知 "+pending.length()+"件"+(questions>0?"（確認待ち "+questions+"件・期限あり）":"");}
+ private DeferredNotificationDigest(){}
+}
