@@ -9,7 +9,7 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 
 ## セキュリティ対策版のソース
 
-現在のソースと配布APKはグラスv606・スマホv253です。Audio Relayはv20です。通知待ちによる質問受け取り、処理時間の確認、トップボタンの編集、読み上げ辞書、相談ごとの参照セット、写真の画質案内を追加しました。使い方・実測・更新手順は [v606/v253の更新](docs/releases/glass-v606.md)、検査範囲は [公開前の検査](docs/releases/glass-v606-security.md) を参照してください。
+現在のソースと配布APKはグラスv607・スマホv254です。Audio Relayはv20です。回答の冒頭表示・送信待ちのスマホ編集・待ち状況・参照セットの差分更新・スマホでの辞書編集と試聴・トップ配置プリセット・更新確認を追加しました。使い方と実測は [v607/v254](docs/releases/glass-v607.md)、確認範囲は [公開前の検査](docs/releases/glass-v607-security.md) を参照してください。前版の通知待ち・辞書・参照セット・写真の画質案内は [v606/v253](docs/releases/glass-v606.md) に記載しています。
 
 会話の途中表示・上部入力欄・BT30のSET内への移動は [v605/v252](docs/releases/glass-v605.md)、記録・保守機能は [v596/v240](docs/releases/glass-v596.md)、複数画像・動画は [添付の使い方](docs/MEDIA-ATTACHMENTS.md)、接続の対策は [SECURITY-v447.md](docs/SECURITY-v447.md) に記載しています。装着時の見え方・全機能の長期運用は未検証です。
 
@@ -25,7 +25,7 @@ Android APKの全機能移植ではありません。予定・メール・録音
 
 ## APKのダウンロード
 
-最新の配布版は [グラスv606・スマホv253のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v606) です。両APK・SHA256チェックサム・検査記録を掲載しています。対象と検査範囲は [v606の公開前検査](docs/releases/glass-v606-security.md) を確認してください。
+最新の配布版は [グラスv607・スマホv254のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v607) です。両APK・SHA256チェックサム・検査記録・本文を含まない実測を掲載しています。対象と制限は [v607の公開前検査](docs/releases/glass-v607-security.md) を確認してください。
 
 配布用APKは専用署名です。開発署名版には上書きできません。署名変更のためのアンインストールは会話・設定や復号鍵を失う場合があるため、既存利用者は現在のアプリを維持してください。検査範囲と署名は各Releaseの記録を確認してください。
 

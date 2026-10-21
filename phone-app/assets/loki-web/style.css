@@ -30,3 +30,5 @@
 #conversationPreview article{border:1px dashed #65a5c5;padding:12px;margin:8px 0}#conversationReliabilityPanel{margin:10px 0;padding:10px;border:1px solid #62798b;border-radius:8px}#conversationReliabilityPanel label{display:block;margin:8px 0}dialog[data-conversation-dialog="reliability"] label{display:block;margin:10px 0}dialog[data-conversation-dialog="reliability"] pre{white-space:pre-wrap;overflow-wrap:anywhere}
 
 #conversationToolsPanel{padding:10px;margin:10px 0;border:1px solid #62798b;border-radius:8px}#conversationToolsPanel label{display:block;margin:8px 0}dialog[data-conversation-dialog="tools"] article{margin:10px 0;padding:8px;border:1px solid #62798b}dialog[data-conversation-dialog="tools"] figure{display:inline-block;margin:8px}
+
+#latestAnswerRegion:empty{display:none}#conversationPreview article p:nth-child(2){max-height:12em;overflow:auto;overscroll-behavior:contain;white-space:pre-wrap}#answerJump{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));right:16px;z-index:25;max-width:80vw;box-shadow:0 2px 12px #0008}#answerJump[hidden]{display:none}#currentTurnStatus{white-space:pre-line}
