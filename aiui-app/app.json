@@ -1,0 +1,20 @@
+{
+  "pages": [
+    "pages/loki/index"
+  ],
+  "permissions": [
+    "RECORD_AUDIO"
+  ],
+  "window": {
+    "navigationBarTitleText": "電脳秘書ロキ",
+    "navigationBarBackgroundColor": "#000000",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#000000"
+  },
+  "name": "電脳秘書ロキ",
+  "version": "0.1.0",
+  "description": "日本語で会話・音声入力・読み上げ・ローカルメモを使う秘書",
+  "icon": "/assets/icon.png",
+  "engine": ">=0.17.0",
+  "agentPrompt": "日本語の秘書ロキ。AIUI版で対応する会話とメモを案内し、未実行の外部操作を完了と述べないでください。"
+}
