@@ -82,7 +82,7 @@ function requestWaitHint(entry,now=Date.now()){
 let currentWebTurn=null,lastHistoryPollAt=0;
 function clearCurrentWebTurn(){currentWebTurn=null;if($('currentTurnStatus'))$('currentTurnStatus').textContent='';}
 function trackCurrentWebTurn(receipt,message){
- if(receipt.tracked===true&&/^[a-f0-9]{64}$/.test(receipt.requestKey||'')){currentWebTurn={key:receipt.requestKey,message,state:'QUEUED'};renderCurrentWebTurn([],null,false);}
+ if(receipt.tracked===true&&/^[a-f0-9]{64}$/.test(receipt.requestKey||'')){currentWebTurn={key:receipt.requestKey,message,state:'QUEUED'};document.dispatchEvent(new CustomEvent('loki-request-sent',{detail:{key:receipt.requestKey}}));renderCurrentWebTurn([],null,false);}
  else clearCurrentWebTurn();
 }
 function renderCurrentWebTurn(requests,progress,fresh){
@@ -123,16 +123,16 @@ async function loadSentImageLog(){
  }finally{sentImageLogLoading=false;}
 }
 async function loadHistory(){if(!token||$('chat').hidden||historyLoading)return;historyLoading=true;const session=token;
- try{const result=await api('history');if(token!==session)return;window.lokiConversationReliability?.beforeHistory(result);showConversationRuntime(result.runtime);showImageReference(result.imageReference);if($('deliveryProgress'))$('deliveryProgress').textContent=deliveryProgressLabel(result.progress,result.progressFresh);renderCurrentWebTurn(result.requests,result.progress,result.progressFresh);window.lokiConversationUi?.history(result);window.lokiConversationReliability?.history(result);window.lokiConversationTools?.history(result);
+ try{const result=await api('history');if(token!==session)return;const position=window.lokiConversationReliability?.capturePosition();window.lokiConversationReliability?.beforeHistory(result);showConversationRuntime(result.runtime);showImageReference(result.imageReference);if($('deliveryProgress'))$('deliveryProgress').textContent=deliveryProgressLabel(result.progress,result.progressFresh);renderCurrentWebTurn(result.requests,result.progress,result.progressFresh);window.lokiConversationUi?.history(result);window.lokiConversationReliability?.history(result);window.lokiConversationTools?.history(result);
  const signature=JSON.stringify({items:result.items,requests:result.requests});const historyChanged=signature!==historySignature;historySignature=signature;
- const list=$('history'),nearEnd=list.scrollHeight-list.scrollTop-list.clientHeight<100;if(historyChanged){list.replaceChildren();
+ const list=$('history'),previousTop=list.scrollTop,nearEnd=list.scrollHeight-list.scrollTop-list.clientHeight<100;if(historyChanged){list.replaceChildren();
  if(window.lokiConversationUi)window.lokiConversationUi.renderHistory(result.items,list);else for(const entry of result.items){const div=document.createElement('div');div.className='bubble'+(entry.kind?.startsWith('ユーザー')?' user':'');const small=document.createElement('small');small.textContent=entry.kind+' · '+new Date(entry.time).toLocaleString('ja-JP');div.append(small,document.createTextNode(entry.message));list.append(div);}
- if(nearEnd)list.scrollTop=list.scrollHeight;}if(historyChanged){$('outbox').replaceChildren();loadSentImageLog().catch(()=>{});}let requestIndex=0;for(const entry of result.requests.slice(-20).reverse()){
+ if(nearEnd)list.scrollTop=list.scrollHeight;else list.scrollTop=previousTop;}if(historyChanged){$('outbox').replaceChildren();loadSentImageLog().catch(()=>{});}let requestIndex=0;for(const entry of result.requests.slice(-20).reverse()){
  const card=$('outbox').children[requestIndex++]||document.createElement('article'),p=card.querySelector('p')||document.createElement('p');const sameText=result.items.some(h=>h.kind?.startsWith('ユーザー')&&h.message===entry.message&&h.time>=entry.time);
  const labels={CREATED:'スマホで受付中',QUEUED:'グラスへ送信待ち',RECEIVED:'ID一致でグラスが受信',RUNNING:'ID一致で回答処理中',ANSWERED:'グラスで回答を表示済み',FAILED:'回答処理エラー（操作の成否は要確認）',UNCONFIRMED:'結果未確認（自動再実行なし）',STOPPED:'回答待ちを中止済み',CANCELLED:'送信前に取消済み',SUPERSEDED:'編集した依頼へ差し替え済み'};
  const reasons={REFERENCE_CHANGED:'画像参照が更新・失効したため未送信',SAFETY_STOP:'安全判定で停止',MODEL_ERROR:'回答処理エラー',RESTART:'再起動で結果確認できず',INTERRUPTED:'処理が中断',LOCAL_RESULT:'ローカル機能へ引き渡し。結果は履歴で確認'};
  p.textContent=entry.device+' · '+(entry.tracked?(labels[entry.requestState]||'状態未確認'):entry.status)+(entry.receiptReason?' ／ '+(reasons[entry.receiptReason]||'結果を確認してください'):'')+(!entry.tracked&&sameText?'（共有履歴に同文あり。今回の送達確定ではありません）':'')+requestWaitHint(entry)+' · '+entry.message;if(!p.parentElement)card.append(p);
- if(!card.querySelector('button')){const edit=document.createElement('button');edit.type='button';edit.textContent='入力欄へ戻す（自動送信なし）';edit.onclick=()=>editQueuedText(entry);card.append(edit);}if(!card.parentElement)$('outbox').append(card);}
+ if(!card.querySelector('button')){const edit=document.createElement('button');edit.type='button';edit.textContent='入力欄へ戻す（自動送信なし）';edit.onclick=()=>editQueuedText(entry);card.append(edit);}if(!card.parentElement)$('outbox').append(card);}window.lokiConversationReliability?.restorePosition(position);
  }catch(e){if(token===session)window.lokiConversationPlus?.unavailable();if(token===session)$('conversationRuntime').textContent='スマホから状態を取得できません。接続を確認してください。自動再送はしていません';throw e;}
  finally{historyLoading=false;}
 }

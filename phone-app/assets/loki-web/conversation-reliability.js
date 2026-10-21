@@ -7,7 +7,21 @@
  async function get(route,body){const session=token,epoch=sessionEpoch,result=await api(route,body);if(token!==session||epoch!==sessionEpoch)throw Error('接続が変わりました。開き直してください');return result;}
  function download(text,name,type){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  const reasons={NETWORK:'通信を完了できませんでした。接続と履歴を確認してください。',RATE_LIMIT:'APIが混雑または利用上限です。時間をおいて履歴を確認してください。',AUTH:'APIの認証・利用条件を確認してください。',MODEL_ERROR:'モデルの回答処理に失敗しました。操作の成否は履歴で確認してください。',RESTART:'再起動後の結果が未確認です。',INTERRUPTED:'処理が中断しました。結果を確認してください。',SAFETY_STOP:'安全判定で停止しました。依頼内容を見直してください。',REFERENCE_CHANGED:'画像参照が変わりました。画像を選び直してください。'};
+
+ let followId='',followAllowed=false,readingHistory=false;const firstRevealed=new Set();
+ function capturePosition(){if(!readingHistory)return null;const list=el('history'),bounds=list.getBoundingClientRect(),cards=[...list.querySelectorAll('[data-request-id]')],card=cards.find(x=>{const r=x.getBoundingClientRect();return r.bottom>Math.max(0,bounds.top)&&r.top<Math.min(innerHeight,bounds.bottom);});return {key:card?.dataset.requestId,offset:card?.getBoundingClientRect().top,listTop:list.scrollTop};}
+ function restorePosition(position){if(!position||!readingHistory)return;const list=el('history');list.scrollTop=position.listTop;if(position.key){const card=list.querySelector('[data-request-id="'+position.key+'"]');if(card){const delta=card.getBoundingClientRect().top-position.offset;if(Math.abs(delta)>1)scrollBy(0,delta);}}}
+ function readerIntent(){readingHistory=true;followAllowed=false;}
+ document.addEventListener('wheel',readerIntent,{passive:true});document.addEventListener('touchmove',readerIntent,{passive:true});document.addEventListener('keydown',e=>{if(['PageUp','PageDown','Home','End','ArrowUp','ArrowDown'].includes(e.key)&&!['TEXTAREA','INPUT'].includes(e.target.tagName))readerIntent();});
+ document.addEventListener('loki-request-sent',e=>{followId=e.detail.key;followAllowed=true;readingHistory=false;el('answerJump')?.setAttribute('hidden','');});
+ function currentArticle(){const host=el('conversationPreview');return followId?host.querySelector('[data-preview-request="'+followId+'"]'):[...host.children].filter(x=>!x.hidden).at(-1);}
+ function visibleBeginning(article){if(!article)return false;const rect=article.children[1].getBoundingClientRect();return rect.top>=0&&rect.top+Math.min(30,rect.height)<= (window.visualViewport?.height||innerHeight);}
+ function jumpToAnswer(){const article=currentArticle();if(!article)return;readingHistory=false;article.children[1].scrollTop=0;article.scrollIntoView({block:'nearest',behavior:'instant'});el('answerJump').hidden=true;}
+ const jump=el('answerJump');if(jump)jump.onclick=jumpToAnswer;
+ function updateJump(){if(jump)jump.hidden=!currentArticle()||visibleBeginning(currentArticle())||el('chat').hidden;}
+ document.addEventListener('scroll',updateJump,{passive:true,capture:true});window.addEventListener('resize',updateJump);
  function partials(data){
+  const position=capturePosition();
   const host=el('conversationPreview'),requests=data.requests||[],active=requests.filter(x=>['CREATED','QUEUED','RECEIVED','RUNNING'].includes(x.requestState));
   if(active.some(x=>![...host.children].some(article=>article.dataset.previewRequest===x.key)))completedPreviews.clear();
   for(const article of host.querySelectorAll('[data-preview-request]')){
@@ -30,12 +44,13 @@
   for(const [id,view] of views){
    let article=host.querySelector('[data-preview-request="'+id+'"]');
    if(!article){article=document.createElement('article');article.dataset.previewRequest=id;line(article,'');line(article,'').style.whiteSpace='pre-wrap';host.append(article);}
-   article.dataset.answerState=view.final?'confirmed':'partial';
+   article.dataset.answerState=view.final?'confirmed':'partial';article.hidden=!!followId&&id!==followId;
    const label=view.final?'確定した回答（全文は会話ログにも保存）':'生成中の回答（暫定・変更される場合があります）。確定した回答はログに表示します。';
-   if(article.children[0].textContent!==label)article.children[0].textContent=label;
+   const question=requests.find(x=>x.key===id)?.message||article.dataset.question;if(question)article.dataset.question=question.slice(0,70);const heading=(question?'質問：'+question.slice(0,70)+' ／ ':'')+label;if(article.children[0].textContent!==heading)article.children[0].textContent=heading;
    const text=view.text.slice(0,12000)+(view.text.length>12000?'\n（続きは会話ログで確認）':'');
    if(article.children[1].textContent!==text)article.children[1].textContent=text;
   }
+  restorePosition(position);const article=currentArticle();if(article&&followAllowed&&!readingHistory&&!el('message').value.trim()&&!firstRevealed.has(article.dataset.previewRequest)){firstRevealed.add(article.dataset.previewRequest);while(firstRevealed.size>100)firstRevealed.delete(firstRevealed.values().next().value);jumpToAnswer();}updateJump();
  }
  function beforeHistory(data){historyEpoch++;if(data.historyPage){if(data.historyPage.revision!==revision){revision=data.historyPage.revision;older=[];pageInfo=data.historyPage;}else if(!pageInfo)pageInfo=data.historyPage;const seen=new Set(),rows=[];for(const row of [...older,...data.items]){const key=JSON.stringify([row.requestId,row.kind,row.time,row.message]);if(!seen.has(key)){seen.add(key);rows.push(row);}}data.items=rows;el('conversationOlder').hidden=!pageInfo.hasMore;}else el('conversationOlder').hidden=true;latest=data;partials(data);}
  function history(data){for(const card of el('pendingTurnsList').querySelectorAll('[data-key]')){const row=(data.requests||[]).find(x=>x.key===card.dataset.key);if(!row)continue;if(['FAILED','UNCONFIRMED'].includes(row.requestState))line(card,(reasons[row.receiptReason]||'結果を確認してください。')+' 自動再送はしません。「入力欄へ戻す」から内容を見直せます。');}if(!settingsLoaded&&token){settingsLoaded=true;get('conversation-settings').then(s=>{el('conversationAnswerStyle').value=s.answerStyle;el('conversationGlassChars').value=String(s.glassChars);el('conversationStreaming').checked=s.streaming;}).catch(e=>{settingsLoaded=false;note(e.message);});} }
@@ -62,6 +77,6 @@
   }finally{setTimeout(pollPreview,active?Math.min(8000,250*2**previewFailures):1000);}
  }
  setTimeout(pollPreview,250);
- document.addEventListener('loki-session-cleared',()=>{sessionEpoch++;historyEpoch++;previewFailures=0;completedPreviews.clear();older=[];revision='';pageInfo=null;latest=null;settingsLoaded=false;el('conversationPreview').replaceChildren();for(const d of document.querySelectorAll('dialog[data-conversation-dialog="reliability"]'))d.remove();});
- window.lokiConversationReliability={beforeHistory,history,enhanceHistory};
+ document.addEventListener('loki-session-cleared',()=>{sessionEpoch++;historyEpoch++;previewFailures=0;followId='';followAllowed=false;readingHistory=false;firstRevealed.clear();if(jump)jump.hidden=true;completedPreviews.clear();older=[];revision='';pageInfo=null;latest=null;settingsLoaded=false;el('conversationPreview').replaceChildren();for(const d of document.querySelectorAll('dialog[data-conversation-dialog="reliability"]'))d.remove();});
+ window.lokiConversationReliability={beforeHistory,history,enhanceHistory,capturePosition,restorePosition};
 })();
