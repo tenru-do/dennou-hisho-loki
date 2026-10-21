@@ -1,0 +1,8 @@
+tests/
+README.md
+PORTING.md
+package.json
+package-lock.json
+node_modules/
+*.aix
+*.zip

@@ -1,0 +1,10 @@
+{
+  "name": "dennou-hisho-loki-aiui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "電脳秘書ロキのAIUI版：会話・音声・ローカルメモ",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}
