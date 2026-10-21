@@ -1,6 +1,7 @@
 package com.example.rokidgeminisecretary;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.*;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -21,6 +22,7 @@ final class ImageQuestionComposer {
  private int imageCount=1;private boolean videoAttachment;private final java.util.ArrayList<String> attachmentKinds=new java.util.ArrayList<>();private final java.util.ArrayList<byte[]> attachmentImages=new java.util.ArrayList<>();
  private long stateRevision;
  long revision(){return stateRevision;}
+ private byte[] qualityApprovedImage;
  private byte[] image;private Bitmap thumbnail;private boolean working,closed,restoringDraft;
  private String draftId=UUID.randomUUID().toString(),cameraId="",requestId="",submittedQuestion="";
  ImageQuestionComposer(Activity host,Runnable changed){
@@ -114,6 +116,10 @@ final class ImageQuestionComposer {
  boolean submit(String question,Runnable sent){
   if(working)return true;if(image==null)return false;
   if(question.length()>2400){status.setText("画像付きの質問は2400文字以内にしてください");return true;}
+  final byte[] qualityImage=image;
+  if(qualityApprovedImage!=qualityImage&&!videoAttachment){String warning=PhotoQuality.assess(thumbnail);if(!warning.isEmpty()){
+   new AlertDialog.Builder(host).setTitle("送信前の画質の目安").setMessage(warning+"\n端末内の目安です。文字の読み取り精度を保証しません。撮り直す場合は画像を外して再撮影してください。").setPositiveButton("この画像で送信",(d,w)->{if(image!=qualityImage||working)return;qualityApprovedImage=qualityImage;submit(question,sent);}).setNegativeButton("戻って確認",null).show();return true;
+  }}
   final byte[] selected=image;final int selectedCount=imageCount;final org.json.JSONArray selectedKinds=attachmentKinds.isEmpty()?null:new org.json.JSONArray(attachmentKinds);
   if(requestId.isEmpty()||!question.equals(submittedQuestion))requestId=UUID.randomUUID().toString();submittedQuestion=question;final String id=requestId;
   busy(true);status.setText("画像と質問を送信しています…");

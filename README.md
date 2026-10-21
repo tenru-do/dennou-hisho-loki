@@ -9,7 +9,9 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 
 ## セキュリティ対策版のソース
 
-現在のソースはグラスv605・スマホv252・Audio Relay v20です。会話の途中表示、質問IDとの対応、上部入力欄、記録・保守操作、BT30のSET内への移動と検証範囲は [v605/v252の更新](docs/releases/glass-v605.md) を参照してください。配布用署名の公開APKは引き続きv553/v203で、今回の端末検証には開発署名版を使用しています。v580以降の音声・会話・保存・設定・記録検索の改善と、画像アニメーション自動検品は [v596/v240の更新](docs/releases/glass-v596.md)、今回の公開前確認は [v596の検査記録](docs/releases/glass-v596-security.md) を参照してください。配布APKはv553/v203のままです。会話の継続・送信控え・受信箱・共通進行表示などは [v580/v225の更新](docs/releases/glass-v580.md)、公開前検査は [v580の検査記録](docs/releases/glass-v580-security.md) を参照してください。配布APKは引き続きv553/v203です。複数画像・動画の追加、Googleフォト画像のドラッグ取り込みは [v553/v203の更新](docs/releases/glass-v553.md) と [添付の使い方](docs/MEDIA-ATTACHMENTS.md) を参照してください。従来機能と確認範囲は [グラスv551・スマホv199](docs/releases/glass-v551.md)、公開前点検は [v551の検査記録](docs/releases/glass-v551-security.md) を参照してください。会議録音・Web操作の基礎機能は [v521/v175](docs/releases/glass-v521.md) を参照してください。全身画像・表情・呼吸動作・会話中の姿勢保持と検証範囲は [グラスv485](docs/releases/glass-v485.md) を参照してください。対策・互換性・更新手順は [SECURITY-v447.md](docs/SECURITY-v447.md)、AMBの改善と実入力検証は [v450の記録](docs/releases/v450.md)、記録写真のスマホへの全件移動・撮影情報は [v456の記録](docs/releases/v456.md) 、60枚表示・ページ内選択・全件削除は [スマホv162](docs/releases/phone-v162.md) を参照してください。接続端末への更新とTLS・写真移行・AMBの限定的な実入力試験は実施済みです。全場面での反応品質・装着時の見え方は未確認です。配布APKは専用鍵で署名しています。以下の旧APKは今回の対策を含みません。
+現在のソースと配布APKはグラスv606・スマホv253です。Audio Relayはv20です。通知待ちによる質問受け取り、処理時間の確認、トップボタンの編集、読み上げ辞書、相談ごとの参照セット、写真の画質案内を追加しました。使い方・実測・更新手順は [v606/v253の更新](docs/releases/glass-v606.md)、検査範囲は [公開前の検査](docs/releases/glass-v606-security.md) を参照してください。
+
+会話の途中表示・上部入力欄・BT30のSET内への移動は [v605/v252](docs/releases/glass-v605.md)、記録・保守機能は [v596/v240](docs/releases/glass-v596.md)、複数画像・動画は [添付の使い方](docs/MEDIA-ATTACHMENTS.md)、接続の対策は [SECURITY-v447.md](docs/SECURITY-v447.md) に記載しています。装着時の見え方・全機能の長期運用は未検証です。
 
 起動時の軽量化・KEEPの5秒固定撮影と即時停止は [グラスv458](docs/releases/glass-v458.md)、質問欄の上部配置とQR接続は [スマホv165](docs/releases/phone-v165.md) を参照してください。グラスv458は実機11項目を確認し、停止操作の処理は8msでした。
 
@@ -23,7 +25,7 @@ Android APKの全機能移植ではありません。予定・メール・録音
 
 ## APKのダウンロード
 
-最新の配布版は [グラスv553・スマホv203のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v553) です。両APK・SHA256チェックサム・検査記録を掲載しています。対象と検査範囲は [v553の公開前検査](docs/releases/glass-v553-security.md) を確認してください。v521のReleaseは以前の下書きのままで、最新版ではありません。
+最新の配布版は [グラスv606・スマホv253のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v606) です。両APK・SHA256チェックサム・検査記録を掲載しています。対象と検査範囲は [v606の公開前検査](docs/releases/glass-v606-security.md) を確認してください。
 
 配布用APKは専用署名です。開発署名版には上書きできません。署名変更のためのアンインストールは会話・設定や復号鍵を失う場合があるため、既存利用者は現在のアプリを維持してください。検査範囲と署名は各Releaseの記録を確認してください。
 

@@ -577,6 +577,7 @@ public final class MainActivity extends Activity {
         inboxButton.setText("秘書の受信箱（保留案件・引き継ぎ）");
         inboxButton.setOnClickListener(view -> new SecretaryInboxDialog(this).show());
         daily.addView(inboxButton, new LinearLayout.LayoutParams(-1,-2));
+        Button referenceSets=new Button(this);referenceSets.setText("仕事・相談ごとの参照セット");referenceSets.setOnClickListener(v->{final String before=commandInput.getText().toString();ReferenceSetsDialog.show(this,text->{Runnable restore=()->{String reason=DraftRestorePolicy.reason(before,commandInput.getText().toString(),imageComposer.attached(),imageComposer.busy());if(!reason.isEmpty()){android.widget.Toast.makeText(this,reason,1).show();return;}commandInput.setText(text);commandInput.requestFocus();};if(!before.isEmpty())new AlertDialog.Builder(this).setMessage("入力中の文章を参照セットの下書きへ置き換えますか？").setPositiveButton("置き換える",(d,w)->restore.run()).setNegativeButton("戻る",null).show();else restore.run();});});daily.addView(referenceSets,new LinearLayout.LayoutParams(-1,-2));
         Button workspace=new Button(this);workspace.setText("会話の参照先・予約候補・認識文");workspace.setOnClickListener(v->new ConversationWorkspaceDialog(this).show());daily.addView(workspace,new LinearLayout.LayoutParams(-1,-2));Button meetingHealth=new Button(this);meetingHealth.setText("録音の進捗・保存確認");meetingHealth.setOnClickListener(v->MeetingHealthDialog.show(this));daily.addView(meetingHealth,new LinearLayout.LayoutParams(-1,-2));Button quiet=new Button(this);quiet.setText("グラスの静かな時間");quiet.setOnClickListener(v->{JSONObject quietState=ConversationWorkspace.snapshot(this);if(!quietState.optBoolean("connected")){updateStatus("グラスの状態を確認できません","接続して開き直してください");return;}QuietHoursDialog.show(this,quietState.optJSONObject("quiet")==null?new JSONObject():quietState.optJSONObject("quiet"),config->{try{ConversationWorkspace.submit(this,new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("action","quiet_config").put("baseRevision",config.getLong("baseRevision")).put("config",QuietHoursPolicy.checked(config)));updateStatus("静かな時間の設定を送信待ち","反映後、開き直して確認してください");}catch(Exception e){throw new IllegalArgumentException("設定を送れません。接続・状態を確認してください");}});});daily.addView(quiet,new LinearLayout.LayoutParams(-1,-2));Button records=new Button(this);records.setText("記録の横断検索・読み取り訂正");records.setOnClickListener(v->UnifiedRecordsDialog.show(this));daily.addView(records,new LinearLayout.LayoutParams(-1,-2));Button departure=new Button(this);departure.setText("出発前チェック（端末内の状態）");departure.setOnClickListener(v->DepartureDialog.show(this));daily.addView(departure,new LinearLayout.LayoutParams(-1,-2));Button tuning=new Button(this);tuning.setText("このスマホの音量・負荷・設定取り消し");tuning.setOnClickListener(v->DeviceTuning.show(this,()->refreshLogs()));daily.addView(tuning,new LinearLayout.LayoutParams(-1,-2));Button maintenance=new Button(this);maintenance.setText("日常操作・更新前チェック・バックアップ");maintenance.setOnClickListener(v->new MaintenanceDialog(this).show());daily.addView(maintenance,new LinearLayout.LayoutParams(-1,-2));Button quickMaintenance=new Button(this);quickMaintenance.setText("よく使う操作を開く");quickMaintenance.setOnClickListener(v->new MaintenanceDialog(this).shortcut());daily.addView(quickMaintenance,new LinearLayout.LayoutParams(-1,-2));Button reliability=new Button(this);reliability.setText("保存・復元・中止・端末権限・日次振り返り");reliability.setOnClickListener(v->new ReliabilityDialog(this).show());daily.addView(reliability,new LinearLayout.LayoutParams(-1,-2));Button assistantReview=new Button(this);assistantReview.setText("ロキの状態・回答診断・メモ・会話の続き");assistantReview.setOnClickListener(v->AssistantReviewDialog.show(this));daily.addView(assistantReview,new LinearLayout.LayoutParams(-1,-2));Button operations=new Button(this);operations.setText("依頼・転送・動作チェック");operations.setOnClickListener(v->OperationOverviewDialog.show(this));daily.addView(operations,new LinearLayout.LayoutParams(-1,-2));
         Button memoryManager = new Button(this);
         memoryManager.setText("記憶マネージャー（メモ一覧）");
@@ -3269,6 +3270,13 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket, 200, "{\"ok\":true,\"pending\":true}");
                 return;
             }
+            if(request.startsWith("GET /command_notice ")){
+                long seen=CommandNotice.revision();boolean queued;
+                synchronized(MainActivity.class){queued=!readPendingCommandsLocked(getPreferences()).isEmpty();}
+                if(!queued)CommandNotice.await(seen);
+                synchronized(MainActivity.class){queued=!readPendingCommandsLocked(getPreferences()).isEmpty();}
+                writeJsonResponse(socket,200,new JSONObject().put("queued",queued).toString());return;
+            }
             String body = today ? buildTodayJson().toString()
                     : schedule ? buildScheduleJson(parseIntQuery(request, "offset", 0),
                             parseIntQuery(request, "days", 1),
@@ -4259,7 +4267,7 @@ public final class MainActivity extends Activity {
     private static boolean commitTrackedQueue(SharedPreferences p,ArrayList<String> queue){
         JSONArray a=new JSONArray();for(String text:queue)a.put(text);String head=queue.isEmpty()?"":queue.get(0);
         if(!p.edit().putString(KEY_PENDING_COMMAND_QUEUE,a.toString()).putString(KEY_PENDING_COMMAND,head).commit())return false;
-        pendingCommand=head;return true;
+        pendingCommand=head;CommandNotice.changed();return true;
     }
 
     static boolean queueBridgeCommand(Context context, String rawCommand, boolean replacePending) {
@@ -4280,6 +4288,7 @@ public final class MainActivity extends Activity {
             queue.add(command);
             persistPendingCommandsLocked(preferences, queue);
         }
+        CommandNotice.changed();
         Log.i(TAG, "bridge command appended chars=" + command.length());
         return true;
     }
