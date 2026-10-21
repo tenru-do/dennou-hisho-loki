@@ -16,11 +16,11 @@ final class SecretaryInbox {
   return new JSONArray(new String(DeviceSecrets.photos().decrypt(b),StandardCharsets.UTF_8));
  }
  private static void write(Context c,JSONArray all)throws Exception {
-  byte[] b=DeviceSecrets.photos().encrypt(all.toString().getBytes(StandardCharsets.UTF_8));
+  byte[] plain=all.toString().getBytes(StandardCharsets.UTF_8);if(plain.length>3900000)throw new IOException("受信箱の保存上限です。元の記録は保持しています");byte[] b=DeviceSecrets.photos().encrypt(plain);
   AtomicFile f=file(c);FileOutputStream out=null;
   try{out=f.startWrite();out.write(b);f.finishWrite(out);}catch(Exception e){if(out!=null)f.failWrite(out);throw e;}
  }
- private static JSONObject find(JSONArray a,String id)throws Exception {for(int i=0;i<a.length();i++)if(id.equals(a.getJSONObject(i).optString("id")))return a.getJSONObject(i);throw new IOException("対象の案件はありません。受信箱を開き直してください。");}
+ private static JSONObject find(JSONArray a,String id)throws Exception {for(int i=0;i<a.length();i++)if(id.equals(a.getJSONObject(i).optString("id"))&&a.getJSONObject(i).optLong("deletedAt")==0)return a.getJSONObject(i);throw new IOException("対象の案件はありません。受信箱を開き直してください。");}
  static String display(JSONObject card){
   StringBuilder out=new StringBuilder("保留した依頼：").append(card.optString("request")).append("\n状態：").append(card.optString("stateLabel",card.optString("state"))).append("\n\n保存時点の会話：\n");
   for(String key:new String[]{"subject","date_text","conditions"})if(!card.optString(key).isEmpty())out.append(key.equals("subject")?"対象：":key.equals("date_text")?"日程：":"条件：").append(card.optString(key)).append("\n");
@@ -31,7 +31,7 @@ final class SecretaryInbox {
  }
  static synchronized JSONObject list(Context c)throws Exception {
   JSONArray all=read(c),items=new JSONArray();
-  for(int i=all.length()-1;i>=0;i--){JSONObject j=SecretaryInboxPresentation.decorate(all.getJSONObject(i),System.currentTimeMillis());j.remove("reference");j.remove("review");j.remove("reviewToken");j.remove("completedToken");j.remove("key");items.put(j);}
+  for(int i=all.length()-1;i>=0;i--){if(all.getJSONObject(i).optLong("deletedAt")>0)continue;JSONObject j=SecretaryInboxPresentation.decorate(all.getJSONObject(i),System.currentTimeMillis());j.remove("reference");j.remove("review");j.remove("reviewToken");j.remove("completedToken");j.remove("key");items.put(j);}
   return new JSONObject().put("ok",true).put("items",items);
  }
  static synchronized JSONObject get(Context c,String id)throws Exception {JSONObject j=SecretaryInboxPresentation.decorate(find(read(c),id),System.currentTimeMillis());j.remove("review");j.remove("reviewToken");j.remove("completedToken");j.remove("key");return new JSONObject().put("ok",true).put("item",j);}
@@ -42,7 +42,7 @@ final class SecretaryInbox {
   String key=DeviceSecrets.auditHash(requestId);
   JSONArray all=read(c);
   for(int i=0;i<all.length();i++){JSONObject j=all.getJSONObject(i);if(key.equals(j.optString("key")))return new JSONObject().put("ok",true).put("item",j).put("duplicate",true);}
-  if(all.length()>=MAX)throw new IOException("受信箱は100件までです。不要な案件を削除してください。");
+  if(list(c).getJSONArray("items").length()>=MAX||all.length()>=200)throw new IOException("受信箱は100件までです。不要な案件を削除してください。");
   JSONArray urls=new JSONArray();java.util.regex.Matcher m=java.util.regex.Pattern.compile("https?://[^\\s<>\"\\\\]+").matcher(reference);
   while(m.find()&&urls.length()<12)urls.put(m.group());
   JSONObject j=new JSONObject().put("id",UUID.randomUUID().toString()).put("key",key).put("title",request.length()>160?request.substring(0,160):request)
@@ -57,22 +57,28 @@ final class SecretaryInbox {
   }
  }
  static synchronized JSONObject action(Context c,JSONObject input)throws Exception {
-  JSONArray all=read(c);JSONObject j=find(all,input.getString("id"));
+  JSONArray all=read(c);JSONObject j=null;for(int i=0;i<all.length();i++)if(input.getString("id").equals(all.getJSONObject(i).getString("id")))j=all.getJSONObject(i);if(j==null)throw new IOException("案件がありません");
+  if(j.optLong("deletedAt")>0&&!input.getString("action").matches("restore|purge"))throw new IOException("削除済みです。ごみ箱から復元してください");
   if(j.optInt("revision")!=input.getInt("revision"))throw new IOException("案件が更新されています。受信箱を開き直してください。");
   String op=input.getString("action");
-  if("delete".equals(op)){JSONArray next=new JSONArray();for(int i=0;i<all.length();i++)if(!input.getString("id").equals(all.getJSONObject(i).optString("id")))next.put(all.get(i));write(c,next);}
+  if("delete".equals(op)){ReviewStore.history(j);j.put("deletedAt",System.currentTimeMillis()).put("revision",j.getInt("revision")+1);j.remove("review");j.remove("reviewToken");write(c,all);}
+  else if("restore".equals(op)){if(j.optLong("deletedAt")==0||list(c).getJSONArray("items").length()>=100)throw new IOException("復元対象・件数を確認してください");j.remove("deletedAt");if(j.optString("state").equals("executing"))j.put("state","unknown");j.put("revision",j.getInt("revision")+1);write(c,all);}
+  else if("purge".equals(op)){if(j.optLong("deletedAt")==0)throw new IOException("ごみ箱の案件だけ完全削除できます");JSONArray next=new JSONArray();for(int i=0;i<all.length();i++)if(!input.getString("id").equals(all.getJSONObject(i).getString("id")))next.put(all.get(i));write(c,next);}
+  else if("complete_manual".equals(op)){if(!"pending".equals(j.optString("state")))throw new IOException("保留中の案件だけを手動完了できます");j.put("state","cancelled").put("manualCompleted",true).put("revision",j.getInt("revision")+1);j.remove("review");j.remove("reviewToken");write(c,all);}
   else if("cancel".equals(op)){if(!"pending".equals(j.optString("state")))throw new IOException("実行中・結果未確認・完了の案件は保留へ戻せません。");j.put("state","cancelled").put("revision",j.getInt("revision")+1);j.remove("review");j.remove("reviewToken");write(c,all);}
   else if("update".equals(op)){
    if(!"pending".equals(j.optString("state")))throw new IOException("保留中の案件だけを変更できます。");
-   String change=input.getString("change").trim();if(change.isEmpty()||change.length()>1000)throw new IOException("変更内容を確認してください。");
+   ReviewStore.history(j);String change=input.getString("change").trim();if(change.isEmpty()||change.length()>1000)throw new IOException("変更内容を確認してください。");
    JSONArray updates=j.optJSONArray("updates");if(updates==null)updates=new JSONArray();if(updates.length()>=10)throw new IOException("この案件の変更は10回までです。内容を確認して整理してください。");
    JSONObject update=new JSONObject().put("at",System.currentTimeMillis()).put("request",change);
    if(input.optJSONObject("metadata")!=null){metadata(j,input.getJSONObject("metadata"));update.put("details",input.getJSONObject("metadata"));}
    updates.put(update);j.put("updates",updates).put("revision",j.getInt("revision")+1).put("updatedAt",System.currentTimeMillis());j.remove("review");j.remove("reviewToken");write(c,all);
   }
+  else if("edit-fields".equals(op)||"undo-edit".equals(op)){if(!"pending".equals(j.optString("state")))throw new IOException("保留中の案件の本文だけ編集できます");JSONObject value=input;if(op.equals("undo-edit")){JSONArray history=j.optJSONArray("history");int index=input.getInt("index");if(history==null||index<0||index>=history.length())throw new IOException("履歴がありません");value=history.getJSONObject(index);}String request=value.getString("request").trim(),title=value.getString("title").trim();if(request.isEmpty()||request.length()>2400||title.isEmpty()||title.length()>160)throw new IOException("案件の本文・件名を確認してください");ReviewStore.history(j);j.put("request",request).put("title",title);for(String field:new String[]{"conditions","date_text"})if(value.has(field))j.put(field,value.getString(field));j.put("revision",j.getInt("revision")+1).put("updatedAt",System.currentTimeMillis());j.remove("review");j.remove("reviewToken");write(c,all);}
   else throw new IOException("この操作は使えません。");
   return new JSONObject().put("ok",true);
  }
+ static synchronized JSONArray trash(Context c)throws Exception{JSONArray all=read(c),out=new JSONArray();for(int i=0;i<all.length();i++){JSONObject row=all.getJSONObject(i);if(row.optLong("deletedAt")>0)out.put(new JSONObject().put("id",row.getString("id")).put("revision",row.getInt("revision")).put("title",row.optString("title")).put("request",row.optString("request")).put("deletedAt",row.optLong("deletedAt")));}return out;}
  static synchronized JSONObject review(Context c,JSONObject input)throws Exception {
   JSONArray all=read(c);JSONObject j=find(all,input.getString("id"));
   if(!"pending".equals(j.optString("state"))||j.getInt("revision")!=input.getInt("revision"))throw new IOException("この案件は更新済みか、処理済みです。");

@@ -13,7 +13,8 @@ final class MeetingTransfer {
         for(File folder:sessions){File manifest=new File(folder,"session.json");if(!manifest.isFile())continue;
             JSONObject meta=new JSONObject(new String(Files.readAllBytes(manifest.toPath()),java.nio.charset.StandardCharsets.UTF_8));if(!"stopped".equals(meta.optString("state")))continue;
             JSONArray parts=meta.getJSONArray("parts");
-            for(int i=0;i<parts.length();i++){JSONObject p=parts.getJSONObject(i);byte[] audio=DeviceSecrets.photos().decrypt(Files.readAllBytes(new File(folder,p.getString("file")).toPath()));
+            JSONObject inventory=new JSONObject(post.send("request="+java.net.URLEncoder.encode(new JSONObject().put("id",meta.getString("id")).put("check",true).put("parts",parts).toString(),"UTF-8")));if(!inventory.optBoolean("ok"))throw new IOException("保存区間を照合できません");java.util.HashSet<Integer> present=new java.util.HashSet<>();JSONArray confirmed=inventory.optJSONArray("present");for(int j=0;confirmed!=null&&j<confirmed.length();j++)present.add(confirmed.getInt(j));
+            for(int i=0;i<parts.length();i++){if(present.contains(i)){done++;progress.update("RUNNING",expected,count,units,done);continue;}JSONObject p=parts.getJSONObject(i);byte[] audio=DeviceSecrets.photos().decrypt(Files.readAllBytes(new File(folder,p.getString("file")).toPath()));
                 if(!MeetingAudioArchive.hash(audio).equals(p.getString("sha")))throw new IOException("録音ファイルのハッシュ不一致");
                 JSONObject packet=new JSONObject().put("id",meta.getString("id")).put("index",i).put("sha",p.getString("sha"))
                         .put("encoding","base64url").put("data",android.util.Base64.encodeToString(audio,android.util.Base64.NO_WRAP|android.util.Base64.URL_SAFE));

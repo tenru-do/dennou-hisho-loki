@@ -1,0 +1,10 @@
+package com.example.rokidgeminisecretary;
+import org.json.*;import java.util.*;
+final class ExperiencePolicy {
+ static double similarity(String a,String b){a=RecordSearchPolicy.normalized(a);b=RecordSearchPolicy.normalized(b);if(a.equals(b))return 1;if(a.length()<8||b.length()<8||a.length()>2400||b.length()>2400)return 0;Set<String> x=grams(a),y=grams(b),union=new HashSet<>(x);union.addAll(y);Set<String> common=new HashSet<>(x);common.retainAll(y);return union.isEmpty()?0:(double)common.size()/union.size();}
+ static Set<String> grams(String s){Set<String> out=new HashSet<>();for(int i=0;i<s.length()-1;i++)out.add(s.substring(i,i+2));return out;}
+ static boolean terminal(String p){return p.matches("COMPLETED|PARTIAL|FAILED|INTERRUPTED|REJECTED|EXPIRED");}
+ static String transferLabel(String p){switch(p){case "ACCEPTED":return "グラス受付";case "RUNNING":return "転送中";case "COMPLETED":return "転送処理完了・保存件数を確認";case "PARTIAL":return "一部の保存が未確認";case "FAILED":return "転送失敗";case "REJECTED":return "グラスで実行できませんでした";case "INTERRUPTED":return "グラス再起動等で結果未確認";case "EXPIRED":return "グラス受付前に期限切れ";default:return "結果未確認";}}
+ static JSONArray settings(String query)throws Exception{String[][] catalog={{"volume","音量・場面別プリセット","音 声 ボリューム 音量 会議 外出 自宅"},{"notices","通知まとめ","通知 メール 既読"},{"display","文字・コントラスト・ショートカット","文字 見やすさ 大きさ 表示 ショートカット"},{"backup","バックアップ・復元","バックアップ 復元 暗号 パスフレーズ"},{"transfer","転送予約","転送 充電 Wi-Fi 通信 写真 録音"},{"capacity","容量・保存期間","保存 空き容量 整理 ごみ箱 期間"},{"connections","接続診断","接続 Bluetooth 回線 Wi-Fi 診断"},{"web","Web接続の権限","Web 共有 閲覧 権限 失効"},{"memory","記憶の出典・見直し","記憶 出典 見直し 訂正"},{"advanced","既存の詳細設定","API キー ナビ 静かな時間 TOPIC テザリング"}};JSONArray rows=new JSONArray();if(query==null||query.length()>160)throw new IllegalArgumentException("設定の検索語を確認してください");for(String[] item:catalog)if(query.trim().isEmpty()||RecordSearchPolicy.matches(item[1]+" "+item[2],query))rows.put(new JSONObject().put("route",item[0]).put("title",item[1]));return rows;}
+ private ExperiencePolicy(){}
+}

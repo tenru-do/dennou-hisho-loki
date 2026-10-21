@@ -13,7 +13,7 @@ final class SecretaryInboxDialog {
  void open(String id){new Thread(()->{try{JSONObject j=SecretaryInbox.get(owner,id).getJSONObject("item");
   owner.runOnUiThread(()->{AlertDialog.Builder b=new AlertDialog.Builder(owner).setTitle("引き継ぎカード")
    .setMessage(SecretaryInbox.display(j));
-   b.setNegativeButton("閉じる",null).setNeutralButton("整理",(d,n)->new AlertDialog.Builder(owner).setTitle("案件の整理").setItems("pending".equals(j.optString("state"))?new String[]{"保留を取り消す","この案件を削除"}:new String[]{"この案件を削除"},(q,k)->new AlertDialog.Builder(owner).setTitle(k==0&&"pending".equals(j.optString("state"))?"保留を取り消しますか？":"案件を削除しますか？").setMessage("登録済みのカレンダー予定は削除しません。").setNegativeButton("やめる",null).setPositiveButton("実行",(v,z)->change(j,k==0&&"pending".equals(j.optString("state"))?"cancel":"delete")).show()).show());
+   b.setNegativeButton("閉じる",null).setNeutralButton("整理",(d,n)->new AlertDialog.Builder(owner).setTitle("案件の整理").setItems("pending".equals(j.optString("state"))?new String[]{"保留を取り消す","この案件を削除","手動で完了にする"}:new String[]{"この案件を削除"},(q,k)->new AlertDialog.Builder(owner).setTitle(k==2?"予定登録とは別に手動完了にしますか？":k==0&&"pending".equals(j.optString("state"))?"保留を取り消しますか？":"案件を削除しますか？").setMessage("登録済みのカレンダー予定は削除しません。").setNegativeButton("やめる",null).setPositiveButton("実行",(v,z)->change(j,k==2?"complete_manual":k==0&&"pending".equals(j.optString("state"))?"cancel":"delete")).show()).show());
    if("pending".equals(j.optString("state")))b.setPositiveButton("会話欄で確認する",(d,n)->owner.composeInboxResume(id));
    b.show();});
  }catch(Exception e){error("案件を開けませんでした。");}},"LokiInboxRead").start();}

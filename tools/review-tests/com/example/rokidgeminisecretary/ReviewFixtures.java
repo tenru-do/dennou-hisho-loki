@@ -1,0 +1,7 @@
+package com.example.rokidgeminisecretary;
+import android.content.*;import org.json.*;import java.io.*;import java.nio.file.*;import java.nio.charset.StandardCharsets;
+class MainActivity extends Context {JSONArray conversations=new JSONArray();MainActivity(File f){super(f);}JSONArray localRecordConversations(){return conversations;}}
+class ConversationWorkspace {static JSONObject read(Context c,String name)throws Exception{File f=new File(c.getFilesDir(),name+".gcm");if(!f.isFile())throw new FileNotFoundException();return new JSONObject(new String(DeviceSecrets.photos().decrypt(Files.readAllBytes(f.toPath())),StandardCharsets.UTF_8));}static void write(Context c,String name,JSONObject v)throws Exception{Files.write(new File(c.getFilesDir(),name+".gcm").toPath(),DeviceSecrets.photos().encrypt(v.toString().getBytes(StandardCharsets.UTF_8)));}}
+class RecorderPhotoStore {static String hash(byte[] b)throws Exception{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(b));}}
+class ImageReferenceStore {static JSONObject view(Context c){return new JSONObject();}}
+class MeetingAudioStore {static JSONObject meta(File f)throws Exception{return new JSONObject(Files.readString(new File(f,"session.json").toPath()));}static JSONArray list(Context c){return new JSONArray();}static File folder(Context c,String id)throws Exception{if(!id.matches("[0-9]{13}-[a-f0-9-]{36}"))throw new IOException("invalid meeting");File f=new File(c.getFilesDir(),id);f.mkdirs();return f;}}
