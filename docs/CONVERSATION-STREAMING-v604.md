@@ -1,0 +1,11 @@
+# Streaming request validation (v603 candidate, included in v604)
+
+2026-10-21. Human explicitly authorized using the existing API key from the private device backup for exactly two synthetic greeting requests to Google Gemini. No user history or photographs were sent. Credentials were not printed. Automatic retries: zero.
+
+Reviewed change: the protected postGeminiJson range selects SSE for the exact active tracked normal Web request and calls the candidate production buildConversationRequest method. Persona and existing runtime-context generation remain unchanged. The new presentation rule selects short or detailed responses. Stream chunks remain provisional; function-call parts and final metadata are retained, thought parts are omitted, interrupted streams are not completed answers, and prompt blocking remains distinguishable.
+
+Permission-free isolated Android tests captured the complete production request envelopes for both styles with synthetic input, empty isolated shared memory and tools absent. Candidate classes passed 501 checks, including CRLF-capable Java line reading, incomplete streams, thought exclusion, function parts, prompt safety feedback and request-ID state isolation. No real app Activity/service was started by the diagnostic.
+
+Provider: Gemini 2.5 Flash SSE. Both authorized requests returned HTTP 200. The PC verifier mishandled CRLF delimiters on the first (short) response before retaining it, so its finish reason and content were not verified. It was not repeated. The second (detailed) response was retained and parsed after CRLF normalization: nonempty text, finishReason STOP, one SSE event, 2.64 seconds. This does not demonstrate an incremental time-to-first-token improvement or verify completion of both styles. Java's BufferedReader.readLine already handles CRLF; that parser's regression checks are separate from the PC verification bug.
+
+The approved hash changes only the protected postGeminiJson range, which is byte-for-byte the range captured in the candidate review record before provider testing. No other protected section or persona hash is refreshed. Installation and normal conversation testing remain separate release steps. The additional v604 templates/drafts/search/comparison/playback/topic controls do not alter the protected provider payload range.

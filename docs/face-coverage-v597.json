@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "reviewed": "2026-10-20",
+  "basis": "Manual source pixel review; coordinates relative to the existing asset crop. Artwork unchanged. Closed/occluded eyes retain their source shape; speech uses existing lower-lip mesh, not a painted aperture. Device render/wearing are separate validation.",
+  "poses": [
+    {
+      "pose": 237,
+      "sourceCropSize": [
+        257,
+        618
+      ],
+      "landmarks": [
+        257,
+        618,
+        81,
+        118,
+        0,
+        0,
+        0,
+        0,
+        112,
+        112,
+        12,
+        -18,
+        1,
+        0,
+        103,
+        142,
+        19,
+        -14,
+        0.5
+      ],
+      "sourceCropPngSha256": "54e96842dcd1cc9c91e16d34c80f06a65921bcc0b78714420e0b5f627626fd0c",
+      "leftEyeOccluded": true,
+      "eyesClosed": true
+    },
+    {
+      "pose": 247,
+      "sourceCropSize": [
+        222,
+        720
+      ],
+      "landmarks": [
+        222,
+        720,
+        92,
+        86,
+        12,
+        9,
+        1,
+        0,
+        126,
+        91,
+        12,
+        -5,
+        1,
+        0,
+        110,
+        111,
+        20,
+        15,
+        0.5
+      ],
+      "sourceCropPngSha256": "df2c45101ee01456e31ce46ce6b10071aa427755c3c2d715427ceafb8aa127dd",
+      "leftEyeOccluded": false,
+      "eyesClosed": true
+    },
+    {
+      "pose": 425,
+      "sourceCropSize": [
+        325,
+        502
+      ],
+      "landmarks": [
+        325,
+        502,
+        160,
+        120,
+        14,
+        7,
+        1,
+        0,
+        196,
+        114,
+        13,
+        -18,
+        1,
+        0,
+        179,
+        142,
+        20,
+        -14,
+        0.5
+      ],
+      "sourceCropPngSha256": "b19f464c9a246599849f777efe04365d92b5e9853e42979f2c5ce51c2e185569",
+      "leftEyeOccluded": false,
+      "eyesClosed": true
+    },
+    {
+      "pose": 430,
+      "sourceCropSize": [
+        309,
+        495
+      ],
+      "landmarks": [
+        309,
+        495,
+        160,
+        117,
+        14,
+        7,
+        1,
+        0,
+        195,
+        113,
+        13,
+        -18,
+        1,
+        0,
+        179,
+        141,
+        20,
+        -15,
+        0.5
+      ],
+      "sourceCropPngSha256": "127dff432fd033193e73c4ae9069f7bfa61ed829060f04eec247528ced809ee4",
+      "leftEyeOccluded": false,
+      "eyesClosed": true
+    }
+  ]
+}

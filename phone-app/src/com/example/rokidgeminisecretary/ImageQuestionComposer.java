@@ -109,6 +109,8 @@ final class ImageQuestionComposer {
  }
  void clear(){if(working)return;stateRevision++;image=null;imageCount=1;attachmentImages.clear();attachmentKinds.clear();videoAttachment=false;requestId="";submittedQuestion="";preview.setImageDrawable(null);if(thumbnail!=null){thumbnail.recycle();thumbnail=null;}
   attachment.setVisibility(View.GONE);try{ImageDraftStore.delete(draft());}catch(Exception ignored){}status.setText("画像・動画は合計6件（動画3本まで、各2分・50MB、8場面・音声なし）。Googleフォトは写真選択のクラウド設定または共有から");update();}
+ int reviewBytes(){return image==null?0:image.length;}
+ int reviewImageCount(){return image==null?0:imageCount;}
  boolean submit(String question,Runnable sent){
   if(working)return true;if(image==null)return false;
   if(question.length()>2400){status.setText("画像付きの質問は2400文字以内にしてください");return true;}

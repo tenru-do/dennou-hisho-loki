@@ -11,6 +11,7 @@ final class RecorderPhotoStore {
  }
  static JSONObject metadata(File photo)throws Exception{File meta=new File(photo.getParentFile(),photo.getName().replace(".gcm",".meta.gcm"));if(!meta.exists())return new JSONObject().put("available",false);return new JSONObject(new String(read(meta),java.nio.charset.StandardCharsets.UTF_8));}
  static synchronized JSONObject accept(android.content.Context c,JSONObject j)throws Exception{
+  if(j.optBoolean("check"))return VerifiedStorage.checkPhoto(c,j);
   String id=j.getString("id"),sha=j.getString("sha");int offset=j.getInt("offset"),total=j.getInt("total");
   if(!id.matches("[0-9]{13}-[a-f0-9-]{36}")||!sha.matches("[a-f0-9]{64}")||total<4||total>8000000||offset<0||offset>=total||offset%131072!=0)throw new IOException("invalid photo metadata");
   File root=root(c),target=new File(root,id+".gcm");if(c.getSharedPreferences("recorder_photo_deletions",0).getBoolean(id,false))return new JSONObject().put("ok",true).put("complete",true).put("deleted",true).put("id",id).put("sha",sha).put("total",total);
@@ -30,6 +31,7 @@ final class RecorderPhotoStore {
  }
  static JSONObject receipt(File target,String id,String sha,int total)throws Exception{
   byte[] stored=read(target);if(stored.length!=total||!hash(stored).equals(sha))throw new IOException("stored photo verification failed");metadata(target);
+  VerifiedStorage.recordPhoto(target,id,sha,total);
   return new JSONObject().put("ok",true).put("complete",true).put("stored",true).put("id",id).put("sha",sha).put("total",total);
  }
  static synchronized void delete(android.content.Context context,File photo)throws Exception{

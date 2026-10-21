@@ -1,0 +1,1 @@
+package com.example.rokidgeminisecretary;class RecorderPhotoStore {static String hash(byte[] bytes)throws Exception{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));}}

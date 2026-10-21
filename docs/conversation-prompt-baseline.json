@@ -92,9 +92,10 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
-      "sha256": "65cfc47cdda058ad300ede24c3750b1d72d8265542207a01e7b7bc0dab9a796b",
+      "sha256": "3abb71be404aafbddbd1a72b22fcf46eca63052d10498a82b252334594193fb4",
       "start": "    private String postGeminiJson(",
-      "end": "    private int scheduleDisplayLimit("
+      "end": "    private int scheduleDisplayLimit(",
+      "validation": "docs/CONVERSATION-STREAMING-v604.md; isolated Android 501 checks; complete candidate buildConversationRequest synthetic captures for short/detailed; authorized Google Gemini SSE 2 requests HTTP200; detailed STOP verified, short PC CRLF parsing failed and was not repeated."
     },
     {
       "app": "phone",
@@ -163,6 +164,14 @@
       "scope": "Require STOP before any normal-text function execution/completion; encrypted bounded quoted corrections only inside continuing reference_context. Fixed persona and runtime instructions unchanged.",
       "providerEvidence": "Private local outputs/improvements-v580/provider-results.json: 3/3 STOP on staged actual Main compact builder with normal custom settings and completion rules, synthetic history only, tools/dynamic external memory/media disabled. Explicit correction remembered and excluded across a new topic. No retries; original history unchanged.",
       "providerVerified": true
+    },
+    {
+      "version": 604,
+      "reviewed": "2026-10-21",
+      "scope": "postGeminiJson streaming transport and explicit Web answer presentation; original persona/context sections unchanged",
+      "providerEvidence": "docs/CONVERSATION-STREAMING-v604.md; local outputs/provider-validation-v603-v250.json",
+      "providerVerified": true,
+      "deviceEvidence": "isolated candidate MainActivity request envelope capture; Android 501 checks; user app installation and wearer UX are separate checks"
     }
   ]
 }

@@ -111,6 +111,7 @@ public final class MailNotificationService extends NotificationListenerService {
         String infoText = text(notification.extras.getCharSequence(Notification.EXTRA_INFO_TEXT));
         String body = bigText.length() > text.length() ? bigText : text;
         if (isGoogleMapsPackage(status.getPackageName())) {
+            NotificationReview.observe(this,status.getKey(),"navigation",title,body,notification.priority,status.getPostTime());
             latestMapsNotification = notification;
             String expanded = expandedNavigationText(notification.extras);
             if (expanded.length() > 0 && !body.contains(expanded)) {
@@ -130,6 +131,7 @@ public final class MailNotificationService extends NotificationListenerService {
         if (title.length() == 0 && body.length() == 0) {
             return;
         }
+        NotificationReview.observe(this,status.getKey(),"mail",title,body,notification.priority,status.getPostTime());
         MailItem item = new MailItem(status.getPostTime(), status.getPackageName(),
                 shortText(title, 80), shortText(body, 160), shortText(subText, 60));
         synchronized (MAILS) {

@@ -9,3 +9,24 @@
 #conversationRuntime{border-left:3px solid #68b7a1;padding:8px 12px;background:#192b2d;overflow-wrap:anywhere}#conversationRuntime[data-stale=true]{border-color:#d8ba75}#conversationRuntime[data-error=true]{border-color:#da8580}#outbox article{border-bottom:1px solid #35544f;padding:8px 0}
 
 #operationsBody article{border-left:3px solid #639b8d;padding:10px 12px;margin:12px 0;background:#192b2d}#operationsBody article[data-phase=needs_check],#operationsBody article[data-phase=failed]{border-color:#d8ba75}#operationsBody p{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Keep the tablet composer before the log and keep media compact. */
+#chatForm{border:1px solid #35544f;border-radius:12px;padding:12px;margin:0 0 16px}
+#chatForm>label{margin-top:0}#message{min-height:84px;resize:vertical}#send{min-width:112px;min-height:44px}
+#attachmentOptions{margin:8px 0}#attachmentOptions>summary{cursor:pointer;padding:8px 0}
+#conversationLog{min-width:0}#conversationLog #history{max-height:55vh;min-height:120px}
+#conversationLog .log-thumbnail,#chatImagePreview{display:block;width:auto;max-width:min(160px,100%);height:auto;max-height:120px;object-fit:contain;border-radius:8px;margin:8px 0}
+#generatedList article{background:#203630;border-radius:10px;padding:12px;margin:10px 0;overflow-wrap:anywhere}
+#generatedList button{margin:4px}#attachmentDraft{border:1px dashed #91b9b0}
+@media(max-width:640px){#chatForm{padding:10px}#conversationLog #history{max-height:50vh}}
+
+#currentTurnStatus{white-space:pre-wrap;overflow-wrap:anywhere;color:#c7e5dc}#currentTurnStatus:empty{display:none}
+
+.queue-turn{border-top:1px solid #35544f;padding:8px 0}.queue-turn button,#composerDraftStatus button{margin:4px}.enter-choice{display:flex;gap:8px;align-items:center;font-size:14px}.enter-choice select{font:inherit;max-width:100%;background:#203b36;color:#fff;padding:8px;border:1px solid #58756d;border-radius:8px}.conversation-zoom{height:auto;max-height:94vh;width:min(96vw,1200px)}.conversation-zoom img{display:block;max-width:100%;max-height:80vh;object-fit:contain;margin:auto}#conversationLog img{cursor:zoom-in}#pendingTurnsList{max-height:240px;overflow:auto}#pendingTurns{margin:8px 0}#conversationLog #history{max-height:min(55vh,calc(var(--conversation-visible-height,100vh) * .55))}#message{scroll-margin-top:12px}#history .bubble p{white-space:pre-wrap;margin:4px 0 12px}
+
+.conversation-select{display:flex;align-items:center;gap:8px}.conversation-select input{width:20px;height:20px;margin:0}.conversation-plus-dialog{max-width:1000px;overflow:auto}.conversation-plus-dialog textarea{min-height:120px}.conversation-plus-dialog button{margin:4px}#conversationPlusPanel>button{margin:4px}.conversation-plus-dialog article{border-bottom:1px solid #35544f;padding:10px 0}
+
+#history,#message,#conversationPreview{font-size:var(--conversation-font-size,16px)}
+#conversationPreview article{border:1px dashed #65a5c5;padding:12px;margin:8px 0}#conversationReliabilityPanel{margin:10px 0;padding:10px;border:1px solid #62798b;border-radius:8px}#conversationReliabilityPanel label{display:block;margin:8px 0}dialog[data-conversation-dialog="reliability"] label{display:block;margin:10px 0}dialog[data-conversation-dialog="reliability"] pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+#conversationToolsPanel{padding:10px;margin:10px 0;border:1px solid #62798b;border-radius:8px}#conversationToolsPanel label{display:block;margin:8px 0}dialog[data-conversation-dialog="tools"] article{margin:10px 0;padding:8px;border:1px solid #62798b}dialog[data-conversation-dialog="tools"] figure{display:inline-block;margin:8px}

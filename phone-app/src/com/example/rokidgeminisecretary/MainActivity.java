@@ -209,6 +209,7 @@ public final class MainActivity extends Activity {
     private TextView composerReceipts;
     private ImageQuestionComposer imageComposer;
     private ImageReferencePanel imageReferencePanel;
+    private long sendReviewDraft=-1,sendReviewAttachments=-1;
     private String imageReferenceDraftKey="",imageReferenceDraftPrefix="",imageReferenceDraftRequestId="";
     private EditText navigationDestinationInput;
     private Button navigationHudButton;
@@ -311,6 +312,7 @@ public final class MainActivity extends Activity {
     private final Runnable glassStateRefresh = new Runnable() {
         @Override public void run() {
             refreshGlassStateView();
+            ScheduledTransfer.tick(MainActivity.this);
             glassStateHandler.postDelayed(this, 1000L);
         }
     };
@@ -318,6 +320,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        new Thread(()->{try{ConversationReliability.reconcile(this);}catch(Exception error){android.util.Log.w("LokiRecovery","Saved queue reconciliation unavailable");}},"LokiQueueReconcile").start();
         LocalHealthCheck.start(this,false);
         activeActivity = this;
         ensureBridgeToken();
@@ -325,6 +328,7 @@ public final class MainActivity extends Activity {
         restoreGlassRuntimeState();
         restoreRecentConversationLogs();
         buildUi();
+        if(getIntent().getBooleanExtra("openTransferReservation",false)){getIntent().removeExtra("openTransferReservation");new Handler(Looper.getMainLooper()).post(()->{if(!isDestroyed())new MaintenanceDialog(this).schedule();});}
         if(state!=null){imageReferenceDraftRequestId=state.getString("imageReferenceDraftRequestId","");imageReferenceDraftKey=state.getString("imageReferenceDraftKey","");imageReferenceDraftPrefix=state.getString("imageReferenceDraftPrefix","");commandInput.setText(state.getString("conversationDraft",""));imageComposer.restore(state.getBundle("imageComposer"));}
         HirokidLogMonitor.requestPermission(this);
         if(!Settings.canDrawOverlays(this) && !getPreferences().getBoolean("navigation_overlay_prompted",false)) {
@@ -382,6 +386,7 @@ public final class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if(intent!=null&&intent.getBooleanExtra("openTransferReservation",false)){intent.removeExtra("openTransferReservation");new MaintenanceDialog(this).schedule();return;}
         handleSharedDestination(intent);
     }
 
@@ -471,6 +476,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if(maintenanceBackup!=null)maintenanceBackup.clear();
         DeviceTuning.restore(this);
         if(composerReceiptListener!=null)getSharedPreferences("loki_web_console",0).unregisterOnSharedPreferenceChangeListener(composerReceiptListener);
         if(imageComposer!=null)imageComposer.close();
@@ -495,8 +501,10 @@ public final class MainActivity extends Activity {
         out.putString("imageReferenceDraftRequestId",imageReferenceDraftRequestId);out.putString("imageReferenceDraftKey",imageReferenceDraftKey);out.putString("imageReferenceDraftPrefix",imageReferenceDraftPrefix);
         if(imageComposer!=null)out.putBundle("imageComposer",imageComposer.save());
     }
+    MaintenanceBackupUi maintenanceBackup;
     @Override protected void onActivityResult(int code,int result,Intent data){
         super.onActivityResult(code,result,data);
+        if(maintenanceBackup!=null&&(code==MaintenanceBackupUi.EXPORT||code==MaintenanceBackupUi.IMPORT)){maintenanceBackup.result(code,result,data);return;}
         if(imageComposer!=null)imageComposer.result(code,result,data);
     }
 
@@ -569,7 +577,7 @@ public final class MainActivity extends Activity {
         inboxButton.setText("秘書の受信箱（保留案件・引き継ぎ）");
         inboxButton.setOnClickListener(view -> new SecretaryInboxDialog(this).show());
         daily.addView(inboxButton, new LinearLayout.LayoutParams(-1,-2));
-        Button workspace=new Button(this);workspace.setText("会話の参照先・予約候補・認識文");workspace.setOnClickListener(v->new ConversationWorkspaceDialog(this).show());daily.addView(workspace,new LinearLayout.LayoutParams(-1,-2));Button meetingHealth=new Button(this);meetingHealth.setText("録音の進捗・保存確認");meetingHealth.setOnClickListener(v->MeetingHealthDialog.show(this));daily.addView(meetingHealth,new LinearLayout.LayoutParams(-1,-2));Button quiet=new Button(this);quiet.setText("グラスの静かな時間");quiet.setOnClickListener(v->{JSONObject quietState=ConversationWorkspace.snapshot(this);if(!quietState.optBoolean("connected")){updateStatus("グラスの状態を確認できません","接続して開き直してください");return;}QuietHoursDialog.show(this,quietState.optJSONObject("quiet")==null?new JSONObject():quietState.optJSONObject("quiet"),config->{try{ConversationWorkspace.submit(this,new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("action","quiet_config").put("baseRevision",config.getLong("baseRevision")).put("config",QuietHoursPolicy.checked(config)));updateStatus("静かな時間の設定を送信待ち","反映後、開き直して確認してください");}catch(Exception e){throw new IllegalArgumentException("設定を送れません。接続・状態を確認してください");}});});daily.addView(quiet,new LinearLayout.LayoutParams(-1,-2));Button records=new Button(this);records.setText("記録の横断検索・読み取り訂正");records.setOnClickListener(v->UnifiedRecordsDialog.show(this));daily.addView(records,new LinearLayout.LayoutParams(-1,-2));Button departure=new Button(this);departure.setText("出発前チェック（端末内の状態）");departure.setOnClickListener(v->DepartureDialog.show(this));daily.addView(departure,new LinearLayout.LayoutParams(-1,-2));Button tuning=new Button(this);tuning.setText("このスマホの音量・負荷・設定取り消し");tuning.setOnClickListener(v->DeviceTuning.show(this,()->refreshLogs()));daily.addView(tuning,new LinearLayout.LayoutParams(-1,-2));Button operations=new Button(this);operations.setText("依頼・転送・動作チェック");operations.setOnClickListener(v->OperationOverviewDialog.show(this));daily.addView(operations,new LinearLayout.LayoutParams(-1,-2));
+        Button workspace=new Button(this);workspace.setText("会話の参照先・予約候補・認識文");workspace.setOnClickListener(v->new ConversationWorkspaceDialog(this).show());daily.addView(workspace,new LinearLayout.LayoutParams(-1,-2));Button meetingHealth=new Button(this);meetingHealth.setText("録音の進捗・保存確認");meetingHealth.setOnClickListener(v->MeetingHealthDialog.show(this));daily.addView(meetingHealth,new LinearLayout.LayoutParams(-1,-2));Button quiet=new Button(this);quiet.setText("グラスの静かな時間");quiet.setOnClickListener(v->{JSONObject quietState=ConversationWorkspace.snapshot(this);if(!quietState.optBoolean("connected")){updateStatus("グラスの状態を確認できません","接続して開き直してください");return;}QuietHoursDialog.show(this,quietState.optJSONObject("quiet")==null?new JSONObject():quietState.optJSONObject("quiet"),config->{try{ConversationWorkspace.submit(this,new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("action","quiet_config").put("baseRevision",config.getLong("baseRevision")).put("config",QuietHoursPolicy.checked(config)));updateStatus("静かな時間の設定を送信待ち","反映後、開き直して確認してください");}catch(Exception e){throw new IllegalArgumentException("設定を送れません。接続・状態を確認してください");}});});daily.addView(quiet,new LinearLayout.LayoutParams(-1,-2));Button records=new Button(this);records.setText("記録の横断検索・読み取り訂正");records.setOnClickListener(v->UnifiedRecordsDialog.show(this));daily.addView(records,new LinearLayout.LayoutParams(-1,-2));Button departure=new Button(this);departure.setText("出発前チェック（端末内の状態）");departure.setOnClickListener(v->DepartureDialog.show(this));daily.addView(departure,new LinearLayout.LayoutParams(-1,-2));Button tuning=new Button(this);tuning.setText("このスマホの音量・負荷・設定取り消し");tuning.setOnClickListener(v->DeviceTuning.show(this,()->refreshLogs()));daily.addView(tuning,new LinearLayout.LayoutParams(-1,-2));Button maintenance=new Button(this);maintenance.setText("日常操作・更新前チェック・バックアップ");maintenance.setOnClickListener(v->new MaintenanceDialog(this).show());daily.addView(maintenance,new LinearLayout.LayoutParams(-1,-2));Button quickMaintenance=new Button(this);quickMaintenance.setText("よく使う操作を開く");quickMaintenance.setOnClickListener(v->new MaintenanceDialog(this).shortcut());daily.addView(quickMaintenance,new LinearLayout.LayoutParams(-1,-2));Button reliability=new Button(this);reliability.setText("保存・復元・中止・端末権限・日次振り返り");reliability.setOnClickListener(v->new ReliabilityDialog(this).show());daily.addView(reliability,new LinearLayout.LayoutParams(-1,-2));Button assistantReview=new Button(this);assistantReview.setText("ロキの状態・回答診断・メモ・会話の続き");assistantReview.setOnClickListener(v->AssistantReviewDialog.show(this));daily.addView(assistantReview,new LinearLayout.LayoutParams(-1,-2));Button operations=new Button(this);operations.setText("依頼・転送・動作チェック");operations.setOnClickListener(v->OperationOverviewDialog.show(this));daily.addView(operations,new LinearLayout.LayoutParams(-1,-2));
         Button memoryManager = new Button(this);
         memoryManager.setText("記憶マネージャー（メモ一覧）");
         memoryManager.setOnClickListener(view -> new MemoryManagerDialog(this).show());
@@ -641,6 +649,8 @@ public final class MainActivity extends Activity {
                     else if((imageComposer!=null&&imageComposer.attached())||!ImageReferenceSummary.matchesKey(imageReferenceDraftKey,ImageReferenceStore.view(MainActivity.this))){updateStatus("参照が更新・失効しています","本文は残しています。最新の参照を選び直してください。まだ送信していません。");return;}
                 }
                 if(!imageReferenceDraftKey.isEmpty()&&(MediaGenerationContext.video(MainActivity.this,text)||ImageGeneration.handles(MainActivity.this,text))){updateStatus("参照付きの質問です","生成する場合は質問の書き出しを消して新しく依頼してください。まだ送信していません。");return;}
+                if(imageComposer!=null&&imageComposer.busy()){updateStatus("添付の準備中です","準備完了後に送信してください");return;}
+                try{JSONObject preview=SubmissionReview.preview(MainActivity.this,new JSONObject().put("message",text).put("hasImage",imageComposer!=null&&imageComposer.attached()).put("imageBytes",imageComposer==null?0:imageComposer.reviewBytes()).put("imageCount",imageComposer==null?0:imageComposer.reviewImageCount()));if(preview.optBoolean("requiresReview")&&(sendReviewDraft!=conversationDraftRevision||sendReviewAttachments!=(imageComposer==null?0:imageComposer.revision()))){final long reviewDraft=conversationDraftRevision,reviewAttachments=imageComposer==null?0:imageComposer.revision();new AlertDialog.Builder(MainActivity.this).setTitle("AIへの送信内容").setMessage(preview.optString("message")).setPositiveButton("確認して送信",(d,w)->{if(reviewDraft!=conversationDraftRevision||reviewAttachments!=(imageComposer==null?0:imageComposer.revision())){updateStatus("入力が変わりました","内容を確認して送信し直してください。まだ送信していません");return;}sendReviewDraft=reviewDraft;sendReviewAttachments=reviewAttachments;sendCommand.performClick();}).setNegativeButton("戻る",null).show();return;}}catch(Exception invalid){updateStatus("送信範囲を確認できません",invalid.getMessage());return;}sendReviewDraft=sendReviewAttachments=-1;
                 final String submittedDraft=commandInput.getText().toString();final long submittedDraftRevision=conversationDraftRevision;
                 if(imageComposer.submit(text,()->completeSubmittedImageDraft(submittedDraft,submittedDraftRevision)))return;
                 if (text.length() == 0) {
@@ -1287,7 +1297,7 @@ public final class MainActivity extends Activity {
         daily.removeView(inboxButton);
         TextView composerHeading=new TextView(this);composerHeading.setText("ロキへのコメント");
         composerHeading.setTextSize(14);composerHeading.setTextColor(Color.BLACK);
-        root.addView(composerHeading,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(ExperienceDialog.navigation(this),new LinearLayout.LayoutParams(-1,-2));root.addView(composerHeading,new LinearLayout.LayoutParams(-1,-2));
         commandInput.setHint("ロキに話しかける…");
         root.addView(commandInput,new LinearLayout.LayoutParams(-1,-2));
         Button attach=new Button(this);attach.setText("添付");attach.setTextSize(12);
@@ -1343,6 +1353,9 @@ public final class MainActivity extends Activity {
         refreshLogs();
     }
 
+    void homeSpeak(){utilityOpen=false;updateConversationUtilities();commandInput.requestFocus();}
+    void homeAdvanced(){utilityOpen=true;updateConversationUtilities();if(toolsScroll!=null)toolsScroll.setVisibility(View.VISIBLE);}
+    void openGeneratedRecords(){if(generatedImagePanel!=null)generatedImagePanel.list();}
     private LinearLayout conversationActions;
     private ScrollView conversationUtilities;
     private Button utilityToggle;
@@ -3023,6 +3036,7 @@ public final class MainActivity extends Activity {
                         .put("permission",CalendarWriter.permitted(this)).put("calendars",CalendarWriter.calendars(this)).toString());return;
             }
             if(request.startsWith("POST /meeting_state ")) {writeJsonResponse(socket,200,MeetingControl.update(this,new JSONObject(formValue(bodyText,"state"))).toString());return;}
+            if(request.startsWith("POST /photo_storage_check ")){writeJsonResponse(socket,200,VerifiedStorage.checkPhoto(this,new JSONObject(formValue(bodyText,"request"))).toString());return;}
             if(request.startsWith("POST /meeting_audio ")) {
                 JSONObject result;try{result=MeetingAudioStore.accept(this,new JSONObject(formValue(bodyText,"request")));}
                 catch(Exception error){result=new JSONObject().put("ok",false).put("error",error instanceof java.io.IOException?error.getMessage():"会議録音の転送内容を検証できません");}
@@ -4232,6 +4246,10 @@ public final class MainActivity extends Activity {
         synchronized(MainActivity.class){SharedPreferences p=context.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(p);
             if(queue.contains(wire))return true;if(queue.size()>=MAX_PENDING_COMMANDS)return false;queue.add(wire);return commitTrackedQueue(p,queue);}
     }
+    static boolean mergeQueuedWebCommands(Context c,java.util.Set<String> ids,String replacement){synchronized(MainActivity.class){SharedPreferences p=c.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(p),next=new ArrayList<>();int found=0;boolean inserted=false;for(String wire:queue){String id="";if(wire.startsWith(TrackedWebRequest.PREFIX))try{id=TrackedWebRequest.parse(wire).getString("id");}catch(Exception invalid){return false;}if(ids.contains(id)){found++;if(!inserted){next.add(replacement);inserted=true;}}else next.add(wire);}return found==ids.size()&&commitTrackedQueue(p,next);}}
+    static JSONArray queuedWebOrder(Context c)throws Exception{synchronized(MainActivity.class){JSONArray out=new JSONArray();ArrayList<String> queue=readPendingCommandsLocked(c.getSharedPreferences(PREFS,MODE_PRIVATE));for(int i=0;i<queue.size();i++){String wire=queue.get(i);if(wire.startsWith(TrackedWebRequest.PREFIX)){JSONObject v=TrackedWebRequest.parse(wire);out.put(new JSONObject().put("id",v.getString("id")).put("position",i+1));}}return out;}}
+    static boolean hasQueuedWebCommand(Context c,String id){synchronized(MainActivity.class){for(String wire:readPendingCommandsLocked(c.getSharedPreferences(PREFS,MODE_PRIVATE)))if(wire.startsWith(TrackedWebRequest.PREFIX+id+":"))return true;return false;}}
+    static boolean replaceQueuedWebCommand(Context c,String id,String replacement){synchronized(MainActivity.class){SharedPreferences p=c.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(p);for(int i=0;i<queue.size();i++)if(queue.get(i).startsWith(TrackedWebRequest.PREFIX+id+":")){if(replacement==null)queue.remove(i);else queue.set(i,replacement);return commitTrackedQueue(p,queue);}return false;}}
     static boolean ackTrackedWebCommand(Context context,String id){
         if(!TrackedWebRequest.validId(id))return false;
         synchronized(MainActivity.class){SharedPreferences p=context.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(p);
@@ -4406,19 +4424,19 @@ public final class MainActivity extends Activity {
     private JSONObject buildPostLogResult(String bodyText) throws Exception {
         if (bodyText != null && bodyText.length() > 0) {
             String kind;
-            String message;
+            String message;String requestId="";
             if (bodyText.trim().startsWith("{")) {
                 JSONObject body = new JSONObject(bodyText);
                 kind = body.optString("kind", "");
-                message = body.optString("message", "");
+                message = body.optString("message", "");requestId=body.optString("requestId");
             } else {
                 kind = formValue(bodyText, "kind");
-                message = formValue(bodyText, "message");
+                message = formValue(bodyText, "message");requestId=formValue(bodyText,"requestId");
             }
             if (message.length() > 0 && isAiLogKind(kind)) {
                 addAiLog((kind.length() > 0 ? kind + ": " : "") + message);
                 if (isConversationMemoryKind(kind) && !isFailedAnswer(message)) {
-                    appendConversationMemorySafely(kind, message);
+                    try{appendConversationMemory(kind,message,TrackedWebRequest.validId(requestId)?requestId:"");}catch(Exception error){Log.w(TAG,"Conversation log save failed");}
                 }
             }
         }
@@ -4470,13 +4488,14 @@ public final class MainActivity extends Activity {
                 .putLong(KEY_MEMORY_COMPACTED_AT, System.currentTimeMillis()).apply();
     }
 
-    private void appendConversationMemory(String kind, String message) throws Exception {
+    private void appendConversationMemory(String kind,String message)throws Exception{appendConversationMemory(kind,message,"");}
+    private void appendConversationMemory(String kind, String message,String requestId) throws Exception {
         JSONObject entry = new JSONObject();
         long now = System.currentTimeMillis();
         entry.put("time", now);
         entry.put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.JAPAN).format(new Date(now)));
         entry.put("kind", shortText(kind, 20));
-        entry.put("message", shortText(message, MAX_MEMORY_ENTRY_CHARS));
+        entry.put("message", shortText(message, MAX_MEMORY_ENTRY_CHARS));if(TrackedWebRequest.validId(requestId))entry.put("requestId",requestId);
         synchronized (MEMORY_LOCK) {
             File file = conversationMemoryFile();
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
@@ -4537,6 +4556,17 @@ public final class MainActivity extends Activity {
     JSONArray localRecordConversations(){java.util.ArrayList<JSONObject> all=readConversationMemory();all.addAll(readConversationArchive());return new JSONArray(all);}
     private long cachedLocationAt(){long at=0;try{android.location.LocationManager manager=(android.location.LocationManager)getSystemService(LOCATION_SERVICE);if(manager!=null)for(String provider:manager.getProviders(true)){try{android.location.Location location=manager.getLastKnownLocation(provider);if(location!=null)at=Math.max(at,location.getTime());}catch(Exception ignored){}}}catch(Exception ignored){}return at;}
     JSONObject localDeparture()throws Exception{GoogleRouteCache cached=googleRouteCache;boolean route=cached!=null&&cached.generation==googleRouteGeneration&&System.currentTimeMillis()>=cached.time&&System.currentTimeMillis()-cached.time<=MAP_ROUTE_CACHE_MS;JSONObject nav=MailNotificationService.recentTransitJson();return DeviceReadiness.snapshot(this,nav.optBoolean("navigationActive"),route,cachedLocationAt());}
+
+    JSONArray webHistoryPage()throws Exception{return ConversationReliability.page(webHistory(),20,"","").getJSONArray("items");}
+    long webConversationBytes()throws Exception{return ConversationReliability.size(conversationMemoryFile(),0)+ConversationReliability.size(conversationMemoryArchiveFile(),0);}
+    JSONObject pruneWebConversation(JSONObject input)throws Exception{synchronized(LokiWebConsole.class){synchronized(MEMORY_LOCK){
+        JSONArray choices=input.getJSONArray("items");if(choices.length()<1||choices.length()>20)throw new java.io.IOException("1〜20件を選んでください");
+        JSONArray groups=ConversationCollections.group(webHistory()),ledger=ConversationContinuation.ledger(this);java.util.HashSet<String> ids=new java.util.HashSet<>();java.util.HashSet<String> rawRows=new java.util.HashSet<>();
+        for(int i=0;i<choices.length();i++){JSONObject choice=choices.getJSONObject(i),source=null;String key=choice.getString("key");if(!ids.add(key))throw new java.io.IOException("重複した選択です");for(int j=0;j<groups.length();j++)if(key.equals(groups.getJSONObject(j).getString("key")))source=groups.getJSONObject(j);if(source==null||!source.getString("revision").equals(choice.getString("revision")))throw new java.io.IOException("履歴が更新されました");for(int j=0;j<ledger.length();j++){JSONObject row=ledger.getJSONObject(j);if(key.equals(row.optString("key"))&&!TrackedWebRequest.terminal(row.optString("requestState")))throw new java.io.IOException("処理中の会話は整理できません");}JSONArray rows=source.getJSONArray("rows");for(int j=0;j<rows.length();j++){JSONObject row=rows.getJSONObject(j);rawRows.add(row.optLong("time")+":"+row.optString("kind")+":"+row.optString("message"));}}
+        // Read original lines without parsing/reformatting unrelated rows; fail closed on malformed data.
+        File file=conversationMemoryFile();java.util.ArrayList<String> keep=new java.util.ArrayList<>();int removed=0;try(java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(file),java.nio.charset.StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){JSONObject row=new JSONObject(line);if(ids.contains(row.optString("requestId"))||(!TrackedWebRequest.validId(row.optString("requestId"))&&rawRows.contains(row.optLong("time")+":"+row.optString("kind")+":"+row.optString("message"))))removed++;else keep.add(line);}}
+        android.util.AtomicFile atomic=new android.util.AtomicFile(file);java.io.FileOutputStream out=atomic.startWrite();try{for(String line:keep)out.write((line+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));atomic.finishWrite(out);}catch(Exception error){atomic.failWrite(out);throw error;}return new JSONObject().put("removedRows",removed).put("scope","スマホの現在の共有履歴だけを削除しました。送信記録・アーカイブ・お気に入り・メガネの履歴は別に残ります。");
+    }}}
 
     JSONArray webHistory() {
         ArrayList<JSONObject> all=readConversationMemory();JSONArray out=new JSONArray();
@@ -4867,7 +4897,7 @@ public final class MainActivity extends Activity {
             }
             JSONObject compact = new JSONObject();
             compact.put("time", source.optLong("time", 0L));
-            compact.put("kind", source.optString("kind", ""));
+            compact.put("kind", source.optString("kind", ""));if(TrackedWebRequest.validId(source.optString("requestId")))compact.put("requestId",source.optString("requestId"));
             compact.put("message", message);
             chosenNewestFirst.add(compact);
             usedChars += message.length();
@@ -6965,6 +6995,11 @@ public final class MainActivity extends Activity {
     private Button inboxButton;
     private boolean inboxSummaryBusy;
     private long inboxSummaryAt;
+    void composeLocalReview(String text){
+        if(imageComposer!=null&&(imageComposer.attached()||imageComposer.busy())){updateStatus("添付を保護しました","添付の準備完了・取り外し後に操作してください");return;}
+        String before=commandInput.getText().toString();long revision=conversationDraftRevision;
+        new AlertDialog.Builder(this).setTitle("会話入力へ戻す").setMessage(text+"\n入力中の本文を置き換えます。送信はしません。").setPositiveButton("入力へ",(d,w)->{if(revision!=conversationDraftRevision||!before.equals(commandInput.getText().toString())||(imageComposer!=null&&(imageComposer.attached()||imageComposer.busy()))){updateStatus("入力を保持しました","確認中に本文・添付が変わりました");return;}commandInput.setText(text);nativeConversationRequestId="";imageReferenceDraftKey="";imageReferenceDraftPrefix="";recoveryNeedsConfirm=true;commandInput.requestFocus();}).setNegativeButton("戻る",null).show();
+    }
     void composeInboxResume(String id){
         if(!id.matches("[a-f0-9-]{36}"))return;
         if(imageComposer!=null&&imageComposer.attached()){updateStatus("送信前の添付があります","添付を外してから保留案件を選んでください");return;}

@@ -1,1 +1,1 @@
-package android.content; public class Context { private final java.io.File root;public Context(java.io.File root){this.root=root;root.mkdirs();} public java.io.File getFilesDir(){return root;}}
+package android.content; public class Context { private final java.io.File root;public Context(java.io.File root){this.root=root;root.mkdirs();} public Context getApplicationContext(){return this;} public java.io.File getFilesDir(){return root;}}

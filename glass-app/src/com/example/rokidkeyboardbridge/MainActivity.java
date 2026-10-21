@@ -108,7 +108,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private static final String ASSIST_DESCRIPTOR = "com.rokid.os.sprite.assist.server.IAssistServer";
     private static final String ASSIST_PACKAGE = "com.rokid.os.sprite.assistserver";
     private static final String ASSIST_SERVICE = "com.rokid.os.sprite.assist.MasterAssistService";
-    private static final long GEMINI_LOCAL_PACING_MS = 75000;
+    private static final long GEMINI_LOCAL_PACING_MS = ConversationPacingPolicy.INTERVAL_MS;
     // VOICE needs a shorter turn interval, while retaining a guard against
     // rapid-fire requests that can trigger 429 responses.
     private static final long GEMINI_VOICE_PACING_MS = 10000L;
@@ -312,12 +312,17 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String workspaceCommandId="",workspaceCommandStatus="",workspaceCommandPhase="UNCONFIRMED";private long workspaceSyncAt;private final java.util.concurrent.atomic.AtomicBoolean workspaceBusy=new java.util.concurrent.atomic.AtomicBoolean();
     private void observationRecognition(String source,String phase,String text){try{observationRecognition=new JSONObject().put("source",source).put("phase",phase).put("text",text==null?"":text).put("at",System.currentTimeMillis());}catch(Exception ignored){}}
     private JSONObject assistantActivitySnapshot(){try{boolean speaking=nativeSpeechSession.active(android.os.SystemClock.elapsedRealtime())||(radioPlayback!=null&&radioPlayback.isSpeaking());String reason=ambientPausedForNavigation?"NAVIGATION":!activityForeground?"BACKGROUND":topicStopRequested?"STOPPING":topicMenuDepth>0?"MENU":pendingUserConversation()||editingUserDraft()?"USER_TURN":"";return new JSONObject().put("at",System.currentTimeMillis()).put("voice",AssistantActivityState.phase(voiceLoopMode,voiceRecording,speechRecognizerActive,voiceLoopMode&&geminiRequestActive,speaking&&voiceLoopMode,false)).put("topic",AssistantActivityState.phase(radioModeEnabled,radioObservationActive,false,radioTopicPending,radioPlayback!=null&&radioPlayback.isSpeaking(),!reason.isEmpty())).put("pauseReason",reason);}catch(Exception e){return new JSONObject();}}
-    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{JSONObject state=new JSONObject().put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("conversation",readConversationDelivery()).put("activity",assistantActivitySnapshot()).put("transfers",TransferProgressStore.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
+    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{JSONObject state=new JSONObject().put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
+    private final ConversationPlaybackState conversationPlayback=new ConversationPlaybackState();
+    private String conversationSpeechArm="";
+    private void controlConversationSpeech(JSONObject command)throws Exception{String id=command.getString("answerKey"),op=command.getString("speechAction");conversationPlayback.check(id,ttsGeneration);if(op.equals("pause")){int old=ttsGeneration;stopRokidTtsForUserSpeech();conversationPlayback.pause(id,old,ttsGeneration);}else{String text=conversationPlayback.text(id,ttsGeneration,op.equals("replay"));stopRokidTtsForUserSpeech();conversationSpeechArm=id;speakWithPhoneTtsChunked("",text);}workspaceCommandPhase="COMPLETED";workspaceCommandStatus=op.equals("pause")?"読み上げを一時停止しました":op.equals("resume")?"停止した区切りから読み直します":"回答を最初から読み直します";}
     private void applyWorkspaceCommand(JSONObject command){
         String id=command.optString("requestId");if(!id.matches("[a-f0-9-]{36}"))return;try{JSONArray seen=new JSONArray(getPreferences().getString("workspace_commands_seen","[]"));for(int i=0;i<seen.length();i++)if(id.equals(seen.optString(i)))return;JSONArray next=new JSONArray();for(int i=Math.max(0,seen.length()-31);i<seen.length();i++)next.put(seen.getString(i));next.put(id);if(!getPreferences().edit().putString("workspace_commands_seen",next.toString()).commit())return;}catch(Exception invalid){return;}
         workspaceCommandId=id;workspaceCommandPhase="UNCONFIRMED";workspaceCommandStatus="結果未確認";getPreferences().edit().putString("workspace_command_seen",id).commit();
         try{if(geminiRequestActive||voiceRecording)throw new IllegalArgumentException("会話の処理後に再操作してください");if(command.optLong("expiresAt")<System.currentTimeMillis())throw new IllegalArgumentException("操作の期限が切れました");String action=command.getString("action");
-            if("reference".equals(action)){String mode=command.getString("mode");if(!mode.matches("auto|image|none"))throw new IllegalArgumentException("参照先を確認してください");long at=getPreferences().getLong("image_question_context_at",0L);if("image".equals(mode)&&(!ImageReferencePolicy.fresh(at,System.currentTimeMillis())||at!=command.optLong("referenceAt")))throw new IllegalArgumentException("画像が更新・失効しています。選び直してください");secretaryCard=null;getPreferences().edit().putString("conversation_reference_mode",mode).commit();workspaceCommandPhase="COMPLETED";workspaceCommandStatus="参照先を変更しました";setStatus(workspaceCommandStatus,Color.CYAN);}
+            if("conversation_speech".equals(action)){controlConversationSpeech(command);}
+            else if("conversation_reset".equals(action)){clearConversationContext();secretaryCard=null;referencePreviewRequest="";conversationSpeechArm="";workspaceCommandPhase="COMPLETED";workspaceCommandStatus="新しい話題へ切り替えました。保存済みの履歴と記憶メモは残ります";setStatus(workspaceCommandStatus,Color.CYAN);}
+            else if("reference".equals(action)){String mode=command.getString("mode");if(!mode.matches("auto|image|none"))throw new IllegalArgumentException("参照先を確認してください");long at=getPreferences().getLong("image_question_context_at",0L);if("image".equals(mode)&&(!ImageReferencePolicy.fresh(at,System.currentTimeMillis())||at!=command.optLong("referenceAt")))throw new IllegalArgumentException("画像が更新・失効しています。選び直してください");secretaryCard=null;getPreferences().edit().putString("conversation_reference_mode",mode).commit();workspaceCommandPhase="COMPLETED";workspaceCommandStatus="参照先を変更しました";setStatus(workspaceCommandStatus,Color.CYAN);}
             else if("quiet_config".equals(action)){QuietHours.save(this,command.getJSONObject("config"),command.getLong("baseRevision"));workspaceCommandPhase="COMPLETED";workspaceCommandStatus="静かな時間を保存しました";}
             else if("calendar_edit".equals(action)){long at=getPreferences().getLong("image_calendar_review_at",0L);if(at<=0||at!=command.getLong("baseAt")||System.currentTimeMillis()-at<0||System.currentTimeMillis()-at>600000)throw new IllegalArgumentException("登録候補が更新・失効しています");String encoded=getPreferences().getString("image_calendar_review","");JSONObject original=new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8));JSONObject next=CalendarDraftEdits.apply(original,command.getJSONObject("candidate"));
                 if(next.has("_inbox_id")||secretaryCardFresh()){throw new IllegalArgumentException("保留案件の訂正は会話欄から行ってください。予定は登録していません");}
@@ -709,7 +714,6 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private boolean voiceCaptureAtLimit;
     private volatile boolean speechRecognizerActive;
     private Runnable speechRecognizerTimeoutRunnable;
-    private Button wifiButton;
     private Button zoomButton;
     private Button keepButton;
     private Button navigationButton;
@@ -1852,23 +1856,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         LinearLayout.LayoutParams ambientLayout = new LinearLayout.LayoutParams(0, dp(20), 0.9f);
         ambientLayout.leftMargin = 4;
         // AMB remains available through TOPIC; no separate main-row button.
-        this.wifiButton = new Button(this);
-        this.wifiButton.setText("BT30");
-        this.wifiButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
-        this.wifiButton.setMinHeight(0);
-        this.wifiButton.setMinWidth(0);
-        this.wifiButton.setPadding(2, 0, 2, 0);
-        this.wifiButton.setOnClickListener(new View.OnClickListener() { // from class: com.example.rokidkeyboardbridge.MainActivity.8
-            @Override // android.view.View.OnClickListener
-            public void onClick(View view) {
-                MainActivity.this.showBluetoothPlaybackMenu();
-            }
-        });
-        focusLabel(this.wifiButton, "BT30");
-        this.wifiButton.setContentDescription("BT30：Bluetooth音声の30秒送り・戻しと再生操作");
-        LinearLayout.LayoutParams layoutParams2 = new LinearLayout.LayoutParams(0, dp(20), 1.0f);
-        layoutParams2.leftMargin = 4;
-        this.buttonPanel.addView(this.wifiButton, layoutParams2);
+        // Bluetooth playback controls are available from SET.
         this.zoomButton = new Button(this);
         this.zoomButton.setText("CAM");
         this.zoomButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
@@ -2440,8 +2428,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private AlertDialog showDisplaySettings() {
         return NavigationChoiceDialog.show(this, "設定",
-                new String[]{"CTRL：明るさ", isFullBodySelected()?"表示：全身 → 顔に切替":"表示：顔 → 全身に切替", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "REC：連続撮影", "Wi-Fi：接続確認・再接続", "秘書の受信箱", "端末内メモ・通信待ち", "容量・更新バックアップ確認", "音量・負荷・直前の設定に戻す", "静かな時間（表示のみ）", "出発前チェック"}, -1,
+                new String[]{"CTRL：明るさ", isFullBodySelected()?"表示：全身 → 顔に切替":"表示：顔 → 全身に切替", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "REC：連続撮影", "Wi-Fi：接続確認・再接続", "秘書の受信箱", "端末内メモ・通信待ち", "容量・更新バックアップ確認", "音量・負荷・直前の設定に戻す", "静かな時間（表示のみ）", "出発前チェック", "BT30：Bluetooth音声の30秒送り・戻し"}, -1,
                 (dialog, which) -> {
+                    if (which == 16) { showBluetoothPlaybackMenu(); return; }
                     if(which==14){QuietHoursDialog.show(this,QuietHours.read(this),config->{try{QuietHours.save(this,config,config.optLong("baseRevision"));workspaceSyncAt=0;syncWorkspace();setStatus("静かな時間を保存しました",Color.CYAN);}catch(Exception e){throw new IllegalArgumentException(e.getMessage());}});return;}if(which==15){try{JSONObject state=DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"));new AlertDialog.Builder(this).setTitle("グラスの出発前チェック").setMessage(DeviceReadiness.describe(state,true)+"\nスマホとの受信："+(NavigationFreshness.linkFresh(navigationReceivedElapsed,android.os.SystemClock.elapsedRealtime())?"最近のナビ受信あり":"ナビの受信は未確認")+"\n静かな時間："+(QuietHours.muted(this,"notification")?"通知は表示のみ":"通常設定")).setPositiveButton("閉じる",null).show();}catch(Exception e){setStatus("状態を取得できません",Color.YELLOW);}return;}
                     if (which == 13) { DeviceTuning.show(this,()->{applyDisplayArea();updateInfoLine();}); return; }
                     if (which == 0) { showLokiControls(); return; }
@@ -2593,7 +2582,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         try{connection.setConnectTimeout(1500);connection.setReadTimeout(1500);addBridgeAuthorization(connection);if(connection.getResponseCode()!=200)return "{}";return readAll(connection.getInputStream());}finally{connection.disconnect();}
     }
     private final java.util.concurrent.atomic.AtomicBoolean photoTransferRunning=new java.util.concurrent.atomic.AtomicBoolean();
-    private void transferRecorderPhotos(){
+    private void transferRecorderPhotos(){transferRecorderPhotos(null);}
+    private void transferRecorderPhotos(java.util.Set<String> selected){
         if(PhotoRecorderService.active!=null){setStatus("撮影を停止してから転送してください",Color.YELLOW);return;}
         String host=getPreferences().getString(KEY_LAST_PHONE_HOST,"");
         if(host.isEmpty()){setStatus("先にスマホと連携してください",Color.YELLOW);return;}
@@ -2601,10 +2591,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         final String endpoint="http://"+host+":8765/recorder_photo";
         setStatus("写真をスマホへ取り込み中…",Color.CYAN);
         new Thread(()->{int sent=0,failed=0,metadataMissing=0,previousDeleted=0,deferred=0;String lastFailure="",batch="";try{
-            PhotoArchive archive=PhotoArchiveStore.get(this);java.io.File[] entries=archive.entries();batch=TransferProgressStore.begin(this,"photo");TransferProgressStore.update(this,"photo",batch,"RUNNING",entries.length,0,0,0,0,0,0);
+            PhotoArchive archive=PhotoArchiveStore.get(this);java.io.File[] entries=archive.entries();if(selected!=null){java.util.ArrayList<java.io.File> filtered=new java.util.ArrayList<>();for(java.io.File candidate:entries)if(selected.contains(candidate.getName().substring(0,50)))filtered.add(candidate);entries=filtered.toArray(new java.io.File[0]);}int expected=selected==null?entries.length:selected.size();failed=expected-entries.length;if(failed>0)lastFailure="指定の原本がグラスに残っていません";batch=TransferProgressStore.begin(this,"photo");TransferProgressStore.update(this,"photo",batch,"RUNNING",expected,0,0,failed,0,0,0);
             for(java.io.File file:entries){
-                if(new java.io.File(file.getPath()+".phone-deleted").isFile()){previousDeleted++;TransferProgressStore.update(this,"photo",batch,"RUNNING",entries.length,sent,previousDeleted,failed,deferred,0,0);continue;}
-                if(new java.io.File(file.getParentFile(),file.getName()+".read-pending").isFile()){deferred++;TransferProgressStore.update(this,"photo",batch,"RUNNING",entries.length,sent,previousDeleted,failed,deferred,0,0);continue;}
+                if(selected!=null&&!selected.contains(file.getName().substring(0,50)))continue;
+                if(new java.io.File(file.getPath()+".phone-deleted").isFile()){previousDeleted++;TransferProgressStore.update(this,"photo",batch,"RUNNING",expected,sent,previousDeleted,failed,deferred,0,0);continue;}
+                if(new java.io.File(file.getParentFile(),file.getName()+".read-pending").isFile()){deferred++;TransferProgressStore.update(this,"photo",batch,"RUNNING",expected,sent,previousDeleted,failed,deferred,0,0);continue;}
                 if(isDestroyed()||Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("転送を中断しました");
                 String stage="写真の読込";
                 try{
@@ -2613,8 +2604,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     stage="撮影情報の退避";
                     org.json.JSONObject metadata=new org.json.JSONObject(new String(archive.metadataForTransfer(file),java.nio.charset.StandardCharsets.UTF_8));
                     boolean unavailable=metadata.optBoolean("metadataUnavailable");
-                    org.json.JSONObject receipt=null;
-                    for(int offset=0;offset<jpeg.length;offset+=131072){
+                    org.json.JSONObject inventory=new JSONObject(postTopicForm("photo_storage_check","request="+URLEncoder.encode(new JSONObject().put("check",true).put("id",id).put("sha",sha.toString()).put("total",jpeg.length).put("metadata",metadata).toString(),"UTF-8")));if(!inventory.optBoolean("ok"))throw new java.io.IOException("スマホの保存内容を照合できません");java.util.HashSet<Integer> savedOffsets=new java.util.HashSet<>();JSONArray saved=inventory.optJSONArray("offsets");for(int j=0;saved!=null&&j<saved.length();j++)savedOffsets.add(saved.getInt(j));
+                    org.json.JSONObject receipt=inventory.optBoolean("complete")?inventory:null;
+                    for(int offset=0;offset<jpeg.length&&receipt==null;offset+=131072){
+                        if(savedOffsets.contains(offset))continue;
                         org.json.JSONObject payload=new org.json.JSONObject().put("id",id).put("sha",sha.toString()).put("offset",offset).put("total",jpeg.length).put("data",android.util.Base64.encodeToString(java.util.Arrays.copyOfRange(jpeg,offset,Math.min(jpeg.length,offset+131072)),android.util.Base64.NO_WRAP));
                         if(offset==0)payload.put("metadata",metadata);
                         byte[] body=payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -2646,11 +2639,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     Log.w("LokiPhotoTransfer","stage="+stage+" failure="+error.getClass().getSimpleName());
                     // The JPEG and its metadata remain on the glasses when no verified receipt exists.
                 }
-                TransferProgressStore.update(this,"photo",batch,"RUNNING",entries.length,sent,previousDeleted,failed,deferred,0,0);
+                TransferProgressStore.update(this,"photo",batch,"RUNNING",expected,sent,previousDeleted,failed,deferred,0,0);
                 final int done=sent,bad=failed,missing=metadataMissing,retained=previousDeleted;
                 handler.post(()->setStatus("スマホへ取り込み："+done+"枚 / 過去削除で保持"+retained+"枚 / 保留"+bad+"枚"+(missing>0?" / 撮影情報なし"+missing+"枚":""),bad==0?Color.GREEN:Color.YELLOW));
             }
-            TransferProgressStore.update(this,"photo",batch,failed>0||deferred>0?"PARTIAL":"COMPLETED",entries.length,sent,previousDeleted,failed,deferred,0,0);
+            TransferProgressStore.update(this,"photo",batch,failed>0||deferred>0?"PARTIAL":"COMPLETED",expected,sent,previousDeleted,failed,deferred,0,0);
             final int done=sent,bad=failed,missing=metadataMissing,retained=previousDeleted,waiting=deferred;final String reason=lastFailure;
             handler.post(()->setStatus((bad>0||waiting>0?"取り込み未完了：":"取り込み完了：")+done+"枚 / 過去削除で保持"+retained+"枚"+(missing>0?"（撮影情報なし"+missing+"枚）":"")+(waiting>0?" / READ取り込み待ち"+waiting+"枚":"")+(bad>0?" / 保留"+bad+"枚："+reason:"。スマホ・PCの記録写真で確認"),bad==0?Color.GREEN:Color.YELLOW));
         }catch(Exception error){TransferProgressStore.failed(this,"photo",batch);Log.w("LokiPhotoTransfer","transfer stopped: "+error.getClass().getSimpleName());handler.post(()->setStatus("写真転送中断："+error.getClass().getSimpleName()+"。未転送はグラスに保持",Color.YELLOW));}
@@ -5751,7 +5744,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                 MainActivity.this.activeGeminiPrompt = "";
                                 MainActivity.this.activeNazokakeTopic = "";
                                 MainActivity.this.sendButton.setEnabled(true);
-                                MainActivity.this.answer.setText(strRequestGeminiWithRetry);
+                                MainActivity.this.answer.setText(TrackedWebRequest.validId(trackedRequestId)?ConversationStream.display(strRequestGeminiWithRetry,trackedGlassChars):strRequestGeminiWithRetry);
                                 MainActivity.this.scrollAnswerToTop();
                                 MainActivity.this.setStatus("回答を受信しました", Color.rgb(90, 220, 120));
                                 MainActivity.this.setMascotExpression(hiddenNazokakeRequest
@@ -5759,7 +5752,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                         ? 15 : MainActivity.this.chooseMascotExpressionForText(
                                         strTrim, strRequestGeminiWithRetry));
                                 MainActivity.this.setConversationDelivery("ANSWERED","DONE",trackedRequestId,"");
-                                MainActivity.this.logCompletedConversationAsync(strTrim, strRequestGeminiWithRetry);
+                                MainActivity.this.logCompletedConversationAsync(strTrim, strRequestGeminiWithRetry,trackedRequestId);
                                 MainActivity.this.finishTrackedWebRequest(trackedRequestId,"ANSWERED","");
                                 if (hiddenNazokakeRequest) {
                                     MainActivity.this.rememberNazokakeResult(
@@ -5771,6 +5764,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                                             MainActivity.this.detectConversationTopic(
                                                     strTrim, strRequestGeminiWithRetry));
                                 }
+                                if(TrackedWebRequest.validId(trackedRequestId))conversationSpeechArm=trackedRequestId;
                                 MainActivity.this.speakWithPhoneTtsChunked(strTrim, strRequestGeminiWithRetry);
                             }else{MainActivity.this.finishTrackedWebRequest(trackedRequestId,"UNCONFIRMED","INTERRUPTED");}
                         }
@@ -5788,7 +5782,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                             }
                             final String failureCode=MainActivity.this.conversationFailureCode(e);
                             MainActivity.this.setConversationDelivery("FAILED",ConversationFailurePolicy.stage(conversationStage.get()),trackedRequestId,failureCode);
-                            MainActivity.this.finishTrackedWebRequest(trackedRequestId,"FAILED","REFERENCE_CHANGED".equals(failureCode)?"REFERENCE_CHANGED":"SAFETY_STOP".equals(failureCode)?"SAFETY_STOP":"MODEL_ERROR");
+                            MainActivity.this.finishTrackedWebRequest(trackedRequestId,"FAILED","REFERENCE_CHANGED".equals(failureCode)?"REFERENCE_CHANGED":"SAFETY_STOP".equals(failureCode)?"SAFETY_STOP":conversationFailureReason(e));
                             if ((e instanceof GeminiHttpException) && ((GeminiHttpException) e).isRetryable()) {
                                 MainActivity.this.beginGeminiCooldown(((GeminiHttpException) e).cooldownMs());
                             } else {
@@ -8719,9 +8713,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void markGeminiRequestSucceeded() {
         long pacingMs = geminiPacingMs();
-        long nextAllowedAt = this.voiceLoopMode
-                ? Math.max(System.currentTimeMillis(), this.lastGeminiRequestStartedAt + pacingMs)
-                : System.currentTimeMillis() + pacingMs;
+        long nextAllowedAt = ConversationPacingPolicy.successAt(System.currentTimeMillis(),this.lastGeminiRequestStartedAt);
         this.geminiCooldownUntil = nextAllowedAt;
         getPreferences().edit().putLong(KEY_GEMINI_COOLDOWN_UNTIL, this.geminiCooldownUntil).apply();
         this.handler.removeCallbacks(this.infoUpdater);
@@ -8740,6 +8732,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if(getPreferences().edit().putString(KEY_TRACKED_WEB,saved.toString()).commit()){activeTrackedWebId="";normalTrackedWebId="";trackedExpectedGeneration=-1;if(id.equals(secretaryTrackedWebId))secretaryTrackedWebId="";}
         }catch(Exception error){Log.w(TAG,"Tracked outcome could not be saved");}}
     }
+    private void requestTrackedConversationStop(String id){handler.post(()->{if(!id.equals(activeTrackedWebId))return;if(!ConversationStopPolicy.matches(id,activeTrackedWebId,normalTrackedWebId,secretaryTrackedWebId)){new Thread(()->{try{JSONObject request=new JSONObject().put("id",id).put("event","RUNNING").put("stopRejected",true);postTopicForm("conversation_receipt","request="+URLEncoder.encode(request.toString(),"UTF-8"));}catch(Exception ignored){}},"ConversationStopUnsupported").start();return;}requestGeneration++;disconnectActiveGemini();geminiRequestActive=false;activeGeminiPrompt="";sendButton.setEnabled(true);finishTrackedWebRequest(id,"STOPPED","INTERRUPTED");setConversationDelivery("STOPPED","",id,"INTERRUPTED");setStatus("この質問の回答待ちを中止しました",Color.YELLOW);answer.setText("回答待ちを中止しました。受付済みAPI処理・料金・実行済み操作は取り消せません。");schedulePendingPhoneCommand();});}
     private JSONObject sendTrackedWebReceipt(String id,String event,String reason)throws Exception{
         JSONObject receipt=new JSONObject().put("id",id).put("event",event).put("reason",reason);
         JSONObject result=new JSONObject(postTopicForm("conversation_receipt","request="+URLEncoder.encode(receipt.toString(),"UTF-8")));
@@ -8769,12 +8762,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if("DISPATCHED".equals(phase)){
             if(!id.equals(activeTrackedWebId)){finishTrackedWebRequest(id,"UNCONFIRMED","RESTART");return;}
             if(trackedExpectedGeneration>=0&&trackedExpectedGeneration!=requestGeneration){finishTrackedWebRequest(id,"UNCONFIRMED","INTERRUPTED");return;}
-            sendTrackedWebReceipt(id,"RUNNING","");return;
+            JSONObject receipt=sendTrackedWebReceipt(id,"RUNNING","");if(receipt.optBoolean("stopRequested"))requestTrackedConversationStop(id);return;
         }
         if(!"READY".equals(phase)){finishTrackedWebRequest(id,"UNCONFIRMED","RESTART");return;}
         String text=saved.getString("text");TrackedWebRequest.wire(id,text);
         if(geminiRequestActive||isGeminiCoolingDown()||!pendingPhoneCommand.isEmpty())return;
         JSONObject received=sendTrackedWebReceipt(id,"RECEIVED","");
+        if(received.optBoolean("stopRequested")){finishTrackedWebRequest(id,"STOPPED","INTERRUPTED");setConversationDelivery("STOPPED","",id,"INTERRUPTED");return;}
         if(!"RECEIVED".equals(received.optString("requestState"))){finishTrackedWebRequest(id,"UNCONFIRMED","RESTART");return;}
         if(!trackedWebDispatch.compareAndSet(false,true))return;
         handler.post(()->{boolean handedOff=false;try{
@@ -8786,6 +8780,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             handedOff=true;
             new Thread(()->{try{
                 JSONObject permission=sendTrackedWebReceipt(id,"RUNNING","");
+                JSONObject display=permission.optJSONObject("displaySettings");if(display!=null){trackedAnswerStyle=display.optString("answerStyle","short");trackedGlassChars=display.optInt("glassChars",600);trackedStreaming=display.optBoolean("streaming",true);}
+                if(permission.optBoolean("stopRequested")){finishTrackedWebRequest(id,"STOPPED","INTERRUPTED");setConversationDelivery("STOPPED","",id,"INTERRUPTED");trackedWebDispatch.set(false);return;}
                 if(!permission.optBoolean("execute")){finishTrackedWebRequest(id,"UNCONFIRMED","INTERRUPTED");trackedWebDispatch.set(false);return;}
                 handler.post(()->{try{
                     if(geminiRequestActive||isGeminiCoolingDown()||!pendingPhoneCommand.isEmpty()||imageQuestionDispatch.get()){finishTrackedWebRequest(id,"UNCONFIRMED","INTERRUPTED");return;}
@@ -12362,12 +12358,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
         finishTrackedWebRequest(requestId,"ANSWERED","");
         return true;
     }
-    private void logDirectConversationAsync(final String user,final String reply){
-        new Thread(()->{try{postPhoneLog("ユーザー",user);postPhoneLog("直接回答",reply);}
+    private void logDirectConversationAsync(final String user,final String reply){logDirectConversationAsync(user,reply,"");}
+    private void logDirectConversationAsync(final String user,final String reply,final String requestId){
+        new Thread(()->{try{postPhoneLog("ユーザー",user,requestId);postPhoneLog("直接回答",reply,requestId);}
             catch(Exception error){Log.w(TAG,"Direct conversation log transfer failed; no content logged locally");}},"DirectConversationLog").start();
     }
     private void secretaryReply(String requestId,String user,String reply) {
-        geminiRequestActive=false;sendButton.setEnabled(true);answer.setText(reply);logDirectConversationAsync(user,reply);
+        geminiRequestActive=false;sendButton.setEnabled(true);answer.setText(reply);logDirectConversationAsync(user,reply,requestId);
         finishTrackedWebRequest(requestId,"ANSWERED","");
         speakWithPhoneTtsChunked(user,reply);schedulePendingPhoneCommand();schedulePendingVoiceTranscriptDispatch();
     }
@@ -13167,6 +13164,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     if(!imageId.matches("[a-f0-9-]{36}")){imageQuestionDispatch.set(false);fetchPhoneEndpointJson("ack_command");return;}
                     handler.post(()->startImageQuestion("添付画像を読み取って",imageId,true));return;
                 }
+                if(strTrim3.startsWith("__LOKI_TRANSFER_ONCE__:")){JSONObject transfer=new JSONObject(strTrim3.substring("__LOKI_TRANSFER_ONCE__:".length()));String transferId=transfer.getString("id"),kind=transfer.getString("kind");if(!transferId.matches("[a-f0-9-]{36}")||!kind.matches("photo|meeting")||transfer.optLong("expiresAt")>System.currentTimeMillis()+180000)throw new IllegalArgumentException("transfer request");fetchPhoneEndpointJson("ack_command");if(transfer.optLong("expiresAt")<System.currentTimeMillis()){ReservationProgress.begin(MainActivity.this,transferId,kind,"EXPIRED","受信した予約の期限が切れています");return;}android.content.SharedPreferences once=getSharedPreferences("maintenance_transfer",0);if(once.getLong(transferId,0)>System.currentTimeMillis())return;android.content.SharedPreferences.Editor onceEdit=once.edit();for(String key:once.getAll().keySet())if(!key.equals("last")&&once.getLong(key,0)<System.currentTimeMillis())onceEdit.remove(key);if(!onceEdit.putLong(transferId,transfer.optLong("expiresAt")).commit())return;handler.post(()->{try{boolean busy=kind.equals("photo")?(PhotoRecorderService.active!=null||photoTransferRunning.get()):(MeetingRecorderService.active!=null||meetingTransferBusy.get());if(busy||getPreferences().getString(KEY_LAST_PHONE_HOST,"").isEmpty()){ReservationProgress.begin(MainActivity.this,transferId,kind,"REJECTED",busy?"グラスで記録中または転送中です。記録は停止していません":"スマホの接続先が未確認です");return;}ReservationProgress.begin(MainActivity.this,transferId,kind,"ACCEPTED","転送要求を受け付けました。保存は未確認です");if(kind.equals("photo"))transferRecorderPhotos();else transferMeetingRecords();}catch(Exception e){ReservationProgress.unstarted(MainActivity.this,kind);}});return;}
+                if(strTrim3.startsWith("__LOKI_STORAGE_REPAIR__:")){JSONObject repair=new JSONObject(strTrim3.substring("__LOKI_STORAGE_REPAIR__:".length()));java.util.HashSet<String> wanted=new java.util.HashSet<>();JSONArray ids=repair.getJSONArray("ids");if(ids.length()<1||ids.length()>20)throw new IllegalArgumentException("repair selection");for(int j=0;j<ids.length();j++){String id=ids.getString(j);if(!id.matches("[0-9]{13}-[a-f0-9-]{36}"))throw new IllegalArgumentException("repair id");wanted.add(id);}fetchPhoneEndpointJson("ack_command");if(System.currentTimeMillis()<=repair.optLong("expiresAt"))handler.post(()->transferRecorderPhotos(wanted));return;}
                 if(strTrim3.startsWith("__LOKI_MEETING__:")){
                     final JSONObject meetingRequest=new JSONObject(strTrim3.substring("__LOKI_MEETING__:".length()));fetchPhoneEndpointJson("ack_command");handler.post(()->handleMeetingRemote(meetingRequest));return;
                 }
@@ -13464,9 +13463,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         // Failure text is a diagnostic, never a completed assistant exchange.
     }
-    private void logCompletedConversationAsync(final String user, final String reply) {
+    private void logCompletedConversationAsync(final String user,final String reply){logCompletedConversationAsync(user,reply,"");}
+    private void logCompletedConversationAsync(final String user, final String reply,final String requestId) {
         if(reply==null||reply.trim().isEmpty())return;
-        new Thread(()->{try{postPhoneLog("ユーザー",user);postPhoneLog("Gemini",reply);}
+        new Thread(()->{try{postPhoneLog("ユーザー",user,requestId);postPhoneLog("Gemini",reply,requestId);}
             catch(Exception error){Log.w(TAG,"Completed conversation log transfer pending/failed; no prompt logged locally");}},"CompletedPhoneLog").start();
     }
 
@@ -13486,7 +13486,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     /* JADX INFO: Access modifiers changed from: private */
-    public void postPhoneLog(String str, String str2) throws Exception {
+    public void postPhoneLog(String str,String str2)throws Exception{postPhoneLog(str,str2,"");}
+    public void postPhoneLog(String str, String str2,String requestId) throws Exception {
         int responseCode = -1;
         StringBuilder sbAppend = new StringBuilder().append("kind=");
         if (str == null) {
@@ -13496,7 +13497,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (str2 == null) {
             str2 = "";
         }
-        byte[] bytes = sbAppend2.append(URLEncoder.encode(str2, "UTF-8")).toString().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = sbAppend2.append(URLEncoder.encode(str2, "UTF-8")).append("&requestId=").append(TrackedWebRequest.validId(requestId)?requestId:"").toString().getBytes(StandardCharsets.UTF_8);
         Exception e = null;
         for (String str3 : buildPhoneEndpointUrls("log")) {
             try {
@@ -14433,7 +14434,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             for (int i2 = 1; i2 <= 2; i2++) {
                 requireCurrentProviderTurn();
                 try {
-                    return requestGemini(str, str2, str3);
+                    long observation=ConversationTrace.begin(readConversationDelivery().optString("id"),secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto"),str2==null?0:str2.length());
+                    boolean returned=false;try{String reply=requestGemini(str,str2,str3);returned=true;return reply;}finally{ConversationTrace.end(observation,returned);}
                 } catch (GeminiNoCandidateException emptyResponse) {
                     noCandidate = emptyResponse;
                     if (NormalRequestContextPolicy.safetyStop(emptyResponse.reason)) {
@@ -14869,6 +14871,24 @@ public final class MainActivity extends Activity implements SensorEventListener 
         catch (Exception unavailable) { pending.cancel(true); return ""; }
         finally { reader.shutdownNow(); }
     }
+    private JSONObject buildConversationRequest(JSONObject source,Integer streamGeneration,String streamId)throws Exception{
+        JSONObject request = new JSONObject(source.toString());
+        appendGeminiRuntimeContext(request);
+        if(streamGeneration!=null&&streamGeneration==requestGeneration&&TrackedWebRequest.validId(streamId)&&streamId.equals(activeTrackedWebId))request.getJSONObject("systemInstruction").getJSONArray("parts").put(new JSONObject().put("text",trackedAnswerStyle.equals("detailed")?"今回の回答形式は詳説です。必要な根拠や手順を説明してください。":"今回の回答形式は短答です。結論を先に、必要な注意を省かず原則3文程度で答えてください。ユーザーが詳しく指定した場合は指定を優先してください。"));
+        return request;
+    }
+
+    private volatile String trackedAnswerStyle="short";
+    private volatile int trackedGlassChars=600;
+    private volatile boolean trackedStreaming=true;
+    private void publishConversationPreview(String id,int generation,long sequence,String text){
+        if(generation!=requestGeneration||!id.equals(normalTrackedWebId)||!id.equals(activeTrackedWebId))return;
+        final String clipped=text.length()>12000?text.substring(0,12000):text;
+        handler.post(()->{if(generation==requestGeneration&&id.equals(activeTrackedWebId)){answer.setText("生成中（暫定・変更される場合があります）\n"+ConversationStream.display(clipped,trackedGlassChars));}});
+        try{JSONObject body=new JSONObject().put("id",id).put("event","RUNNING").put("partial",clipped).put("partialSequence",sequence);postTopicForm("conversation_receipt","request="+URLEncoder.encode(body.toString(),"UTF-8"));}catch(Exception ignored){}
+    }
+    private String conversationFailureReason(Throwable error){if(error instanceof GeminiHttpException){int code=((GeminiHttpException)error).code;return code==429?"RATE_LIMIT":code==401||code==403||code==402?"AUTH":code>=500?"MODEL_ERROR":"MODEL_ERROR";}return ConversationStream.failure(error);}
+
     private void appendGeminiRuntimeContext(JSONObject request) throws org.json.JSONException {
         appendGeminiRuntimeContext(request, !AMBIENT_TRIGGER_PROMPT.equals(activeGeminiPrompt));
     }
@@ -14902,7 +14922,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String postGeminiJson(String str, String str3, JSONObject jSONObject3,
             boolean groundedSearchRequested) throws Exception {
         if(imageQuestionGeneration.get()!=null&&imageQuestionGeneration.get()!=requestGeneration)throw new InterruptedException("image question cancelled");
-        HttpURLConnection httpURLConnection = (HttpURLConnection) openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str3 + ":generateContent"));
+        final Integer streamGeneration=imageQuestionGeneration.get();final String streamId=normalTrackedWebId;final boolean stream=trackedStreaming&&streamGeneration!=null&&streamGeneration==requestGeneration&&TrackedWebRequest.validId(streamId)&&streamId.equals(activeTrackedWebId);
+        HttpURLConnection httpURLConnection = (HttpURLConnection) openSecureConnection(new URL("https://generativelanguage.googleapis.com/v1beta/models/" + str3 + (stream?":streamGenerateContent?alt=sse":":generateContent")));
         this.activeGeminiConnection = httpURLConnection;
         httpURLConnection.setRequestMethod("POST");
         httpURLConnection.setConnectTimeout(8000);
@@ -14914,8 +14935,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         Log.i(TAG, "Gemini request model=" + str3 + " promptChars="
                 + jSONObject3.toString().length());
         // Keep the base body free of shared parts across functionResponse turns and retries.
-        JSONObject request = new JSONObject(jSONObject3.toString());
-        appendGeminiRuntimeContext(request);
+        JSONObject request = buildConversationRequest(jSONObject3,streamGeneration,streamId);
         byte[] bytes = request.toString().getBytes(StandardCharsets.UTF_8);
         int responseCode;
         String all;
@@ -14924,7 +14944,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 outputStream.write(bytes);
             }
             responseCode = httpURLConnection.getResponseCode();
-            all = readAll((responseCode < 200 || responseCode >= 300)
+            if(stream&&responseCode>=200&&responseCode<300){final long[] last={0};final long base=System.currentTimeMillis()*1000;final long[] sequence={base};publishConversationPreview(streamId,streamGeneration,sequence[0]++,"");all=ConversationStream.read(httpURLConnection.getInputStream(),text->{if(streamGeneration!=requestGeneration||!streamId.equals(activeTrackedWebId))throw new InterruptedException("stream cancelled");long now=android.os.SystemClock.elapsedRealtime();if(last[0]==0||now-last[0]>=500){last[0]=now;publishConversationPreview(streamId,streamGeneration,sequence[0]++,text);}});}
+            else all = readAll((responseCode < 200 || responseCode >= 300)
                     ? httpURLConnection.getErrorStream() : httpURLConnection.getInputStream());
         } finally {
             httpURLConnection.disconnect();
@@ -15141,7 +15162,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 sb.append(line);
             } else {
                 bufferedReader.close();
-                return sb.toString();
+                String result=sb.toString();ConversationTrace.observe(result);return result;
             }
         }
     }
@@ -16732,6 +16753,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         final int i = this.ttsGeneration + 1;
         this.ttsGeneration = i;
+        if(!conversationSpeechArm.isEmpty()){conversationPlayback.begin(conversationSpeechArm,strArrSplitForTts,i);conversationSpeechArm="";}
         this.handler.post(() -> { if(i==ttsGeneration){beginPortraitSemanticSpeech(prompt,fullBodyAnswer,i);if(fullBodyImage!=null){fullBodyImage.setUserContext(prompt);fullBodyImage.beginSpeech(fullBodyAnswer);}} });
         Log.i(TAG, "PhoneTTS chunk count=" + strArrSplitForTts.length);
         if (strArrSplitForTts.length == 0) {
@@ -16761,6 +16783,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         if (i != MainActivity.this.ttsGeneration) {
                             return;
                         }
+                        conversationPlayback.mark(i,i2);
                         final int chunkIndex = i2;
                         final String str2 = strArrSplitForTts[i2];
                         final int length = strArrSplitForTts.length;

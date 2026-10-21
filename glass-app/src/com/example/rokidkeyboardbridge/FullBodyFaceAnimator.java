@@ -26,7 +26,7 @@ final class FullBodyFaceAnimator {
   return MOUTH_LEVELS[index]+(MOUTH_LEVELS[(index+1)%MOUTH_LEVELS.length]-MOUTH_LEVELS[index])*t;
  }
  void draw(Canvas canvas,Bitmap source,int pose,long elapsed,boolean speaking){
-  stableSmile=CoolSmilePolicy.supports(pose);originalSeatedMouth=pose>=282&&pose<=287;try{drawFeatures(canvas,source,features(pose),elapsed,speaking,true,originalSeatedMouth||stableSmile||FullBodyClothMotion.base(pose)==1||(pose>=305&&pose<341));}finally{stableSmile=false;originalSeatedMouth=false;}
+  stableSmile=CoolSmilePolicy.supports(pose);originalSeatedMouth=pose>=282&&pose<=287||pose==237||pose==247||pose==425||pose==430;try{drawFeatures(canvas,source,features(pose),elapsed,speaking,true,originalSeatedMouth||stableSmile||FullBodyClothMotion.base(pose)==1||(pose>=305&&pose<341));}finally{stableSmile=false;originalSeatedMouth=false;}
  }
  void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking){
   drawFeatures(canvas,source,f,elapsed,speaking,blinking,false);

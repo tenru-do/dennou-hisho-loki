@@ -20,16 +20,17 @@ final class LokiWebConsole {
     private static final Object PHOTO_WORK = new Object();
     private static final java.util.concurrent.atomic.AtomicBoolean GOOGLE_PHOTO_WORK=new java.util.concurrent.atomic.AtomicBoolean();
     static synchronized JSONObject trackedReceipt(Context owner,JSONObject data)throws Exception {
-        String id=data.getString("id"),event=data.getString("event");JSONArray all=new JSONArray(prefs(owner).getString("outbox","[]"));boolean found=false,changed=false,execute=false;String finalState="";
+        String id=data.getString("id"),event=data.getString("event");JSONArray all=new JSONArray(prefs(owner).getString("outbox","[]"));boolean found=false,changed=false,execute=false,stopRequested=false;String finalState="";
         for(int i=0;i<all.length();i++){JSONObject old=all.getJSONObject(i);if(!id.equals(old.optString("key")))continue;
-            JSONObject next=TrackedWebRequest.receipt(old,event,data.optString("reason",""),System.currentTimeMillis());
-            finalState=next.optString("requestState");execute=TrackedWebRequest.executionGrant(old.optString("requestState"),event,finalState);
+            JSONObject next=TrackedWebRequest.receipt(old,event,data.optString("reason",""),System.currentTimeMillis());if(data.optBoolean("stopRejected")&&!TrackedWebRequest.terminal(next.optString("requestState")))next.put("stopRejectedAt",System.currentTimeMillis());
+            finalState=next.optString("requestState");stopRequested=next.has("stopRequestedAt")&&!next.has("stopRejectedAt")&&!TrackedWebRequest.terminal(finalState);execute=TrackedWebRequest.executionGrant(old.optString("requestState"),event,finalState);
             changed=!next.toString().equals(old.toString());all.put(i,next);found=true;break;}
         if(!found)throw new IllegalArgumentException("Unknown request ID");
+        ConversationReliability.partial(id,finalState,data,System.currentTimeMillis());
         // Save receipt before acknowledgement. Retrying an acknowledgement can only remove the matching head ID.
         if(changed&&!prefs(owner).edit().putString("outbox",all.toString()).commit())throw new IOException("Receipt storage failed");
         boolean ack="RECEIVED".equals(event)&&MainActivity.ackTrackedWebCommand(owner,id);
-        return new JSONObject().put("ok",true).put("ack",ack).put("execute",execute).put("requestState",finalState);
+        return new JSONObject().put("ok",true).put("ack",ack).put("execute",execute).put("stopRequested",stopRequested).put("requestState",finalState).put("displaySettings",ConversationReliability.settings(owner));
     }
     static synchronized boolean queueReferenceConversation(Context c,String requestId,String text,String referenceKey)throws Exception{
         if(!WorkspaceCommandPolicy.validId(requestId))throw new IOException("参照を選び直してください");
@@ -78,11 +79,13 @@ final class LokiWebConsole {
         android.widget.Button share=new android.widget.Button(owner);share.setText("接続リンクを共有");share.setOnClickListener(v->{Intent send=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,link);owner.startActivity(Intent.createChooser(send,"PC・タブレットへ接続リンクを送る"));});content.addView(share);
         android.widget.Button copy=new android.widget.Button(owner);copy.setText("接続リンクをコピー");copy.setOnClickListener(v->{((ClipboardManager)owner.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Loki connection",link));android.widget.Toast.makeText(owner,"接続リンクをコピーしました",0).show();});content.addView(copy);
         android.widget.TextView details=new android.widget.TextView(owner);String fingerprint;try{fingerprint=BridgeTlsServer.fingerprint();}catch(Exception e){fingerprint="取得できません";}details.setText("初回はこのスマホの証明書を確認してください。\nSHA256: "+fingerprint+"\n登録した端末は30日間再接続できます。共有PCでは端末登録をオフにしてください。");content.addView(details);
+        android.widget.Button manage=new android.widget.Button(owner);manage.setText("接続端末を個別に確認・権限変更");manage.setOnClickListener(v->new ReliabilityDialog(owner).sessions());content.addView(manage);
         android.widget.ScrollView scroll=new android.widget.ScrollView(owner);scroll.addView(content);
         new AlertDialog.Builder(owner).setTitle("QR・リンクでPC／タブレットを接続").setView(scroll)
             .setNeutralButton("全Web端末の認証を解除",(d,w)->new AlertDialog.Builder(owner).setMessage("PC・タブレットの接続をすべて解除しますか？").setPositiveButton("解除",(a,b)->{revokeAll(owner);android.widget.Toast.makeText(owner,"Web端末の認証を解除しました",0).show();}).setNegativeButton("取消",null).show())
             .setNegativeButton("閉じる",null).show();
     }
+    static synchronized void changeSession(Context c,JSONObject input)throws Exception{JSONArray raw=new JSONArray(prefs(c).getString("sessions","[]")),next=new JSONArray();boolean found=false;for(int i=0;i<raw.length();i++){JSONObject entry=raw.getJSONObject(i);if(input.getString("id").equals(WebSessionAdmin.handle(entry))){found=true;if(!input.getString("revision").equals(WebSessionAdmin.revision(entry)))throw new IOException("端末の権限が更新されています");String action=input.getString("action");if(action.equals("revoke"))continue;if(!action.matches("read|full"))throw new IOException("権限が不正です");entry.put("scope",action);}next.put(entry);}if(!found)throw new IOException("接続端末がありません");if(!prefs(c).edit().putString("sessions",next.toString()).commit())throw new IOException("権限を保存できません");}
     private static String digest(String value) throws Exception { return RecorderPhotoStore.hash(value.getBytes(StandardCharsets.UTF_8)); }
     private static synchronized JSONObject authenticate(Context c, String token) throws Exception {
         if (token == null || !token.matches("[a-f0-9]{64}")) return null;
@@ -90,7 +93,7 @@ final class LokiWebConsole {
         String hash = digest(token);
         for (int i=0;i<sessions.length();i++) {
             JSONObject s=sessions.getJSONObject(i);
-            if (s.getLong("expires") > System.currentTimeMillis() && java.security.MessageDigest.isEqual(hash.getBytes(StandardCharsets.UTF_8),s.getString("hash").getBytes(StandardCharsets.UTF_8))) return s;
+            if (s.getLong("expires") > System.currentTimeMillis() && java.security.MessageDigest.isEqual(hash.getBytes(StandardCharsets.UTF_8),s.getString("hash").getBytes(StandardCharsets.UTF_8))){if(System.currentTimeMillis()-s.optLong("lastUsedAt")>=60000){s.put("lastUsedAt",System.currentTimeMillis());if(!prefs(c).edit().putString("sessions",sessions.toString()).commit())throw new IOException("接続時刻を保存できません");}return s;}
         }
         return null;
     }
@@ -100,7 +103,7 @@ final class LokiWebConsole {
         for(int i=0;i<old.length();i++) if(old.getJSONObject(i).getLong("expires")>System.currentTimeMillis()) sessions.put(old.getJSONObject(i));
         if(sessions.length()>=8) throw new IOException("端末数の上限です。スマホで認証を解除してください");
         int hours=remember?30*24:24;byte[] random=new byte[32];RANDOM.nextBytes(random);StringBuilder t=new StringBuilder();for(byte b:random)t.append(String.format(Locale.US,"%02x",b&255));
-        String token=t.toString();sessions.put(new JSONObject().put("hash",digest(token)).put("name",name).put("expires",System.currentTimeMillis()+hours*60*60*1000L));
+        String token=t.toString();sessions.put(new JSONObject().put("hash",digest(token)).put("name",name).put("scope","full").put("createdAt",System.currentTimeMillis()).put("lastUsedAt",System.currentTimeMillis()).put("expires",System.currentTimeMillis()+hours*60*60*1000L));
         if(!prefs(c).edit().putString("sessions",sessions.toString()).commit())throw new IOException("認証を保存できません");
         return new JSONObject().put("token",token).put("expiresInHours",hours).put("remember",remember);
     }
@@ -129,8 +132,8 @@ final class LokiWebConsole {
             if(method.equals("GET")&&path.equals("/web/icon.png")) {
                 respond(socket,200,"image/png",asset(owner,"icon.png"));return true;
             }
-            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/local-records.js")||path.equals("/web/style.css"))) {
-                String asset=path.equals("/web/local-records.js")?"local-records.js":path.equals("/web/media-attachments.js")?"media-attachments.js":path.endsWith(".js")?"app.js":path.endsWith(".css")?"style.css":"index.html";
+            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/conversation-tools.js")||path.equals("/web/conversation-reliability.js")||path.equals("/web/conversation-plus.js")||path.equals("/web/conversation-ui.js")||path.equals("/web/reliability.js")||path.equals("/web/local-records.js")||path.equals("/web/style.css"))) {
+                String asset=path.equals("/web")||path.equals("/web/")?"index.html":path.substring("/web/".length());
                 respond(socket,200,asset.endsWith(".js")?"text/javascript; charset=utf-8":asset.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8",asset(owner,asset));return true;
             }
             // No CORS. Reject cross-origin fetches even if a browser retained a token.
@@ -149,6 +152,7 @@ final class LokiWebConsole {
                 json(socket,200,enroll(owner,name));return true;
             }
             JSONObject session=authenticate(owner,token);if(session==null){json(socket,401,new JSONObject().put("error","スマホで接続コードを発行し、接続してください"));return true;}
+            if(method.equals("POST")&&session.optString("scope","full").equals("read")&&!path.equals("/web/api/logout")){json(socket,403,new JSONObject().put("error","この接続端末は閲覧のみです。権限変更はスマホで行ってください"));return true;}
             if(method.equals("POST")&&path.equals("/web/api/secretary-inbox-action")){json(socket,200,SecretaryInbox.action(owner,new JSONObject(body)));return true;}
             if(method.equals("POST")&&path.equals("/web/api/media-drop-status")) {
                 JSONObject input=new JSONObject(body),record=new JSONObject().put("time",System.currentTimeMillis());
@@ -175,7 +179,7 @@ final class LokiWebConsole {
                 json(socket,200,ImageGeneration.enqueue(owner,digest(session.getString("hash")+":"+rawId),input.getString("message"),image,input.optString("parent")));return true;
             }
             if(method.equals("POST")&&path.equals("/web/api/generated-delete")){ImageGeneration.delete(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
-            if(method.equals("POST")&&path.equals("/web/api/image-question")) {
+            if(method.equals("POST")&&path.equals("/web/api/image-question")) {ConversationTools.topicReady(owner);
                 JSONObject input=new JSONObject(body);String encoded=input.getString("image");if(encoded.length()>800000)throw new IllegalArgumentException("image too large");
                 byte[] jpeg=ImageQuestions.normalize(android.util.Base64.decode(encoded,android.util.Base64.NO_WRAP));
                 String rawId=input.getString("requestId");if(!rawId.matches("[a-zA-Z0-9-]{8,80}"))throw new IllegalArgumentException("invalid request id");
@@ -194,14 +198,22 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/meeting-import-cancel")){MeetingMediaImport.cancel(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
             if(method.equals("GET")&&path.equals("/web/api/meeting-control")){json(socket,200,MeetingControl.status(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/meeting-control")){json(socket,200,MeetingControl.queue(owner,new JSONObject(body)));return true;}
-            if(method.equals("GET")&&path.equals("/web/api/local-records")){json(socket,200,UnifiedRecords.search(owner,query.getOrDefault("q","")));return true;}
+            if(path.startsWith("/web/api/reliability-")){String route=path.substring("/web/api/reliability-".length());if(method.equals("GET")){json(socket,200,ReliabilityCenter.get(owner,route,query));return true;}if(method.equals("POST")){json(socket,200,ReliabilityCenter.post(owner,route,new JSONObject(body)));return true;}}
+            if(method.equals("GET")&&path.equals("/web/api/assistant-review")){json(socket,200,AssistantReview.read(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/personal-note")){json(socket,200,PersonalNotes.save(owner,new JSONObject(body)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/personal-note-defer")){json(socket,200,PersonalNotes.defer(owner,new JSONObject(body).getString("id")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/personal-note-delete")){PersonalNotes.delete(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/local-records")){json(socket,200,UnifiedRecords.search(owner,query.getOrDefault("q",""),new JSONObject().put("type",query.getOrDefault("type","")).put("from",Long.parseLong(query.getOrDefault("from","0"))).put("until",Long.parseLong(query.getOrDefault("until",String.valueOf(Long.MAX_VALUE)))).put("pending",query.getOrDefault("pending","false").equals("true"))));return true;}
             if(method.equals("GET")&&path.equals("/web/api/reading-history")){JSONArray list=ReadingHistory.list(owner),items=new JSONArray();for(int i=list.length()-1;i>=0;i--){JSONObject row=list.getJSONObject(i);items.put(new JSONObject().put("id",row.getString("id")).put("at",row.optLong("at")).put("question",row.optString("question")).put("correctionCount",row.getJSONArray("corrections").length()));}json(socket,200,new JSONObject().put("items",items));return true;}
             if(method.equals("GET")&&path.equals("/web/api/reading-detail")){json(socket,200,ReadingHistory.get(owner,query.getOrDefault("id","")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/reading-correct")){JSONObject input=new JSONObject(body);json(socket,200,ReadingHistory.correct(owner,input.getString("id"),input.getInt("revision"),input.getString("changeId"),input.getString("field"),input.optString("before"),input.getString("after")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/reading-context")){JSONObject v=new JSONObject(body);json(socket,200,ReadingCorrectionContext.prepare(owner,v.getString("id"),v.getInt("revision")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/reading-delete")){ReadingHistory.delete(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
             if(method.equals("GET")&&path.equals("/web/api/departure-check")){json(socket,200,DepartureDialog.read(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/meeting-action-candidates")){JSONObject actionPacket=new JSONObject(body);json(socket,200,MeetingActions.preview(owner,actionPacket.getString("id")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/meeting-action-save")){JSONObject actionPacket=new JSONObject(body);json(socket,200,MeetingActions.save(owner,actionPacket.getString("id"),actionPacket.getString("sourceHash"),actionPacket.getInt("index"),actionPacket.getString("text")));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/bookmark-notes")){json(socket,200,BookmarkNotes.read(owner,query.getOrDefault("id","")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/bookmark-note")){json(socket,200,BookmarkNotes.save(owner,new JSONObject(body)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/meetings")){json(socket,200,new JSONObject().put("items",MeetingAudioStore.list(owner)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/meeting-audio")){
                 File f=MeetingAudioStore.folder(owner,query.getOrDefault("id",""));JSONObject m=MeetingAudioStore.meta(f);int index=Integer.parseInt(query.getOrDefault("part","0"));if(index>=m.getJSONArray("parts").length())throw new IOException("invalid recording part");respond(socket,200,"audio/wav",MeetingAudioStore.audio(f,index));return true;
@@ -209,7 +221,7 @@ final class LokiWebConsole {
             if(method.equals("GET")&&path.equals("/web/api/meeting-transcript")){
                 File f=MeetingAudioStore.folder(owner,query.getOrDefault("id",""));byte[] text=DeviceSecrets.photos().decrypt(java.nio.file.Files.readAllBytes(new File(f,"transcript.gcm").toPath()));respond(socket,200,"text/plain; charset=utf-8",text);return true;
             }
-            if(method.equals("POST")&&path.equals("/web/api/meeting-analyze")){MeetingAudioStore.analyze(owner,new JSONObject(body).getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/meeting-analyze")){JSONObject consent=new JSONObject(body);MeetingConsent.consume(owner,consent.getString("id"),consent.getString("token"));MeetingAudioStore.analyze(owner,consent.getString("id"));json(socket,200,new JSONObject().put("ok",true));return true;}
             if(method.equals("GET")&&path.equals("/web/api/photo")) {
                 synchronized(PHOTO_WORK) {
                     File f=photo(owner,query.getOrDefault("id",""));ByteArrayOutputStream out=new ByteArrayOutputStream();
@@ -233,14 +245,33 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/local-health-check")){LocalHealthCheck.start(owner,true);json(socket,200,new JSONObject().put("started",true));return true;}
             if(method.equals("POST")&&path.equals("/web/api/calendar-preview")){try{json(socket,200,CalendarWriter.preview(owner,new JSONObject(body)));}catch(Exception error){json(socket,400,new JSONObject().put("error","候補・日時・カレンダーを確認できません。登録していません"));}return true;}
             if(method.equals("GET")&&path.equals("/web/api/workspace")){json(socket,200,ConversationWorkspace.snapshot(owner));return true;}
-            if(method.equals("POST")&&path.equals("/web/api/workspace-command")){json(socket,200,ConversationWorkspace.submit(owner,new JSONObject(body)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/workspace-command")){synchronized(LokiWebConsole.class){json(socket,200,ConversationWorkspace.submit(owner,new JSONObject(body)));}return true;}
             if(method.equals("GET")&&path.equals("/web/api/navigation-health")){json(socket,200,owner.navigationHealth());return true;}
             if(method.equals("POST")&&path.equals("/web/api/navigation-retry")){owner.runOnUiThread(owner::retryNavigationForUser);json(socket,200,new JSONObject().put("queued",true));return true;}
             if(method.equals("POST")&&path.equals("/web/api/meeting-verify")){json(socket,200,MeetingAudioStore.verify(owner,new JSONObject(body).getString("id")));return true;}
             if(method.equals("GET")&&path.equals("/web/api/recovery")){json(socket,200,query.containsKey("id")?ConversationRecoveryStore.read(owner,query.get("id")):new JSONObject().put("items",ConversationRecoveryStore.list(owner)));return true;}
-            if(method.equals("GET")&&path.equals("/web/api/history")){json(socket,200,new JSONObject().put("items",owner.webHistory()).put("requests",new JSONArray(prefs(owner).getString("outbox","[]"))).put("runtime",owner.webConversationRuntime()).put("imageReference",ImageReferenceStore.view(owner)).put("progress",ConversationWorkspace.snapshot(owner).optJSONObject("conversation")).put("progressFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-stop")){json(socket,200,ConversationContinuation.stop(owner,new JSONObject(body).getString("key")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-merge")){json(socket,200,ConversationContinuation.merge(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-templates")){json(socket,200,ConversationTools.templates(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-templates")){json(socket,200,ConversationTools.template(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-draft")){json(socket,200,ConversationTools.draft(owner,token));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-draft")){json(socket,200,ConversationTools.draft(owner,token,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-search")){json(socket,200,ConversationTools.search(owner.webHistory(),ConversationContinuation.ledger(owner),query.getOrDefault("q",""),query.getOrDefault("from",""),query.getOrDefault("until",""),query.getOrDefault("images","any")));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-settings")){json(socket,200,ConversationReliability.settings(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-settings")){json(socket,200,ConversationReliability.settings(owner,new JSONObject(body)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-reconcile")){json(socket,200,ConversationReliability.reconcile(owner));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-storage")){json(socket,200,ConversationReliability.storage(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-prune")){json(socket,200,owner.pruneWebConversation(new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-diagnostics")){json(socket,200,ConversationReliability.diagnostics(owner));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-page")){json(socket,200,ConversationReliability.page(owner.webHistory(),20,query.getOrDefault("before",""),query.getOrDefault("revision","")));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-status")){json(socket,200,ConversationContinuation.status(owner));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/conversation-library")){json(socket,200,ConversationCollections.library(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-favorite")){json(socket,200,ConversationCollections.favorite(owner,owner.webHistory(),new JSONObject(body)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/conversation-export")){json(socket,200,new JSONObject().put("text",ConversationCollections.export(owner,owner.webHistory(),new JSONObject(body))));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/queue-change")){json(socket,200,QueuedConversation.change(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/history")){JSONObject historyPage=ConversationReliability.page(owner.webHistory(),20,"","");json(socket,200,new JSONObject().put("items",historyPage.getJSONArray("items")).put("historyPage",historyPage).put("partials",ConversationReliability.partials(ConversationContinuation.ledger(owner),System.currentTimeMillis())).put("requests",new JSONArray(prefs(owner).getString("outbox","[]"))).put("queueOrder",MainActivity.queuedWebOrder(owner)).put("serverNow",System.currentTimeMillis()).put("timing",ConversationContinuation.timing(new JSONArray(prefs(owner).getString("outbox","[]")),System.currentTimeMillis())).put("runtime",owner.webConversationRuntime()).put("imageReference",ImageReferenceStore.view(owner)).put("progress",ConversationWorkspace.snapshot(owner).optJSONObject("conversation")).put("progressFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/send")) {
-                synchronized(LokiWebConsole.class) {
+                synchronized(LokiWebConsole.class) {ConversationTools.topicReady(owner);
                     JSONObject input=new JSONObject(body);String text=input.getString("message").trim(), requestId=input.getString("requestId");
                     if(text.isEmpty()||text.length()>2800||text.contains("__LOKI_")||text.contains("__CODEX_")||!requestId.matches("[a-zA-Z0-9-]{8,80}"))throw new IllegalArgumentException("送信内容が無効です（最大2800文字）");
                     if(input.has("referenceKey")&&(MediaGenerationContext.video(owner,text)||ImageGeneration.handles(owner,text)))throw new IOException("参照付きの質問から生成は開始しません。生成する場合は質問の書き出しを消して新しく依頼してください");
@@ -249,20 +280,20 @@ final class LokiWebConsole {
                     if(ImageGeneration.handles(owner,text)){json(socket,200,ImageGeneration.enqueue(owner,digest(session.getString("hash")+":"+requestId),text,null,""));return true;}
                     JSONArray old=new JSONArray(prefs(owner).getString("outbox","[]"));String key=digest(session.getString("hash")+":"+requestId);
                     ConversationRecoveryStore.save(owner,key,"send",input);
-                    for(int i=0;i<old.length();i++)if(old.getJSONObject(i).optString("key").equals(key)){boolean accepted=old.getJSONObject(i).optBoolean("accepted",old.getJSONObject(i).optString("status").equals("グラスへ送信待ち"));json(socket,accepted?200:409,new JSONObject().put("queued",accepted).put("duplicate",true).put("error",accepted?"":"送信完了を確認できません。スマホの送信状況を確認してください"));return true;}
+                    for(int i=0;i<old.length();i++)if(old.getJSONObject(i).optString("key").equals(key)){boolean accepted=old.getJSONObject(i).optBoolean("accepted",old.getJSONObject(i).optString("status").equals("グラスへ送信待ち"));json(socket,accepted?200:409,new JSONObject().put("queued",accepted).put("requestKey",key).put("tracked",true).put("duplicate",true).put("error",accepted?"":"送信完了を確認できません。スマホの送信状況を確認してください"));return true;}
                     if(input.has("referenceKey")&&!ImageReferenceSummary.matchesKey(input.optString("referenceKey"),ImageReferenceStore.view(owner)))throw new IOException("参照が更新・失効しています。本文を残して最新の参照を選び直してください。まだ送信していません");
                     // Persist intent before enqueue. Retries never enqueue the same browser request twice.
-                    JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("device",session.getString("name")).put("status","受付中").put("tracked",true).put("requestState","CREATED");
+                    JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("device",session.getString("name")).put("status","受付中").put("tracked",true).put("referenceKey",input.optString("referenceKey")).put("requestState","CREATED");
                     JSONArray next=WebRequestLedger.append(old,record);
                     if(next==null){json(socket,409,new JSONObject().put("queued",false).put("error","未完了の送信記録が100件あります。送信状況を確認してください。追加送信はしていません"));return true;}
                     if(!prefs(owner).edit().putString("outbox",next.toString()).commit())throw new IOException("送信記録を保存できません");
                     boolean queued=MainActivity.queueTrackedWebCommand(owner,key,text,input.optString("referenceKey"));record.put("accepted",queued).put("requestState",queued?"QUEUED":"FAILED").put("status",queued?"グラスへ送信待ち":"送信できませんでした（再入力してください）");
                     if(!prefs(owner).edit().putString("outbox",next.toString()).commit())throw new IOException("送信状態を保存できません");
-                    json(socket,queued?200:409,new JSONObject().put("queued",queued).put("error",queued?"":"グラスの送信待ちが満杯です"));
+                    json(socket,queued?200:409,new JSONObject().put("queued",queued).put("requestKey",key).put("tracked",true).put("error",queued?"":"グラスの送信待ちが満杯です"));
                 }return true;
             }
             if(method.equals("POST")&&path.equals("/web/api/import")){boolean queued=MainActivity.queueBridgeCommand(owner,"__LOKI_PHOTO_SYNC__",true);json(socket,queued?200:409,new JSONObject().put("queued",queued));return true;}
-            if(method.equals("POST")&&path.equals("/web/api/logout")) {
+            if(method.equals("POST")&&path.equals("/web/api/logout")) {ConversationTools.clearDraft(owner,token);
                 synchronized(LokiWebConsole.class){JSONArray old=new JSONArray(prefs(owner).getString("sessions","[]")),next=new JSONArray();for(int i=0;i<old.length();i++)if(!old.getJSONObject(i).getString("hash").equals(session.getString("hash")))next.put(old.getJSONObject(i));if(!prefs(owner).edit().putString("sessions",next.toString()).commit())throw new IOException();}
                 json(socket,200,new JSONObject().put("ok",true));return true;
             }

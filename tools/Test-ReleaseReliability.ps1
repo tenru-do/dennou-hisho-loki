@@ -28,4 +28,13 @@ if($LASTEXITCODE){throw 'Checkpoint browser regression failed'}
 if($LASTEXITCODE){throw 'Tuning/reference/meeting browser regression failed'}
 & $node "$PSScriptRoot/RecordsWebTest.cjs"
 if($LASTEXITCODE){throw 'Records browser regression failed'}
+& "$PSScriptRoot/Test-AssistantReview.ps1" -JsonJar $JsonJar
+& $node "$PSScriptRoot/AssistantReviewWebTest.cjs"
+if($LASTEXITCODE){throw 'Assistant review browser regression failed'}
+& $node "$PSScriptRoot/ReliabilityCenterWebTest.cjs"
+if($LASTEXITCODE){throw 'Reliability center browser regression failed'}
+& $node "$PSScriptRoot/MaintenanceCenterWebTest.cjs"
+if($LASTEXITCODE){throw 'Maintenance center browser regression failed'}
+& $node "$PSScriptRoot/ExperienceCenterWebTest.cjs"
+if($LASTEXITCODE){throw 'Experience center browser regression failed'}
 Write-Output 'Release reliability regressions PASS. No external API, device capture, calendar mutation, or install was performed.'

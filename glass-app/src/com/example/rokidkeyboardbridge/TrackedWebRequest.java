@@ -18,15 +18,15 @@ final class TrackedWebRequest {
   wire(id,text);return new JSONObject().put("id",id).put("text",text).put("referenceKey",referenceKey).put("phase","READY");
  }
  static boolean executionGrant(String before,String event,String after){return "RECEIVED".equals(before)&&"RUNNING".equals(event)&&"RUNNING".equals(after);}
- static boolean terminal(String state){return "ANSWERED".equals(state)||"FAILED".equals(state)||"UNCONFIRMED".equals(state);}
+ static boolean terminal(String state){return "STOPPED".equals(state)||"CANCELLED".equals(state)||"SUPERSEDED".equals(state)||"ANSWERED".equals(state)||"FAILED".equals(state)||"UNCONFIRMED".equals(state);}
  static JSONObject receipt(JSONObject original,String event,String reason,long now)throws Exception{
   if(!validId(original.optString("key"))||!original.optBoolean("tracked"))throw new IllegalArgumentException("Unknown tracked request");
   if(!"RECEIVED".equals(event)&&!"RUNNING".equals(event)&&!terminal(event))throw new IllegalArgumentException("Invalid receipt event");
-  if(reason==null)reason="";if(!reason.matches("|MODEL_ERROR|SAFETY_STOP|INTERRUPTED|LOCAL_RESULT|RESTART|REFERENCE_CHANGED"))throw new IllegalArgumentException("Invalid receipt reason");
+  if(reason==null)reason="";if(!reason.matches("|NETWORK|RATE_LIMIT|AUTH|MODEL_ERROR|SAFETY_STOP|INTERRUPTED|LOCAL_RESULT|RESTART|REFERENCE_CHANGED"))throw new IllegalArgumentException("Invalid receipt reason");
   JSONObject copy=new JSONObject(original.toString());String before=copy.optString("requestState","CREATED");
   if(terminal(before)||before.equals(event)||("RUNNING".equals(before)&&"RECEIVED".equals(event)))return copy;
   if(!before.equals("CREATED")&&!before.equals("QUEUED")&&!before.equals("RECEIVED")&&!before.equals("RUNNING"))throw new IllegalArgumentException("Invalid prior state");
-  copy.put("requestState",event).put("receiptAt",now).put("receiptReason",reason);return copy;
+  copy.put("requestState",event).put("receiptAt",now).put("receiptReason",reason);String stamp=event.equals("RECEIVED")?"receivedAt":event.equals("RUNNING")?"startedAt":terminal(event)?"finishedAt":"";if(!stamp.isEmpty()&&!copy.has(stamp))copy.put(stamp,now);return copy;
  }
  private TrackedWebRequest(){}
 }
