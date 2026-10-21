@@ -312,9 +312,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String workspaceCommandId="",workspaceCommandStatus="",workspaceCommandPhase="UNCONFIRMED";private long workspaceSyncAt;private final java.util.concurrent.atomic.AtomicBoolean workspaceBusy=new java.util.concurrent.atomic.AtomicBoolean();
     private void observationRecognition(String source,String phase,String text){try{observationRecognition=new JSONObject().put("source",source).put("phase",phase).put("text",text==null?"":text).put("at",System.currentTimeMillis());}catch(Exception ignored){}}
     private JSONObject assistantActivitySnapshot(){try{boolean speaking=nativeSpeechSession.active(android.os.SystemClock.elapsedRealtime())||(radioPlayback!=null&&radioPlayback.isSpeaking());String reason=ambientPausedForNavigation?"NAVIGATION":!activityForeground?"BACKGROUND":topicStopRequested?"STOPPING":topicMenuDepth>0?"MENU":pendingUserConversation()||editingUserDraft()?"USER_TURN":"";return new JSONObject().put("at",System.currentTimeMillis()).put("voice",AssistantActivityState.phase(voiceLoopMode,voiceRecording,speechRecognizerActive,voiceLoopMode&&geminiRequestActive,speaking&&voiceLoopMode,false)).put("topic",AssistantActivityState.phase(radioModeEnabled,radioObservationActive,false,radioTopicPending,radioPlayback!=null&&radioPlayback.isSpeaking(),!reason.isEmpty())).put("pauseReason",reason);}catch(Exception e){return new JSONObject();}}
-    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{JSONObject state=new JSONObject().put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
+    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{JSONObject state=new JSONObject().put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("latency",ConversationLatency.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
     private final ConversationPlaybackState conversationPlayback=new ConversationPlaybackState();
-    private String conversationSpeechArm="";
+    private String conversationSpeechArm="",latencySpeechId="";
+    private int latencySpeechGeneration=-1;
     private void controlConversationSpeech(JSONObject command)throws Exception{String id=command.getString("answerKey"),op=command.getString("speechAction");conversationPlayback.check(id,ttsGeneration);if(op.equals("pause")){int old=ttsGeneration;stopRokidTtsForUserSpeech();conversationPlayback.pause(id,old,ttsGeneration);}else{String text=conversationPlayback.text(id,ttsGeneration,op.equals("replay"));stopRokidTtsForUserSpeech();conversationSpeechArm=id;speakWithPhoneTtsChunked("",text);}workspaceCommandPhase="COMPLETED";workspaceCommandStatus=op.equals("pause")?"読み上げを一時停止しました":op.equals("resume")?"停止した区切りから読み直します":"回答を最初から読み直します";}
     private void applyWorkspaceCommand(JSONObject command){
         String id=command.optString("requestId");if(!id.matches("[a-f0-9-]{36}"))return;try{JSONArray seen=new JSONArray(getPreferences().getString("workspace_commands_seen","[]"));for(int i=0;i<seen.length();i++)if(id.equals(seen.optString(i)))return;JSONArray next=new JSONArray();for(int i=Math.max(0,seen.length()-31);i<seen.length();i++)next.put(seen.getString(i));next.put(id);if(!getPreferences().edit().putString("workspace_commands_seen",next.toString()).commit())return;}catch(Exception invalid){return;}
@@ -1048,6 +1049,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         @Override // java.lang.Runnable
         public void run() {
             MainActivity.this.pollPhoneCommand();
+            MainActivity.this.awaitPhoneCommandNotice();
             MainActivity.this.handler.postDelayed(this, 3000L);
         }
     };
@@ -1516,9 +1518,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void focusSafeDefault() {
-        if (this.zoomButton != null && this.zoomButton.getVisibility() == View.VISIBLE) {
-            this.zoomButton.requestFocus();
+        if(buttonPanel!=null)for(int i=0;i<buttonPanel.getChildCount();i++){
+            View child=buttonPanel.getChildAt(i);
+            if(child instanceof Button&&child.isShown()&&child.isEnabled()&&child.isFocusable()&&child.requestFocus())return;
         }
+        if(settingsButton!=null&&settingsButton.isShown())settingsButton.requestFocus();
     }
 
     private boolean handleFocusNavigation(View view, int key) {
@@ -1985,6 +1989,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 child.setLayoutParams(new LinearLayout.LayoutParams(0,dp(20),1.0f));
             }
         }
+        hudLayout=new HudLayout(this,this.buttonPanel);
         this.imeButton = new Button(this);
         this.imeButton.setText("日本語入力を切替");
         this.imeButton.setText("IME");
@@ -2426,10 +2431,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private boolean changeReversibleDisplay(String key,boolean value){try{SettingsJournal.change(this,"navigation_display",new JSONObject().put(key,value));return true;}catch(Exception e){setStatus("表示設定を保存できません",Color.YELLOW);return false;}}
 
+    private HudLayout hudLayout;
     private AlertDialog showDisplaySettings() {
         return NavigationChoiceDialog.show(this, "設定",
-                new String[]{"CTRL：明るさ", isFullBodySelected()?"表示：全身 → 顔に切替":"表示：顔 → 全身に切替", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "REC：連続撮影", "Wi-Fi：接続確認・再接続", "秘書の受信箱", "端末内メモ・通信待ち", "容量・更新バックアップ確認", "音量・負荷・直前の設定に戻す", "静かな時間（表示のみ）", "出発前チェック", "BT30：Bluetooth音声の30秒送り・戻し"}, -1,
+                new String[]{"CTRL：明るさ", isFullBodySelected()?"表示：全身 → 顔に切替":"表示：顔 → 全身に切替", "表示範囲：全画面", "表示範囲：下半分", "表示範囲：上半分", "APIキー・カスタム指示", "スマホとペアリング", "全身画像の確認", "REC：連続撮影", "Wi-Fi：接続確認・再接続", "秘書の受信箱", "端末内メモ・通信待ち", "容量・更新バックアップ確認", "音量・負荷・直前の設定に戻す", "静かな時間（表示のみ）", "出発前チェック", "BT30：Bluetooth音声の30秒送り・戻し", "トップのボタンを編集・SET内の操作", "読み上げ辞書"}, -1,
                 (dialog, which) -> {
+                    if (which == 17) { if(hudLayout!=null)hudLayout.show(); return; }
+                    if (which == 18) { PronunciationDictionary.show(this); return; }
                     if (which == 16) { showBluetoothPlaybackMenu(); return; }
                     if(which==14){QuietHoursDialog.show(this,QuietHours.read(this),config->{try{QuietHours.save(this,config,config.optLong("baseRevision"));workspaceSyncAt=0;syncWorkspace();setStatus("静かな時間を保存しました",Color.CYAN);}catch(Exception e){throw new IllegalArgumentException(e.getMessage());}});return;}if(which==15){try{JSONObject state=DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"));new AlertDialog.Builder(this).setTitle("グラスの出発前チェック").setMessage(DeviceReadiness.describe(state,true)+"\nスマホとの受信："+(NavigationFreshness.linkFresh(navigationReceivedElapsed,android.os.SystemClock.elapsedRealtime())?"最近のナビ受信あり":"ナビの受信は未確認")+"\n静かな時間："+(QuietHours.muted(this,"notification")?"通知は表示のみ":"通常設定")).setPositiveButton("閉じる",null).show();}catch(Exception e){setStatus("状態を取得できません",Color.YELLOW);}return;}
                     if (which == 13) { DeviceTuning.show(this,()->{applyDisplayArea();updateInfoLine();}); return; }
@@ -8697,6 +8705,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void markGeminiRequestStarted() {
+        ConversationLatency.mark(activeTrackedWebId,"modelStartMs",android.os.SystemClock.elapsedRealtime());
         this.lastGeminiRequestStartedAt = System.currentTimeMillis();
         long pacingMs = geminiPacingMs();
         long jCurrentTimeMillis = System.currentTimeMillis() + pacingMs;
@@ -8726,6 +8735,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void finishTrackedWebRequest(String id,String event,String reason){
         if(!TrackedWebRequest.validId(id)||!TrackedWebRequest.terminal(event))return;
+        if(event.equals("ANSWERED")&&id.equals(normalTrackedWebId))ConversationLatency.mark(id,"firstTextMs",android.os.SystemClock.elapsedRealtime());
         synchronized(trackedWebLock){try{JSONObject saved=new JSONObject(getPreferences().getString(KEY_TRACKED_WEB,"{}"));
             if(!id.equals(saved.optString("id"))||"FINISHED".equals(saved.optString("phase")))return;
             saved.put("phase","FINISHED").put("event",event).put("reason",reason);saved.remove("text");
@@ -13151,6 +13161,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     JSONObject packet=TrackedWebRequest.parse(strTrim3);
                     if(geminiRequestActive||isGeminiCoolingDown()||!pendingPhoneCommand.isEmpty())return;
                     synchronized(trackedWebLock){if(!getPreferences().getString(KEY_TRACKED_WEB,"").isEmpty())return;
+                    ConversationLatency.begin(packet.getString("id"),android.os.SystemClock.elapsedRealtime());
                         if(!getPreferences().edit().putString(KEY_TRACKED_WEB,packet.toString()).commit())throw new java.io.IOException("Tracked request storage failed");}
                     resumeTrackedWebRequest(packet.toString());return;
                 }
@@ -13301,6 +13312,14 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     /* JADX INFO: Access modifiers changed from: private */
+    private final java.util.concurrent.atomic.AtomicBoolean commandNoticeInFlight=new java.util.concurrent.atomic.AtomicBoolean();
+    private void awaitPhoneCommandNotice(){
+        if(!commandNoticeInFlight.compareAndSet(false,true))return;
+        new Thread(()->{boolean queued=false;try{queued=new JSONObject(fetchPhoneEndpointJson("command_notice")).optBoolean("queued");}catch(Exception ignored){}finally{commandNoticeInFlight.set(false);}
+            final boolean ready=queued;
+            handler.postDelayed(()->{if(activityForeground&&!isFinishing()&&!isDestroyed()){if(ready)pollPhoneCommand();awaitPhoneCommandNotice();}},queued?250L:50L);
+        },"PhoneCommandNotice").start();
+    }
     private boolean phoneCommandPollInFlight;
 
     public synchronized void pollPhoneCommand() {
@@ -14884,7 +14903,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void publishConversationPreview(String id,int generation,long sequence,String text){
         if(generation!=requestGeneration||!id.equals(normalTrackedWebId)||!id.equals(activeTrackedWebId))return;
         final String clipped=text.length()>12000?text.substring(0,12000):text;
-        handler.post(()->{if(generation==requestGeneration&&id.equals(activeTrackedWebId)){answer.setText("生成中（暫定・変更される場合があります）\n"+ConversationStream.display(clipped,trackedGlassChars));}});
+        handler.post(()->{if(generation==requestGeneration&&id.equals(activeTrackedWebId)){ConversationLatency.mark(id,"firstTextMs",android.os.SystemClock.elapsedRealtime());answer.setText("生成中（暫定・変更される場合があります）\n"+ConversationStream.display(clipped,trackedGlassChars));}});
         try{JSONObject body=new JSONObject().put("id",id).put("event","RUNNING").put("partial",clipped).put("partialSequence",sequence);postTopicForm("conversation_receipt","request="+URLEncoder.encode(body.toString(),"UTF-8"));}catch(Exception ignored){}
     }
     private String conversationFailureReason(Throwable error){if(error instanceof GeminiHttpException){int code=((GeminiHttpException)error).code;return code==429?"RATE_LIMIT":code==401||code==403||code==402?"AUTH":code>=500?"MODEL_ERROR":"MODEL_ERROR";}return ConversationStream.failure(error);}
@@ -15530,7 +15549,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     public void sendTtsChunk(String str) throws Exception {
         Log.i(TAG, "sendTtsChunk length=" + str.length());
         JSONObject jSONObject = new JSONObject();
-        MascotTtsTextFilter.Prepared prepared = MascotTtsTextFilter.prepare(normalizeTtsVocalizations(str));
+        MascotTtsTextFilter.Prepared prepared = MascotTtsTextFilter.prepare(normalizeTtsVocalizations(PronunciationDictionary.spoken(this,str)));
         jSONObject.put("ttsMsg", prepared.forTransport(false));
         JSONObject jSONObject2 = new JSONObject();
         jSONObject2.put("type", "cmd_play_tts");
@@ -15598,7 +15617,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (expectedGeneration != this.ttsGeneration) return false;
             if (assistBinder == null || !assistBinder.isBinderAlive())
                 throw new IllegalStateException("Rokid service unavailable");
-            MascotTtsTextFilter.Prepared prepared = MascotTtsTextFilter.prepare(normalizeTtsVocalizations(text));
+            MascotTtsTextFilter.Prepared prepared = MascotTtsTextFilter.prepare(normalizeTtsVocalizations(PronunciationDictionary.spoken(this,text)));
             Log.i(TAG, "mascot TTS format=plain-fallback style=" + prepared.style
                     + " requestedPauseMs=" + prepared.requestedPauseMs);
             JSONObject speech = new JSONObject().put("content", prepared.forTransport(false))
@@ -15606,6 +15625,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             JSONObject message = new JSONObject().put("cmd", "Sys").put("key", "Tts_SendPlayTts")
                     .put("data", speech.toString());
             transactControl(new JSONObject().put("type", "cmd_phone_gatt_send_data").put("data", message).toString());
+            if(expectedGeneration==latencySpeechGeneration)ConversationLatency.mark(latencySpeechId,"speechDispatchMs",android.os.SystemClock.elapsedRealtime());
             nativeSpeechSession.sent(android.os.SystemClock.elapsedRealtime(), estimatePhoneTtsFinalDurationMs(text) + 1500L);
             Log.i(TAG, "Rokid native TTS sent");
             return true;
@@ -16753,6 +16773,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         final int i = this.ttsGeneration + 1;
         this.ttsGeneration = i;
+        latencySpeechId=conversationSpeechArm;latencySpeechGeneration=i;
         if(!conversationSpeechArm.isEmpty()){conversationPlayback.begin(conversationSpeechArm,strArrSplitForTts,i);conversationSpeechArm="";}
         this.handler.post(() -> { if(i==ttsGeneration){beginPortraitSemanticSpeech(prompt,fullBodyAnswer,i);if(fullBodyImage!=null){fullBodyImage.setUserContext(prompt);fullBodyImage.beginSpeech(fullBodyAnswer);}} });
         Log.i(TAG, "PhoneTTS chunk count=" + strArrSplitForTts.length);

@@ -204,10 +204,10 @@ async function prepareChatMedia(files){
  if(kinds.filter(k=>k==='video').length>3){dropStatus('動画は合計3本までです。現在の添付は保持しています');return;}
  const epoch=++chatImageGeneration;chatImagePreparing=true;dropStatus('添付を追加しています…');
  try{
-  const added=[];for(const file of list){const video=file.type.startsWith('video/');const prepared=video?await createMediaOverview([file],chatImageDimensions,()=>epoch!==chatImageGeneration||!token):file;added.push(await normalizeChatAttachment(prepared));if(epoch!==chatImageGeneration||!token)return;}
+  const qualityHints=[];const added=[];for(const file of list){const video=file.type.startsWith('video/');const prepared=video?await createMediaOverview([file],chatImageDimensions,()=>epoch!==chatImageGeneration||!token):file;const normalized=await normalizeChatAttachment(prepared);if(!video){try{const hint=await photoQualityHint(normalized);if(hint)qualityHints.push(hint);}catch{qualityHints.push("画質の目安を取得できません。画像を確認してください。");}}added.push(normalized);if(epoch!==chatImageGeneration||!token)return;}
   const combined=previous.concat(added);const sheet=combined.length===1?combined[0]:await createMediaOverview(combined,chatImageDimensions,()=>epoch!==chatImageGeneration||!token,{kinds});
   if(epoch!==chatImageGeneration||!token)return;await prepareChatImage(sheet);
-  if(chatImageData){chatImageCount=combined.length;chatAttachments=combined;chatAttachmentKinds=kinds;chatAttachmentVideo=kinds.includes('video');renderChatAttachmentList();const videos=kinds.filter(k=>k==='video').length;dropStatus(combined.length+'件を添付中（画像'+(combined.length-videos)+'枚・動画'+videos+'本）。追加できます。動画は各8場面の抜粋・音声なしです');}
+  if(chatImageData){chatImageCount=combined.length;chatAttachments=combined;chatAttachmentKinds=kinds;chatAttachmentVideo=kinds.includes('video');renderChatAttachmentList();const videos=kinds.filter(k=>k==='video').length;dropStatus(combined.length+'件を添付中（画像'+(combined.length-videos)+'枚・動画'+videos+'本）。追加できます。動画は各8場面の抜粋・音声なしです'+(qualityHints.length?' 画質の目安：'+[...new Set(qualityHints)].join(' ')+' 添付を外して撮り直せます。送信は選んだ画像のまま行います。':''));}
  }catch(e){if(epoch===chatImageGeneration){dropStatus(e.message);}}finally{if(epoch===chatImageGeneration)chatImagePreparing=false;}
 }
 $('chatImage').addEventListener('change',()=>{if(!$('send').disabled&&!chatImagePreparing)prepareChatMedia($('chatImage').files);});on('clearChatImage',clearChatImage);

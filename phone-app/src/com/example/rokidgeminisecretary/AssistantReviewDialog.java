@@ -5,6 +5,7 @@ final class AssistantReviewDialog {
  static void text(MainActivity o,LinearLayout box,String value){TextView t=new TextView(o);t.setText(value);t.setTextIsSelectable(true);box.addView(t);}
  static void button(MainActivity o,LinearLayout box,String title,Runnable action){Button b=new Button(o);b.setText(title);b.setOnClickListener(v->action.run());box.addView(b);}
  static void render(MainActivity o,JSONObject data){if(o.isDestroyed())return;LinearLayout box=new LinearLayout(o);box.setOrientation(1);box.setPadding(20,12,20,12);
+ JSONObject latency=ConversationWorkspace.snapshot(o).optJSONObject("latency");if(latency!=null)text(o,box,"直近のグラス処理（受理からの経過）\nモデル開始："+(latency.has("modelStartMs")?latency.optLong("modelStartMs")+"ms":"未計測")+" / 最初の表示："+(latency.has("firstTextMs")?latency.optLong("firstTextMs")+"ms":"未計測")+" / 音声送信："+(latency.has("speechDispatchMs")?latency.optLong("speechDispatchMs")+"ms":"未計測")+"\n実際に音が鳴り始める時刻は取得できません。端末間の時計は差し引いていません。");
  text(o,box,data.optString("diagnosis"));button(o,box,"直近の入力を訂正",()->o.beginRecentCorrection());button(o,box,"接続・未転送・処理状態",()->OperationOverviewDialog.show(o));button(o,box,"参照設定を確認",()->new ConversationWorkspaceDialog(o).show());button(o,box,"出発前の電池・空き容量",()->DepartureDialog.show(o));
  button(o,box,"簡易メモを保存",()->edit(o,"memo",""));button(o,box,"会話の続きカードを作る",()->edit(o,"continuation",data.optString("continuationDraft")));
  text(o,box,"メモはこの端末に暗号化保存。音声入力はキーボードの入力機能を明示操作してください。続きカードは話題・決定事項・未解決を自分で確認して記入します。");

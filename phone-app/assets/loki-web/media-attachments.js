@@ -30,3 +30,9 @@ async function createMediaOverview(files,dimensions,cancelled,options={}){
  check();for(let q=.9;q>=.3;q-=.1){const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',q));if(blob&&blob.size<=600000)return blob;}
  throw Error('添付が細かすぎます。枚数や範囲を減らしてください');
 }
+
+// Local advisory only: a flat drawing can produce the same result as a blurred photo.
+async function photoQualityHint(file){
+ const bitmap=await createImageBitmap(file,{resizeWidth:96,resizeHeight:96,resizeQuality:'high'});
+ try{const canvas=document.createElement('canvas');canvas.width=canvas.height=96;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,0,0);const px=ctx.getImageData(0,0,96,96).data;const l=i=>.299*px[i*4]+.587*px[i*4+1]+.114*px[i*4+2];let brightness=0,edge=0,n=0;for(let y=1;y<95;y++)for(let x=1;x<95;x++){const i=y*96+x,v=l(i),lap=4*v-l(i-1)-l(i+1)-l(i-96)-l(i+96);brightness+=v;edge+=lap*lap;n++;}return (brightness/n<45?'暗い画像です。明るい場所での再撮影を検討してください。':'')+(edge/n<55?'細部が少ない画像です。ぼけ・ピントを確認してください（無地の画像でも表示します）。':'');}finally{bitmap.close();}
+}
