@@ -5,7 +5,7 @@ public final class LocalMediaControlTest {
  static int count;
  static void check(boolean value,String message){if(!value)throw new AssertionError(message);count++;}
  static PlaybackState state(long position,long actions,long updated,int mode,float speed){return new PlaybackState.Builder().setActions(actions).setState(mode,position,speed,updated).build();}
- static final class Fake implements LocalMediaControl.Session {
+ static class Fake implements LocalMediaControl.Session {
   PlaybackState state;String identity="track-one";long duration=120000;int calls;boolean ignore,change;
   Fake(){state=LocalMediaControlTest.state(60000,PlaybackState.ACTION_SEEK_TO,SystemClock.elapsedRealtime()-50,PlaybackState.STATE_PAUSED,0);}
   public String app(){return "Synthetic test player";}public String identity(){return identity;}public PlaybackState state(){return state;}public long duration(){return duration;}
@@ -40,6 +40,14 @@ public final class LocalMediaControlTest {
   fake.state=state(0,256,SystemClock.elapsedRealtime()-50,2,0);check(LocalMediaControl.execute(context,request(row,-30000)).optString("status").equals("limit")&&fake.calls==0,"at beginning no send");
   fake=new Fake();fake.duration=65000;row=list(fake);output=LocalMediaControl.execute(context,request(row,30000));check(output.optBoolean("ok")&&output.optLong("actualDelta")==5000,"end clamp reports actual 5 seconds");
   check(!row.toString().contains("track-one"),"no media titles exported");
+  Fake slow=new Fake(){public PlaybackState state(){android.os.SystemClock.sleep(6);if(state.getState()==PlaybackState.STATE_PLAYING)return LocalMediaControlTest.state(state.getPosition(),256,SystemClock.elapsedRealtime(),3,1);return state;}};
+  slow.state=state(60000,256,SystemClock.elapsedRealtime(),3,1);JSONObject slowRow=list(slow);
+  check(slowRow.optBoolean("seek"),"clock sampled after framework state retrieval");
+  check(LocalMediaControl.execute(context,request(slowRow,-30000)).optBoolean("ok"),"read latency does not reject valid playing session");
+  Fake end=new Fake();end.state=state(118000,256,SystemClock.elapsedRealtime(),3,1);JSONObject endRow=list(end);
+  check(LocalMediaControl.execute(context,request(endRow,30000)).optString("status").equals("limit")&&end.calls==0,"natural progress near end cannot masquerade as seek acknowledgement");
+  Fake synchronousAck=new Fake(){public void seek(long position){super.seek(position);android.os.SystemClock.sleep(8);}};
+  check(LocalMediaControl.execute(context,request(list(synchronousAck),30000)).optBoolean("ok"),"synchronous acknowledgement before transport returns is accepted");
   return count;
  }
 }

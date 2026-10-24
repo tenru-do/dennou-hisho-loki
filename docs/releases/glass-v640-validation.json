@@ -1,9 +1,10 @@
 {
   "glassVersion": 640,
-  "phoneVersion": 287,
+  "phoneVersion": 288,
+  "tabletVersion": 288,
   "status": "automatic_pass_manual_pending",
   "developmentApkSha256": {
-    "phone": "ac4ad6845b605b4b1962e3ad48adfe9e262be844ee4ee2080fed196f5df5325d",
+    "phone": "1ea6266e4322a802e36a76a377165388207b4b1c49d5867bfc24f6a57e47a4c5",
     "glass": "2d10de1b4676cdd529c988d97b3c11f969cfb595b71a75a77f3364f389919a0c"
   },
   "interactionCasesPassed": 143,
@@ -11,12 +12,22 @@
   "stabilityAssertionsPassed": 420,
   "browserSuitesPassed": 24,
   "observationParserTestsPassed": 5,
-  "mediaSyntheticAssertionsPassed": 23,
-  "youtubeMusicSeekConfirmed": true,
-  "youtubeMusicOperations": [
-    "back_30_seconds",
-    "forward_30_seconds"
-  ],
+  "mediaSyntheticAssertionsPassed": 27,
+  "mediaRealDeviceChecks": {
+    "phoneRadikoTimeFree": "passed_back_and_forward_30_seconds",
+    "phoneYouTubeMusic": "passed_back_and_forward_30_seconds",
+    "android13TabletYouTube": "passed_back_and_forward_30_seconds",
+    "android13TabletRadikoTimeFree": "passed_back_and_forward_30_seconds",
+    "glassToTabletRadikoNetwork": "passed_back_and_forward_30_seconds"
+  },
+  "glassToTabletScope": "Isolated on-glass check using production BridgeTls sources over authenticated pinned TLS; permanent app pairing unchanged; normal UI pairing-switch flow not exercised.",
+  "additionalUserRequestedMediaChecksPassed": true,
+  "browserRecheck": {
+    "initialFailedSuite": "ConversationRobustnessWebTest",
+    "fixtureTimingBoundaryCorrected": true,
+    "suitesPassedOnRecheck": 24,
+    "sameApkAndroidEvidenceReused": true
+  },
   "manualChecks": {
     "conversation_end_to_end": "not_run",
     "voice_microphone_and_audio": "not_run",
@@ -27,14 +38,13 @@
   },
   "allChecksPassed": false,
   "continuous12HourObservationPassed": false,
-  "actualTabletMediaControlVerified": false,
-  "radikoMediaControlVerified": false,
+  "distributionPublished": false,
   "automatedTestsExternalProviderRequests": 0,
   "distributionCandidates": [
     {
       "app": "glass",
       "version": 640,
-      "sha256": "6b45f1ca76eb6592e9ecd436264573518200dc5b256ed9df8740d675f4081e11",
+      "sha256": "f2d6ae0a41a5d223dde6487cf215333de2fb86baee0304aad46d4f0ae6e30250",
       "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
       "sameCodeAndAssetsAsVerifiedDevelopment": true,
       "debuggable": false,
@@ -44,8 +54,8 @@
     },
     {
       "app": "phone",
-      "version": 287,
-      "sha256": "cca5d484b15d9d660e1746723c7ad87bf03a5d9fe6b531934df28cf50fc89ca6",
+      "version": 288,
+      "sha256": "4545984150a336fb2bc08cb9aa89246b159389b0fcfbd475c0ba52ec0117c42b",
       "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
       "sameCodeAndAssetsAsVerifiedDevelopment": true,
       "debuggable": false,
@@ -53,6 +63,5 @@
       "zipVerified": true,
       "credentialAndDeviceIdentifierScanPassed": true
     }
-  ],
-  "distributionPublished": false
+  ]
 }

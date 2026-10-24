@@ -41,9 +41,9 @@ final class LocalMediaControl {
         for(Session session:sessions){
             if(array.length()>=16)break;
             String id=UUID.randomUUID().toString();Entry entry=new Entry(session,now);entries.put(id,entry);
-            PlaybackState state=session.state();boolean supported=seekable(state,session.duration(),now);
+            PlaybackState state=session.state();long sampled=SystemClock.elapsedRealtime();boolean supported=seekable(state,session.duration(),sampled);
             array.put(new JSONObject().put("id",id).put("app",session.app()).put("seek",supported)
-                .put("reason",supported?"30秒送り・戻し対応":unavailableReason(state,session.duration(),now)));
+                .put("reason",supported?"30秒送り・戻し対応":unavailableReason(state,session.duration(),sampled)));
         }
         while(entries.size()>64)entries.remove(entries.keySet().iterator().next());
         return result(true,"ready",array.length()==0?"再生元のアプリで音声を再生してから更新してください。":"この端末の再生アプリを選んでください。").put("sessions",array);
@@ -85,20 +85,21 @@ final class LocalMediaControl {
         if(receipts.length()>=64)return result(false,"busy","操作が多すぎます。しばらく待ってください。");
         Entry entry=entries.get(sessionId);long now=SystemClock.elapsedRealtime();
         if(entry==null||now-entry.issued>TTL||!entry.identity.equals(entry.session.identity()))return result(false,"changed","再生内容が変わりました。再生アプリを選び直してください。");
-        Session session=entry.session;PlaybackState before=session.state();long duration=session.duration();
+        Session session=entry.session;PlaybackState before=session.state();long duration=session.duration();now=SystemClock.elapsedRealtime();
         if(!seekable(before,duration,now))return result(false,"unsupported","この再生状態では30秒操作に対応していません。アプリの再生画面で確認してください。");
         long start=position(before,now,duration),destination=target(start,delta,duration);
+        if(delta>0&&before.getState()==PlaybackState.STATE_PLAYING&&destination-start<5000)return result(false,"limit","曲の末尾に近いため、再生元のアプリで位置を調整してください。");
         if(Math.abs(destination-start)<1000)return result(false,"limit","再生位置の端に達しています。");
         JSONObject pending=result(false,"unconfirmed","操作は送信済みですが、位置の変更を確認できません。同じ要求を再実行しません。");
         JSONObject receipt=new JSONObject().put("at",wall).put("result",pending);receipts.put(id,receipt);
         if(!prefs.edit().putString("receipts",receipts.toString()).commit())return result(false,"storage","操作履歴を保存できません。送信していません。");
         JSONObject answer=pending;
         try {
-            session.seek(destination);long sent=SystemClock.elapsedRealtime();
+            long sent=SystemClock.elapsedRealtime();session.seek(destination);
             while(SystemClock.elapsedRealtime()-sent<2200){
-                SystemClock.sleep(100);long check=SystemClock.elapsedRealtime();PlaybackState after=session.state();
+                SystemClock.sleep(100);PlaybackState after=session.state();long check=SystemClock.elapsedRealtime();
                 if(!entry.identity.equals(session.identity())){answer=result(false,"changed","再生内容が変わったため、位置変更を確認できません。");break;}
-                if(after==null||(after.getLastPositionUpdateTime()<sent||after.getLastPositionUpdateTime()<=before.getLastPositionUpdateTime()))continue;
+                if(after==null||(after.getLastPositionUpdateTime()<sent||after.getLastPositionUpdateTime()<before.getLastPositionUpdateTime()))continue;
                 long expected=destination+(after.getState()==PlaybackState.STATE_PLAYING?check-sent:0);
                 if(Math.abs(position(after,check,duration)-Math.min(duration,expected))<=2000
                     &&(delta>0?position(after,check,duration)>start+500:position(after,check,duration)<start-500)){
