@@ -115,6 +115,7 @@ async function loadSentImageLog(){
    const image=saved.payload?.image;
    if(typeof image==='string'&&image.length<=800000&&/^[A-Za-z0-9+/]+={0,2}$/.test(image)){const thumb=document.createElement('img');thumb.className='log-thumbnail';thumb.alt='送信時の添付の縮小プレビュー';thumb.src='data:image/jpeg;base64,'+image;card.append(thumb);}
    else throw Error('preview unavailable');
+   if(row.route==='image-question'){const follow=document.createElement('button');follow.type='button';follow.textContent='この写真に追加質問';follow.onclick=()=>preparePhotoFollowUp(row.id).catch(e=>note(e.message));card.append(follow);}
   }catch(e){if(token!==session||epoch!==sentImageLogEpoch)return;const missing=document.createElement('p');missing.textContent='添付プレビューを取得できません。送信控えの期限・接続を確認してください。';card.append(missing);}
   cards.push(card);
  }
@@ -147,7 +148,7 @@ async function connectBrowser(ticket=''){
 }
 $('pairForm').addEventListener('submit',e=>{e.preventDefault();connectBrowser();});
 on('logout',async()=>{await api('logout',{});token='';sessionStorage.removeItem('lokiWebToken');localStorage.removeItem('lokiWebToken');showAuth();note('接続を解除しました');});
-on('refresh',loadPhotos);on('import',async()=>{if(!confirm('グラスの連続撮影を停止し、保存した写真をスマホへ取り込みます。続けますか？'))return;await api('import',{});note('グラスへ取り込み要求を送りました。転送中は一覧を更新してください。');});
+on('refresh',loadPhotos);on('import',async()=>{if(!confirm('グラスのKEEP撮影を停止し、原本をグラスに残してスマホへコピーします。AIへ画像は送りません。続けますか？'))return;await api('import',{});note('原本を残す取り込みを依頼しました。まだ保存完了ではありません。一覧を更新して確認してください。');});
 for(const suffix of ['', 'Bottom']){
 on('selectPage'+suffix,()=>{selected=new Set(items.map(x=>x.id));updateSelected();});on('clearSelection'+suffix,()=>{selected.clear();updateSelected();});on('deleteSelected'+suffix,()=>deleteIds([...selected]));
 on('saveSelected'+suffix,async()=>{if(busy)return;busy=true;updateSelected();try{for(const item of items.filter(x=>selected.has(x.id)))await saveItem(item);note('JPEGを保存しました。ブラウザのダウンロードを確認してください');}finally{busy=false;updateSelected();}});
@@ -392,21 +393,30 @@ async function validateRecoveryImage(bytes){
  else {const url=URL.createObjectURL(blob);try{await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>image.naturalWidth?resolve():reject(Error('復元する画像を読み取れません'));image.onerror=()=>reject(Error('復元する画像を読み取れません'));image.src=url;});}finally{URL.revokeObjectURL(url);}}
  return blob;
 }
-async function restoreRecoveryPayload(payload){
+async function preparePhotoFollowUp(id){
+ if(!token||chatImagePreparing||$('send').disabled)throw Error('準備・送信が終わってから写真を選んでください');
+ const session=token,snapshot=composerSnapshot(),before=$('message').value;
+ const selected=await api('photo-followup?id='+encodeURIComponent(id));
+ if(token!==session)return;
+ if(snapshot!==composerSnapshot()||chatImagePreparing||$('send').disabled)throw Error('選択中に本文・添付が変わりました。入力は残しています。写真を選び直してください');
+ const applied=await restoreRecoveryPayload({...selected.payload,message:before},true);
+ if(applied&&token===session){$('chatImageStatus').textContent='追加質問の写真 '+chatImageCount+'件。送信ごとに写真もAIへ再送します';note('写真を確認して「右上は？」「この文字を訳して」などを入力してください。まだ送信していません。');}
+}
+async function restoreRecoveryPayload(payload,followUp=false){
  if(chatImagePreparing||$('send').disabled)throw Error('準備・送信が終わってから復元してください');
  if(!payload||typeof payload.message!=='string'||payload.message.length>$('message').maxLength)throw Error('復元する本文を確認してください。現在の入力は残しています');
  for(const key of ['parent','referenceKey'])if(payload[key]!==undefined&&(typeof payload[key]!=='string'||payload[key].length>512))throw Error('復元する参照情報を確認してください');
  if(payload.parent&&payload.image||payload.referenceKey&&(payload.parent||payload.image))throw Error('復元する本文と参照先の組み合わせを確認してください');
- const snapshot=composerSnapshot(),epoch=++recoveryRestoreGeneration;
- if(($('message').value.trim()||chatImageData||generatedParent)&&!confirm('入力中の文章・添付・編集元を送信控えで置き換えますか？'))return;
+ const session=token,snapshot=composerSnapshot(),epoch=++recoveryRestoreGeneration;
+ if((chatImageData||generatedParent||(!followUp&&$('message').value.trim()))&&!confirm(followUp?'入力中の添付・編集元を選んだ写真に置き換えますか？ 本文は残します。まだ送信しません。':'入力中の文章・添付・編集元を送信控えで置き換えますか？'))return false;
  let bytes=null,blob=null,count=0,kinds=[];
  if(payload.image){if(typeof payload.image!=='string'||payload.image.length>800000)throw Error('添付が大きすぎます');count=payload.imageCount??1;if(!Number.isInteger(count)||count<1||count>6)throw Error('添付の件数を確認してください');kinds=payload.kinds??Array(count).fill('unknown');if(!Array.isArray(kinds)||kinds.length!==count||kinds.some(k=>!['image','video','unknown'].includes(k))||kinds.filter(k=>k==='video').length>3)throw Error('添付の件数・種類を確認してください');const raw=atob(payload.image);bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));blob=await validateRecoveryImage(bytes);}
  else if(payload.imageCount>0)throw Error('復元する添付の内容がありません');
- if(epoch!==recoveryRestoreGeneration||snapshot!==composerSnapshot()||chatImagePreparing||$('send').disabled)throw Error('復元の準備中に入力・添付が変わりました。現在の入力は残しています。選び直してください');
+ if(token!==session||epoch!==recoveryRestoreGeneration||snapshot!==composerSnapshot()||chatImagePreparing||$('send').disabled)throw Error('復元の準備中に接続・入力・添付が変わりました。現在の入力は残しています。選び直してください');
  const preparedUrl=blob?URL.createObjectURL(blob):'';
  clearChatImage();$('resetGenerationParent').click();setComposerMessage(payload.message);sendId='';imageReferenceDraft=payload.referenceKey?{key:payload.referenceKey,prefix:payload.message}:null;
  if(bytes){chatImageData=payload.image;chatImageCount=count;chatAttachmentKinds=kinds.slice();chatImageUrl=preparedUrl;$('chatImagePreview').src=chatImageUrl;$('chatImagePreview').hidden=false;if($('attachmentDraft'))$('attachmentDraft').hidden=false;$('clearChatImage').hidden=false;$('chatImageStatus').textContent='送信時の添付'+chatImageCount+'件を復元。動画は抜粋画像です。追加する場合は選び直してください';}
  if(payload.parent){generatedParent=payload.parent;generationParentRevision++;$('generationParent').textContent='送信控えの編集元を復元しました';$('resetGenerationParent').hidden=false;}
- recoveryNeedsConfirm=true;$('message').focus();note('送信控えを復元しました。まだ送信していません。履歴・送信状況を確認してください');
+ recoveryNeedsConfirm=!followUp;$('message').focus();note(followUp?'写真への追加質問を準備しました。まだ送信していません。':'送信控えを復元しました。まだ送信していません。履歴・送信状況を確認してください');return true;
 }
 if($('recoveryRefresh'))$('recoveryRefresh').onclick=async()=>{const session=token;try{const result=await api('recovery');if(session!==token)return;const list=$('recoveryList');list.replaceChildren();for(const row of result.items||[]){const card=document.createElement('article'),p=document.createElement('p');p.textContent=new Date(row.at).toLocaleString()+' ／ '+row.message+(row.imageCount?'（添付'+row.imageCount+'件）':'');card.append(p);const use=document.createElement('button');use.type='button';use.textContent='内容・添付を入力へ戻す（送信なし）';use.onclick=async()=>{try{const item=await api('recovery?id='+encodeURIComponent(row.id));if(session!==token)return;await restoreRecoveryPayload(item.payload);}catch(e){note(e.message);}};card.append(use);list.append(card);}if(!result.items?.length)list.textContent='保存された送信控えはありません';}catch(e){note(e.message);}};

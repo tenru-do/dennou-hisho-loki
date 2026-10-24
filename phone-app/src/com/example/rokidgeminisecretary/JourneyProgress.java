@@ -9,7 +9,7 @@ final class JourneyProgress {
     private final TransitJourney journey;
     private final List<double[][]> geometry = new ArrayList<double[][]>();
     private int current = -1, candidate = -1;
-    private long candidateSince;
+    private long candidateSince, lastSample;
     JourneyProgress(TransitJourney journey) {
         this.journey = journey;
         for (TransitJourney.Leg leg : journey.legs) {
@@ -23,9 +23,11 @@ final class JourneyProgress {
             JSONArray wholeRoute) throws JSONException {
         boolean fresh = Double.isFinite(lat) && Double.isFinite(lng) && accuracy >= 0 && accuracy <= 100
                 && sampleTime > 0 && now - sampleTime >= 0 && now - sampleTime <= 30000;
+        boolean newer=fresh&&sampleTime>lastSample;
+        if(newer){if(lastSample>0&&sampleTime-lastSample>15000){candidate=-1;candidateSince=0;}lastSample=sampleTime;}
         int best = -1; double distance = Double.MAX_VALUE;
         if (fresh) {
-            for (int i = Math.max(0, current); i < geometry.size(); i++) {
+            for (int i = Math.max(0, current); i < Math.min(geometry.size(),current<0?geometry.size():current+2); i++) {
                 double d = distanceTo(geometry.get(i), lat, lng);
                 if (d < distance) { distance = d; best = i; }
             }
@@ -33,11 +35,11 @@ final class JourneyProgress {
         boolean matched = best >= 0 && distance <= Math.max(35, accuracy * 2);
         if (matched && current >= 0 && best != current
                 && distanceTo(geometry.get(current), lat, lng) <= distance + 20) best = current;
-        if (matched && best != current) {
+        if (matched && best != current && newer) {
             if (candidate != best) { candidate = best; candidateSince = sampleTime; }
             // Require newer GPS evidence over at least 5 seconds; repeated HUD polls don't count.
             if (sampleTime - candidateSince >= 5000) { current = best; candidate = -1; }
-        } else { candidate = -1; }
+        } else if(newer||!fresh) { candidate = -1; }
         boolean confident = matched && current == best;
         JSONObject out = new JSONObject().put("version", 1).put("id", journey.id)
                 .put("finalDestination", journey.finalDestination).put("wholeRoute", wholeRoute)
@@ -53,9 +55,10 @@ final class JourneyProgress {
             if ("TRANSIT".equals(next.travelMode)) transitStops.put(new JSONObject()
                     .put("departureStop", next.departureStop).put("arrivalStop", next.arrivalStop)
                     .put("departureTime", next.departureTime).put("arrivalTime", next.arrivalTime)
-                    .put("lineName", next.lineName).put("stopCount",next.stopCount).put("durationSeconds",next.durationSeconds));
+                    .put("lineName", next.lineName).put("travelMode","TRANSIT").put("transitDetails",new JSONObject().put("headsign",new JSONObject(next.transitDetailsJson).optString("headsign"))).put("stopCount",next.stopCount).put("durationSeconds",next.durationSeconds));
         }
         out.put("transitStops", transitStops);
+        JSONArray plannedSteps=new JSONArray();for(TransitJourney.Leg leg:journey.legs){if(plannedSteps.length()>=80)break;JSONObject details=new JSONObject(leg.transitDetailsJson);plannedSteps.put(new JSONObject().put("travelMode",leg.travelMode).put("instruction",leg.instruction).put("departureStop",leg.departureStop).put("arrivalStop",leg.arrivalStop).put("lineName",leg.lineName).put("departureTime",leg.departureTime).put("arrivalTime",leg.arrivalTime).put("transitDetails",new JSONObject().put("headsign",details.optString("headsign"))));}out.put("plannedSteps",plannedSteps);
         long finalArrival = -1;
         double egressSeconds = 0;
         for (int i = journey.legs.size() - 1; i >= 0; i--) {

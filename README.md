@@ -9,7 +9,9 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 
 ## セキュリティ対策版のソース
 
-現在のソースと配布APKはグラスv607・スマホv254です。Audio Relayはv20です。回答の冒頭表示・送信待ちのスマホ編集・待ち状況・参照セットの差分更新・スマホでの辞書編集と試聴・トップ配置プリセット・更新確認を追加しました。使い方と実測は [v607/v254](docs/releases/glass-v607.md)、確認範囲は [公開前の検査](docs/releases/glass-v607-security.md) を参照してください。前版の通知待ち・辞書・参照セット・写真の画質案内は [v606/v253](docs/releases/glass-v606.md) に記載しています。
+最新の検証中ソースはグラスv646・スマホv288です。TOPのBT30を選択画面なしの30秒送りへ変更し、ナビの予定選択・閉じる位置を整理、顔・全身のボタン操作リアクションを追加しました。今回の変更と検証範囲は [v646/v288](docs/releases/glass-v646.md) を参照してください。v640/v288までに、会話の文脈継続、スマホUIの整理、共有ナビの復旧と経路選択、予定からの目的地選択、KEEP写真のコピー経路、読み上げ操作、再生元Android端末の30秒送り・戻しを更新しました。変更と未確認範囲は [v640/v288 リリース候補](docs/releases/glass-v640.md)、音楽操作は [使い方](docs/source-media-control.md) を参照してください。正式版としての全手動検証と連続12時間観測は完了していません。
+
+公開済みのアルファ版APKはグラスv646・スマホv288です。[ダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v646)と[配布APKの検証記録](docs/releases/glass-v646-distribution.json)を参照してください。Audio Relayはv20です。前回配布の内容は [v607/v254](docs/releases/glass-v607.md)、確認範囲は [公開前の検査](docs/releases/glass-v607-security.md) を参照してください。
 
 会話の途中表示・上部入力欄・BT30のSET内への移動は [v605/v252](docs/releases/glass-v605.md)、記録・保守機能は [v596/v240](docs/releases/glass-v596.md)、複数画像・動画は [添付の使い方](docs/MEDIA-ATTACHMENTS.md)、接続の対策は [SECURITY-v447.md](docs/SECURITY-v447.md) に記載しています。装着時の見え方・全機能の長期運用は未検証です。
 
@@ -25,7 +27,7 @@ Android APKの全機能移植ではありません。予定・メール・録音
 
 ## APKのダウンロード
 
-最新の配布版は [グラスv607・スマホv254のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v607) です。両APK・SHA256チェックサム・検査記録・本文を含まない実測を掲載しています。対象と制限は [v607の公開前検査](docs/releases/glass-v607-security.md) を確認してください。
+最新の配布版は [グラスv646・スマホv288のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v646) です。両APK・SHA256チェックサム・検証記録を掲載しています。[変更と制限](docs/releases/glass-v646.md)、[配布APKの検証結果](docs/releases/glass-v646-distribution.json)を確認してください。対象APKでの一連の実機手動確認と連続観測は未完了のプレリリースです。
 
 配布用APKは専用署名です。開発署名版には上書きできません。署名変更のためのアンインストールは会話・設定や復号鍵を失う場合があるため、既存利用者は現在のアプリを維持してください。検査範囲と署名は各Releaseの記録を確認してください。
 

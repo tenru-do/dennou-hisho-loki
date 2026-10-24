@@ -6,7 +6,7 @@ import android.os.*;
 import android.view.Gravity;
 import android.widget.Button;
 /** Direct HUD toggle. Observe the remote session instead of maintaining a guessed ON/OFF flag. */
-final class MusicToggleButton extends Button {
+final class MusicToggleButton extends LokiActionButton {
  interface Feedback {void show(String text,boolean ok);}
  private final Handler main=new Handler(Looper.getMainLooper());
  private final Feedback feedback;

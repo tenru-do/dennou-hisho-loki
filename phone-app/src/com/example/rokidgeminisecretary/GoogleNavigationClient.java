@@ -72,6 +72,7 @@ final class GoogleNavigationClient {
         String cache;
     }
     private static Response request(Context c, String endpoint, JSONObject body, String mask) throws Exception {
+        NavigationRouteDeadline.check();
         if (!enabled(c)) throw new Exception("google_maps_not_verified");
         HttpURLConnection connection = null;
         String key = "";
@@ -81,7 +82,7 @@ final class GoogleNavigationClient {
         try {
             key = MapsKeyInput.normalize(MapsCredentialStore.read(c));
             String url = endpoint + (endpoint.contains("?") ? "&" : "?") + "key=" + URLEncoder.encode(key, "UTF-8");
-            connection = (HttpURLConnection) new URL(url).openConnection();
+            NavigationRouteDeadline.check();StabilityMetrics.networkAttempt();connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(6000);
             connection.setReadTimeout(9000);
@@ -105,7 +106,7 @@ final class GoogleNavigationClient {
                     try (InputStream input = connection.getErrorStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                         if (input != null) {
                             byte[] buffer = new byte[1024]; int read;
-                            while (out.size() < 8192 && (read = input.read(buffer, 0, Math.min(buffer.length, 8192-out.size()))) != -1) out.write(buffer,0,read);
+                            while (out.size() < 8192 && (read = input.read(buffer, 0, Math.min(buffer.length, 8192-out.size()))) != -1) {NavigationRouteDeadline.check();out.write(buffer,0,read);}
                             errorBody = new String(out.toByteArray(), StandardCharsets.UTF_8);
                         }
                     } catch (Exception unreadable) { errorBody = "[body read failed: " + unreadable.getClass().getSimpleName() + "]"; }
@@ -121,6 +122,7 @@ final class GoogleNavigationClient {
                 byte[] buffer = new byte[8192];
                 int read;
                 while ((read = input.read(buffer)) != -1) {
+                    NavigationRouteDeadline.check();
                     if (out.size() + read > 2097152) throw new Exception("google_response_too_large");
                     out.write(buffer, 0, read);
                 }

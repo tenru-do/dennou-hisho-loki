@@ -7,9 +7,16 @@ final class QueryPolicy {
     }
     static boolean search(String value) {
         if (value == null || ConversationIntentPolicy.personalState(value)) return false;
-        return value.matches("(?s).*(営業時間|開店|閉店|定休日|営業して|調べて|調べろ|調査して|検索して|検索しろ|イベント|催し|祭り|開催|使い分け|最新|速報|試合結果|ブレイキングダウン|BreakingDown|勝った|優勝|今日の.*結果|本日の.*結果).*")
+        return place(value) || ConversationPlaceContinuity.spatial(value) || value.matches("(?s).*(営業時間|開店|閉店|定休日|営業して|調べて|調べろ|調査して|検索して|検索しろ|イベント|催し|祭り|開催|使い分け|最新|速報|試合結果|ブレイキングダウン|BreakingDown|勝った|優勝|今日の.*結果|本日の.*結果).*")
                 || (value.matches("(?s).*(店|ショップ|レストラン|カフェ|水族館|博物館).*")
                 && value.matches("(?s).*(何時まで|何時から).*") );
+    }
+    static boolean place(String value){
+        if(value==null||ConversationIntentPolicy.personalState(value))return false;
+        String text=value.replaceAll("[\\s　？?。！!]", "");
+        if(text.matches("(?s).*(原因|問題|間違い|誤り|違い|責任|気持ち|痛み|エラー|バグ).*")||text.matches("(?s).*(写真|画像|ファイル|保存|メモ|回答|設定|入力欄|ボタン).*"))return false;
+        return text.matches("(?s).+(?:は|って)(?:どこ|何処)(?:にある|にあります|です|でしょう|なの|にあるの|にありますか|ですか|にあるんですか)?(?:か)?")
+            ||text.matches("(?s).+(?:の場所|の所在地|の住所|へのアクセス)(?:は|を教えて|を教えてください|を知りたい)?");
     }
     static boolean refinement(String value){
         if(value==null||ConversationIntentPolicy.personalState(value))return false;

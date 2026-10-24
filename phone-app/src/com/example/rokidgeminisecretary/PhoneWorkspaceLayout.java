@@ -1,0 +1,14 @@
+package com.example.rokidgeminisecretary;
+import android.content.Context;import android.graphics.Color;import android.view.*;import android.widget.*;
+/** Four persistent pages: switching never recreates inputs or runs their actions. */
+public final class PhoneWorkspaceLayout {
+ private final LinearLayout root;private final View[] pages;private final Button[] tabs=new Button[4];private final java.util.function.IntConsumer selected;private int current=-1;
+ public PhoneWorkspaceLayout(Context c,LinearLayout root,View[] pages,java.util.function.IntConsumer selected){if(pages.length!=4)throw new IllegalArgumentException("Four pages required");this.root=root;this.pages=pages.clone();this.selected=selected;LinearLayout bar=new LinearLayout(c);String[] labels={"会話","ナビ","記録","設定"};for(int i=0;i<4;i++){final int index=i;Button b=new Button(c);tabs[i]=b;b.setText(labels[i]);b.setTextSize(14);b.setAllCaps(false);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(0,6,0,6);b.setMinHeight(Math.round(48*c.getResources().getDisplayMetrics().density));b.setOnClickListener(v->show(index));bar.addView(b,new LinearLayout.LayoutParams(0,-2,1));}root.addView(bar,new LinearLayout.LayoutParams(-1,-2));FrameLayout host=new FrameLayout(c);for(View page:pages){detach(page);host.addView(page,new FrameLayout.LayoutParams(-1,-1));}root.addView(host,new LinearLayout.LayoutParams(-1,0,1));show(0);}
+ public void show(int index){if(index<0||index>=pages.length)throw new IllegalArgumentException("Unknown page");current=index;for(int i=0;i<4;i++){pages[i].setVisibility(i==index?View.VISIBLE:View.GONE);tabs[i].setSelected(i==index);tabs[i].setTextColor(i==index?Color.WHITE:Color.rgb(35,55,75));tabs[i].setBackgroundTintList(android.content.res.ColorStateList.valueOf(i==index?Color.rgb(24,85,153):Color.rgb(232,238,245)));tabs[i].setContentDescription(tabs[i].getText()+(i==index?"、選択中":"を開く"));}if(selected!=null)selected.accept(index);}
+ public int current(){return current;}
+ public static void detach(View v){if(v.getParent() instanceof ViewGroup)((ViewGroup)v.getParent()).removeView(v);}
+ public static LinearLayout panel(Context c){LinearLayout p=new LinearLayout(c);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(8,8,8,8);return p;}
+ public static void add(LinearLayout parent,View child){detach(child);parent.addView(child,new LinearLayout.LayoutParams(-1,-2));}
+ public static ScrollView scroll(Context c,View body){detach(body);ScrollView s=new ScrollView(c);s.setFillViewport(true);s.addView(body);return s;}
+ public static void heading(Context c,LinearLayout p,String title,String help){TextView h=new TextView(c);h.setText(title);h.setTextSize(19);h.setTextColor(Color.rgb(25,45,65));h.setPadding(4,16,4,6);p.addView(h);if(!help.isEmpty()){TextView t=new TextView(c);t.setText(help);t.setTextSize(13);t.setTextColor(Color.DKGRAY);t.setPadding(4,0,4,10);p.addView(t);}}
+}

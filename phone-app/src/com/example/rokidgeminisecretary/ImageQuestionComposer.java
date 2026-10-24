@@ -38,6 +38,7 @@ final class ImageQuestionComposer {
   root.addView(attachment);attachment.setVisibility(View.GONE);
   status.setTextSize(12);status.setText("画像・動画は合計6件（動画3本まで、各2分・50MB、8場面・音声なし）。Googleフォトは写真選択のクラウド設定または共有から");root.addView(status);update();
  }
+ void followUpPicker(Runnable action){Button follow=new Button(host);follow.setText("送った写真に追加質問");follow.setOnClickListener(v->{if(!working)action.run();});root.addView(follow,1);}
  View view(){return root;}
  boolean attached(){return image!=null;}
  boolean busy(){return working;}
@@ -127,7 +128,7 @@ final class ImageQuestionComposer {
    org.json.JSONObject receipt=ImageQuestions.enqueue(host,id,question,selected,selectedCount,selectedKinds);
    if(!receipt.optBoolean("duplicate"))MainActivity.addAiLog("ユーザー: "+(question.isEmpty()?"この画像の内容を教えて":question)+"（画像添付・送信待ち）");
    host.runOnUiThread(()->{if(!live())return;busy(false);clear();sent.run();status.setText(receipt.optBoolean("videoGenerated")?"動画生成を受け付けました。会話を続けられます。生成動画一覧で進捗と結果を確認できます。":receipt.optBoolean("generated")?"画像生成を受け付けました。生成画像一覧で進捗と結果を確認できます。":receipt.optBoolean("complete")?"同じ画像と質問は送信済みです。上の会話ログをご確認ください。":"グラスへ送信待ちです。返信は上の会話ログに表示します。");});
-  }catch(Exception e){host.runOnUiThread(()->{if(live()){status.setText("送信を確認できませんでした。画像を残しています。同じ内容で再送できます。");busy(false);}});}},"LokiInlineImageSend").start();return true;
+  }catch(Exception e){host.runOnUiThread(()->{if(live()){status.setText(e instanceof TransferNetwork.Blocked?e.getMessage():"送信を確認できませんでした。画像を残しています。同じ内容で再送できます。");busy(false);}});}},"LokiInlineImageSend").start();return true;
  }
  void restorePayload(org.json.JSONObject payload)throws Exception{
   if(working)throw new IOException("添付の準備中です");String encoded=payload.optString("image");

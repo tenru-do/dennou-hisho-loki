@@ -1,0 +1,17 @@
+package com.example.rokidgeminisecretary;
+import android.content.Context;import android.util.AtomicFile;import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;
+/** One encrypted stopover. Finishing requires explicit action; original endpoint survives restarts. */
+final class NavigationStopover {
+ static File file(Context c){return new File(c.getFilesDir(),"navigation-stopover.gcm");}
+ static JSONObject point(String name,String coordinates)throws Exception{if(name==null||name.trim().isEmpty()||name.length()>600)throw new IOException("目的地名を確認してください");String[] xy=coordinates.split(",");if(xy.length!=2)throw new IOException("目的地を候補から選び直してください");double lat=Double.parseDouble(xy[0]),lng=Double.parseDouble(xy[1]);if(!Double.isFinite(lat)||!Double.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)throw new IOException("座標を確認してください");return new JSONObject().put("name",name).put("latitude",lat).put("longitude",lng);}
+ static synchronized JSONObject prepare(Context c,String finalName,String finalCoordinates,String stopName,String stopCoordinates,String mode)throws Exception{
+  if(!mode.matches("walking|bicycling|driving|transit"))throw new IOException("移動手段を確認してください");if(finalName.equals(stopName))throw new IOException("別の立ち寄り先を選んでください");
+  JSONObject result=new JSONObject().put("id",java.util.UUID.randomUUID().toString()).put("at",System.currentTimeMillis()).put("phase","STOP").put("mode",mode).put("final",point(finalName,finalCoordinates)).put("stop",point(stopName,stopCoordinates));write(c,result);return result;
+ }
+ static synchronized JSONObject read(Context c)throws Exception{AtomicFile a=new AtomicFile(file(c));if(!a.getBaseFile().exists()&&!new File(a.getBaseFile()+".bak").exists())return null;byte[] encrypted=a.readFully();if(encrypted.length>8192)throw new IOException("立ち寄り記録を確認してください");JSONObject j=new JSONObject(new String(DeviceSecrets.photos().decrypt(encrypted),StandardCharsets.UTF_8));long age=System.currentTimeMillis()-j.getLong("at");if(age<0||age>86400000){a.delete();return null;}return j;}
+ static synchronized JSONObject finish(Context c,String id,String current,String mode)throws Exception{JSONObject j=read(c);if(j==null||!id.equals(j.optString("id"))||!"STOP".equals(j.optString("phase"))||!mode.equals(j.optString("mode"))||!current.equals(j.getJSONObject("stop").getString("name")))throw new IOException("立ち寄り中の目的地が変わりました。最終目的地を確認してください");j.put("phase","FINAL");write(c,j);return j.getJSONObject("final");}
+ static synchronized void clear(Context c){new AtomicFile(file(c)).delete();}
+ static void write(Context c,JSONObject j)throws Exception{byte[] data=DeviceSecrets.photos().encrypt(j.toString().getBytes(StandardCharsets.UTF_8));if(data.length>8192)throw new IOException("立ち寄り記録が大きすぎます");AtomicFile a=new AtomicFile(file(c));FileOutputStream stream=null;try{stream=a.startWrite();stream.write(data);a.finishWrite(stream);}catch(Exception e){if(stream!=null)a.failWrite(stream);throw e;}}
+ static String summary(JSONObject j,String current,String mode)throws Exception{if(j==null||!mode.equals(j.optString("mode")))return "";JSONObject target=j.getJSONObject("FINAL".equals(j.optString("phase"))?"final":"stop");if(!target.getString("name").equals(current))return "";return "FINAL".equals(j.optString("phase"))?"立ち寄り後："+target.getString("name"):"立寄："+j.getJSONObject("stop").getString("name")+" ／ 最終："+j.getJSONObject("final").getString("name");}
+ private NavigationStopover(){}
+}

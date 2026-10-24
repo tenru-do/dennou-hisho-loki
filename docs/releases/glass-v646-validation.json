@@ -1,0 +1,29 @@
+{
+  "glassVersion": 646,
+  "phoneVersion": 288,
+  "status": "targeted_checks_passed_full_release_gate_pending",
+  "developmentApkSha256": "583d4a0093be4f7cebcd66d12c74bde46034126965661ee11dad106ac59ea181",
+  "build": {
+    "sourceFiles": 256,
+    "errors": 0,
+    "warnings": 0
+  },
+  "nativeAssertionsPassed": 28,
+  "contactContextCasesPassed": 19,
+  "deviceInstallation": {
+    "app": "glass",
+    "version": 646,
+    "installedHashVerified": true,
+    "backupReadVerified": true,
+    "signatureMatch": true,
+    "originalFilesUnchangedBeforeLaunch": 415,
+    "externalPhotoFilesUnchangedBeforeLaunch": 1913,
+    "sha256": "583d4a0093be4f7cebcd66d12c74bde46034126965661ee11dad106ac59ea181"
+  },
+  "fullReleaseGateRerun": false,
+  "formalReleasePublished": false,
+  "notes": [
+    "BT30 direct seek checked on v642; navigation placement on v644; portrait reaction on v645; full-body reaction on v646.",
+    "Contact scene branch checked synthetically; no new AI conversation or physical contact demonstration."
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "releaseType": "alpha_prerelease",
+  "status": "automatic_pass_manual_pending",
+  "glassVersion": 646,
+  "phoneVersion": 288,
+  "sourceCodeCommit": "98671f19f311cd221026870b22dd7265f0a2cfb2",
+  "apkSha256": {
+    "glass": "908a75e201c6da3a2e4d7eea7eb27568242a41b43776a4531100969210468638",
+    "phone": "313c13924156e318bb3130c926d8397bee42c7dadad7ff331be39fa5d4b2b4cd"
+  },
+  "distributionAPKs": [
+    {
+      "app": "glass",
+      "version": 646,
+      "sha256": "908a75e201c6da3a2e4d7eea7eb27568242a41b43776a4531100969210468638",
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "sameCodeAndAssetsAsVerifiedDevelopment": true,
+      "debuggable": false,
+      "allowBackup": false,
+      "zipVerified": true,
+      "credentialAndDeviceIdentifierScanPassed": true
+    },
+    {
+      "app": "phone",
+      "version": 288,
+      "sha256": "313c13924156e318bb3130c926d8397bee42c7dadad7ff331be39fa5d4b2b4cd",
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "sameCodeAndAssetsAsVerifiedDevelopment": true,
+      "debuggable": false,
+      "allowBackup": false,
+      "zipVerified": true,
+      "credentialAndDeviceIdentifierScanPassed": true
+    }
+  ],
+  "android": {
+    "interactionCasesPassed": 143,
+    "regressionAssertionsPassed": 4491,
+    "apkSha256": {
+      "phone": "313c13924156e318bb3130c926d8397bee42c7dadad7ff331be39fa5d4b2b4cd",
+      "glass": "908a75e201c6da3a2e4d7eea7eb27568242a41b43776a4531100969210468638"
+    },
+    "liveRouteQueries": 0,
+    "realMovementVerified": false
+  },
+  "stabilityAssertionsPassed": 420,
+  "browserSuitesPassed": 24,
+  "observerParserTestsPassed": 5,
+  "targetedDevelopmentAssertionsPassed": 28,
+  "manualChecks": {
+    "conversation_end_to_end": {
+      "state": "not_run"
+    },
+    "voice_microphone_and_audio": {
+      "state": "not_run"
+    },
+    "photo_capture_and_answer": {
+      "state": "not_run"
+    },
+    "saved_records_open": {
+      "state": "not_run"
+    },
+    "two_device_sync": {
+      "state": "not_run"
+    },
+    "navigation_start_cancel_resume": {
+      "state": "not_run"
+    }
+  },
+  "allChecksPassed": false,
+  "providerRequestsFromTests": 0,
+  "realWorldMovementVerified": false,
+  "continuousTwelveHourSoakPassed": false
+}

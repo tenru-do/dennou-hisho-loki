@@ -43,7 +43,7 @@ final class VoicePcmCapture implements ContinuousVoiceInput.Source {
                     MicrophoneRouting.boostAndLog(chunk,n,"VOICE_CONTINUOUS",source);
                     int count=Math.min(n,ContinuousVoiceInput.MAX_CLIP_BYTES-pcm.size());
                     int offset=pcm.size();pcm.write(chunk,0,count);
-                    if(Pcm16Gain.meanAbsolute(chunk,count)>45){speechActive=true;if(first<0)first=Math.max(0,offset-8000);end=pcm.size();last=now;hits++;}
+                    if(Pcm16Gain.meanAbsolute(chunk,count)>45){if(hits>=1)speechActive=true;if(first<0)first=Math.max(0,offset-8000);end=pcm.size();last=now;hits++;}
                 }else Thread.sleep(15);
                 if(pcm.size()>=ContinuousVoiceInput.MAX_CLIP_BYTES||VoiceCaptureTimingPolicy.stop(now-start,now-last,first>=0))break;
             }

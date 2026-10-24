@@ -13,7 +13,8 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/LokiPersonaPolicy.java",
-      "sha256": "45e4fcdecf0523238dbb91ad8c86d1e23ce7df42b73900e08773ee422ef98af9"
+      "sha256": "00e849278c4bfe944fb9850e62305852ee7d7d2f6b36c95e596f82e9eeeb32d1",
+      "validation": "2026-10-22 user-authorized two synthetic Gemini complete-payload attempts: one HTTP200/STOP accepted by candidate policy, one incomplete/empty; no retries; 1072 isolated candidate APK checks; docs/VOICE-QUALITY-v615.md"
     },
     {
       "app": "phone",
