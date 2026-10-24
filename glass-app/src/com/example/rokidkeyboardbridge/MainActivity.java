@@ -1827,7 +1827,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         Log.i(TAG, "post-intimacy aftercare visual started");
     }
 
-    private void restoreRecognizedDraft(String text){if(text==null||text.trim().isEmpty())return;String before=input.getText().toString();if(before.trim().isEmpty()){setInputTextVisible(text);return;}new AlertDialog.Builder(this).setTitle("入力中の文章があります").setMessage("現在の入力を認識文で置き換えますか？ 自動送信はしません。").setPositiveButton("置き換える",(d,w)->{if(before.equals(input.getText().toString()))setInputTextVisible(text);else setStatus("入力が変わったため置き換えていません",Color.YELLOW);}).setNegativeButton("戻る",null).show();}
+    private void restoreRecognizedDraft(String text){if(text==null||text.trim().isEmpty())return;String before=input.getText().toString();if(before.trim().isEmpty()){setInputTextVisible(text);return;}new LokiAlertDialogBuilder(this).setTitle("入力中の文章があります").setMessage("現在の入力を認識文で置き換えますか？ 自動送信はしません。").setPositiveButton("置き換える",(d,w)->{if(before.equals(input.getText().toString()))setInputTextVisible(text);else setStatus("入力が変わったため置き換えていません",Color.YELLOW);}).setNegativeButton("戻る",null).show();}
 
     private String lastConversationFailureDisplay="";
     private void clearPreviousFailureForVoice(){
@@ -1883,12 +1883,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         linearLayout.addView(this.input, new LinearLayout.LayoutParams(-1, -2));
         voiceTranscriptView=new TextView(this);voiceTranscriptView.setTextColor(Color.LTGRAY);voiceTranscriptView.setTextSize(11);
         voiceTranscriptView.setMaxLines(3);voiceTranscriptView.setEllipsize(android.text.TextUtils.TruncateAt.END);voiceTranscriptView.setVisibility(View.GONE);
-        voiceTranscriptView.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("音声認識した全文").setMessage(lastVoiceTranscript)
+        voiceTranscriptView.setOnClickListener(v->new LokiAlertDialogBuilder(this).setTitle("音声認識した全文").setMessage(lastVoiceTranscript)
             .setPositiveButton("入力欄で修正",(d,w)->restoreRecognizedDraft(lastVoiceTranscript)).setNegativeButton("閉じる",null).show());
         linearLayout.addView(voiceTranscriptView,new LinearLayout.LayoutParams(-1,-2));
         this.buttonPanel = new LinearLayout(this);
         this.buttonPanel.setOrientation(0);
-        this.sendButton = new Button(this);
+        this.sendButton = new LokiActionButton(this);
         this.sendButton.setText("Geminiへ送信");
         this.sendButton.setText("SEND");
         this.sendButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
@@ -1912,7 +1912,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         });
         focusLabel(this.sendButton, "SEND");
         this.sendButton.setVisibility(View.GONE);
-        this.voiceButton = new Button(this);
+        this.voiceButton = new LokiActionButton(this);
         this.voiceButton.setText("音声");
         this.voiceButton.setText("VOICE");
         this.voiceButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
@@ -1931,7 +1931,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(0, dp(20), 1.0f);
         layoutParams.leftMargin = 4;
         this.buttonPanel.addView(this.voiceButton, layoutParams);
-        this.ambientButton = new Button(this);
+        this.ambientButton = new LokiActionButton(this);
         this.ambientButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.ambientButton.setMinHeight(0);
         this.ambientButton.setMinWidth(0);
@@ -1948,7 +1948,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         ambientLayout.leftMargin = 4;
         // AMB remains available through TOPIC; no separate main-row button.
         // Bluetooth playback controls are available from SET.
-        this.zoomButton = new Button(this);
+        this.zoomButton = new LokiActionButton(this);
         this.zoomButton.setText("CAM");
         this.zoomButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.zoomButton.setMinHeight(0);
@@ -1988,7 +1988,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.removeView(this.zoomButton);
         zoomLayout.leftMargin = 0;
         this.buttonPanel.addView(this.zoomButton, 0, zoomLayout);
-        this.navigationButton = new Button(this);
+        this.navigationButton = new LokiActionButton(this);
         this.navigationButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.navigationButton.setMinHeight(0);
         this.navigationButton.setMinWidth(0);
@@ -2006,7 +2006,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 new LinearLayout.LayoutParams(0, dp(20), 0.9f);
         navigationLayout.leftMargin = 4;
         this.buttonPanel.addView(this.navigationButton, 1, navigationLayout);
-        this.morningButton = new Button(this);
+        this.morningButton = new LokiActionButton(this);
         this.morningButton.setText("TOPIC");
         this.morningButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
         this.morningButton.setMinHeight(0);
@@ -2026,7 +2026,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 new LinearLayout.LayoutParams(0, dp(20), 1.0f);
         morningLayout.leftMargin = 4;
         this.buttonPanel.addView(this.morningButton, 2, morningLayout);
-        this.settingsButton = new Button(this);
+        this.settingsButton = new LokiActionButton(this);
         this.settingsButton.setText("APIキー設定");
         this.settingsButton.setText("SET");
         this.settingsButton.setTextSize(HUD_BUTTON_TEXT_SIZE_SP);
@@ -2049,7 +2049,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.buttonPanel.addView(this.settingsButton, layoutParams3);
         MusicToggleButton musicToggle=new MusicToggleButton(this,(message,ok)->setStatus(message,ok?Color.WHITE:Color.YELLOW));
         this.buttonPanel.addView(musicToggle,1,new LinearLayout.LayoutParams(0,dp(20),0.9f));
-        keepButton=new Button(this);
+        keepButton=new LokiActionButton(this);
         focusLabel(keepButton,"KEEP");
         keepButton.setOnClickListener(v->{
             showControlsTemporarily();
@@ -2058,7 +2058,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         });
         keepButton.setOnLongClickListener(v->{showPhotoRecorder();return true;});
         this.buttonPanel.addView(keepButton,4,new LinearLayout.LayoutParams(0,dp(20),1.0f));
-        imageReadButton=new Button(this);focusLabel(imageReadButton,"READ");
+        imageReadButton=new LokiActionButton(this);focusLabel(imageReadButton,"READ");
         imageReadButton.setContentDescription("撮影してロキに質問。長押しで直近の読み取り結果");
         imageReadButton.setOnClickListener(v->{
             showControlsTemporarily();
@@ -2068,9 +2068,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
         imageReadButton.setOnLongClickListener(v->{
             showControlsTemporarily();String reference=recentImageReference();
             if(reference.isEmpty()){setStatus("直近の読み取り結果はありません。READで撮影してください",Color.YELLOW);return true;}
-            try{JSONObject item=new JSONObject(reference);new AlertDialog.Builder(this).setTitle("直近画像の読み取り（"+item.optString("observedAt")+"）").setMessage(item.optString("answer")).setPositiveButton("閉じる",null).show();}catch(Exception error){setStatus("読み取り結果を表示できません",Color.YELLOW);}return true;
+            try{JSONObject item=new JSONObject(reference);new LokiAlertDialogBuilder(this).setTitle("直近画像の読み取り（"+item.optString("observedAt")+"）").setMessage(item.optString("answer")).setPositiveButton("閉じる",null).show();}catch(Exception error){setStatus("読み取り結果を表示できません",Color.YELLOW);}return true;
         });
         this.buttonPanel.addView(imageReadButton,1,new LinearLayout.LayoutParams(0,dp(20),1.0f));
+        Button bt30Button=new LokiActionButton(this);focusLabel(bt30Button,"BT30");
+        bt30Button.setContentDescription("再生中の音声を30秒先へ");
+        bt30Button.setOnClickListener(v->{showControlsTemporarily();skipSourceMediaForward();});
+        this.buttonPanel.addView(bt30Button,3,new LinearLayout.LayoutParams(0,dp(20),1.0f));
         for(int i=0;i<this.buttonPanel.getChildCount();i++){
             View child=this.buttonPanel.getChildAt(i);
             if(child instanceof Button && child.getVisibility()!=View.GONE){
@@ -2079,7 +2083,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
         }
         hudLayout=new HudLayout(this,this.buttonPanel);
-        this.imeButton = new Button(this);
+        this.imeButton = new LokiActionButton(this);
         this.imeButton.setText("日本語入力を切替");
         this.imeButton.setText("IME");
         this.imeButton.setTextSize(7.0f);
@@ -2099,7 +2103,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         linearLayout.addView(this.imeButton, new LinearLayout.LayoutParams(-1, dp(14)));
         this.readButtonPanel = new LinearLayout(this);
         this.readButtonPanel.setOrientation(0);
-        this.scrollUpButton = new Button(this);
+        this.scrollUpButton = new LokiActionButton(this);
         this.scrollUpButton.setText("上へ");
         this.scrollUpButton.setText("UP");
         this.scrollUpButton.setTextSize(7.0f);
@@ -2118,7 +2122,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         });
         focusLabel(this.scrollUpButton, "UP");
         this.readButtonPanel.addView(this.scrollUpButton, new LinearLayout.LayoutParams(0, dp(14), 1.0f));
-        this.scrollDownButton = new Button(this);
+        this.scrollDownButton = new LokiActionButton(this);
         this.scrollDownButton.setText("下へ");
         this.scrollDownButton.setText("DOWN");
         this.scrollDownButton.setTextSize(7.0f);
@@ -2137,7 +2141,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         });
         focusLabel(this.scrollDownButton, "DOWN");
         this.readButtonPanel.addView(this.scrollDownButton, new LinearLayout.LayoutParams(0, dp(14), 1.0f));
-        Button button = new Button(this);
+        Button button = new LokiActionButton(this);
         button.setVisibility(8);
         button.setText("音声テスト");
         button.setTextSize(15.0f);
@@ -2148,7 +2152,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
         });
         this.readButtonPanel.addView(button, new LinearLayout.LayoutParams(0, -2, 1.0f));
-        Button button2 = new Button(this);
+        Button button2 = new LokiActionButton(this);
         button2.setVisibility(8);
         button2.setText("Beep");
         button2.setTextSize(15.0f);
@@ -2159,7 +2163,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
         });
         this.readButtonPanel.addView(button2, new LinearLayout.LayoutParams(0, -2, 1.0f));
-        Button button3 = new Button(this);
+        Button button3 = new LokiActionButton(this);
         button3.setVisibility(8);
         button3.setText("PhoneTTS");
         button3.setTextSize(15.0f);
@@ -2346,7 +2350,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         statusLayout.leftMargin = dp(96);
         statusLayout.topMargin = dp(52);
         frameLayout.addView(this.status, statusLayout);
-        quickSpeechButton=new Button(this);HudButtonStyle.apply(quickSpeechButton);quickSpeechButton.setTextSize(9);quickSpeechButton.setVisibility(View.GONE);quickSpeechButton.setOnClickListener(v->toggleQuickSpeech());
+        quickSpeechButton=new LokiActionButton(this);HudButtonStyle.apply(quickSpeechButton);quickSpeechButton.setTextSize(9);quickSpeechButton.setVisibility(View.GONE);quickSpeechButton.setOnClickListener(v->toggleQuickSpeech());
         FrameLayout.LayoutParams speechLayout=new FrameLayout.LayoutParams(dp(216),dp(20),51);speechLayout.leftMargin=dp(96);speechLayout.topMargin=dp(52);frameLayout.addView(quickSpeechButton,speechLayout);
         this.navigationClock = new TextView(this);
         this.navigationClock.setTextColor(Color.rgb(150, 255, 175));
@@ -2540,7 +2544,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     if (which == 19) { if(hudLayout!=null)hudLayout.showPresets(); return; }
                     if (which == 18) { PronunciationDictionary.show(this); return; }
                     if (which == 16) { showBluetoothPlaybackMenu(); return; }
-                    if(which==14){QuietHoursDialog.show(this,QuietHours.read(this),config->{try{QuietHours.save(this,config,config.optLong("baseRevision"));workspaceSyncAt=0;syncWorkspace();setStatus("静かな時間を保存しました",Color.CYAN);}catch(Exception e){throw new IllegalArgumentException(e.getMessage());}});return;}if(which==15){try{JSONObject state=DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"));new AlertDialog.Builder(this).setTitle("グラスの出発前チェック").setMessage(DeviceReadiness.describe(state,true)+"\nスマホとの受信："+(NavigationFreshness.linkFresh(navigationReceivedElapsed,android.os.SystemClock.elapsedRealtime())?"最近のナビ受信あり":"ナビの受信は未確認")+"\n静かな時間："+(QuietHours.muted(this,"notification")?"通知は表示のみ":"通常設定")).setPositiveButton("閉じる",null).show();}catch(Exception e){setStatus("状態を取得できません",Color.YELLOW);}return;}
+                    if(which==14){QuietHoursDialog.show(this,QuietHours.read(this),config->{try{QuietHours.save(this,config,config.optLong("baseRevision"));workspaceSyncAt=0;syncWorkspace();setStatus("静かな時間を保存しました",Color.CYAN);}catch(Exception e){throw new IllegalArgumentException(e.getMessage());}});return;}if(which==15){try{JSONObject state=DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"));new LokiAlertDialogBuilder(this).setTitle("グラスの出発前チェック").setMessage(DeviceReadiness.describe(state,true)+"\nスマホとの受信："+(NavigationFreshness.linkFresh(navigationReceivedElapsed,android.os.SystemClock.elapsedRealtime())?"最近のナビ受信あり":"ナビの受信は未確認")+"\n静かな時間："+(QuietHours.muted(this,"notification")?"通知は表示のみ":"通常設定")).setPositiveButton("閉じる",null).show();}catch(Exception e){setStatus("状態を取得できません",Color.YELLOW);}return;}
                     if (which == 13) { DeviceTuning.show(this,()->{applyDisplayArea();updateInfoLine();}); return; }
                     if (which == 0) { showLokiControls(); return; }
                     if (which == 1) {
@@ -2626,11 +2630,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if(which==6){addMeetingBookmark(java.util.UUID.randomUUID().toString(),"ここ重要","");return;}
             if(which<4){
                 final int mode=which;
-                new AlertDialog.Builder(this).setTitle(MEETING_MODES[mode]).setMessage(mode==0?"音声を最大2時間、端末に録音します。TOPICと連続写真は停止します。":("音声を最大2時間、端末に録音します。TOPIC用の周囲音"+(mode==3?"":"とカメラ画像")+"はGeminiへ送信します。"+(mode==2?"連続写真も保存します。録音中の撮影は30秒以上の間隔です。":"")))
+                new LokiAlertDialogBuilder(this).setTitle(MEETING_MODES[mode]).setMessage(mode==0?"音声を最大2時間、端末に録音します。TOPICと連続写真は停止します。":("音声を最大2時間、端末に録音します。TOPIC用の周囲音"+(mode==3?"":"とカメラ画像")+"はGeminiへ送信します。"+(mode==2?"連続写真も保存します。録音中の撮影は30秒以上の間隔です。":"")))
                     .setPositiveButton("開始",(dialog,w)->startMeetingMode(mode)).setNegativeButton("戻る",null).show();
             }else if(which==4){
                 if(MeetingRecorderService.active==null){setStatus("MTGは停止中です",Color.YELLOW);return;}
-                new AlertDialog.Builder(this).setTitle("MTGを終了しますか？").setMessage("ここまでの音声を保存し、このモードのTOPICと連続写真も停止します。")
+                new LokiAlertDialogBuilder(this).setTitle("MTGを終了しますか？").setMessage("ここまでの音声を保存し、このモードのTOPICと連続写真も停止します。")
                     .setPositiveButton("終了",(dialog,w)->{MeetingRecorderService current=MeetingRecorderService.active;if(current!=null)current.requestStop();})
                     .setNegativeButton("続ける",null).show();
             }else {
@@ -2685,7 +2689,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 else if(which==2)stopPhotoRecorderImmediately();
                 else if(which==3)showPhotoExports();
                 else if(which==4)beginPhotoImport(false);
-                else new AlertDialog.Builder(this).setMessage("スマホ保存を確認した写真の原本をグラスから削除します。").setPositiveButton("停止して移動",(x,y)->beginPhotoImport(true)).setNegativeButton("戻る",null).show();
+                else new LokiAlertDialogBuilder(this).setMessage("スマホ保存を確認した写真の原本をグラスから削除します。").setPositiveButton("停止して移動",(x,y)->beginPhotoImport(true)).setNegativeButton("戻る",null).show();
             });
     }
     String recorderLocationJson() throws Exception {
@@ -2861,7 +2865,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         bridgeToken.setTransformationMethod(PasswordTransformationMethod.getInstance());
         bridgeToken.setPadding(24, 8, 24, 8);
         linearLayout.addView(bridgeToken);
-        new AlertDialog.Builder(this).setTitle("Gemini設定").setMessage("APIキーとカスタム指示を保存します。GeminiアプリのGem本体ではなく、このグラスアプリ用の指示です。").setView(linearLayout).setPositiveButton("保存", new DialogInterface.OnClickListener() { // from class: com.example.rokidkeyboardbridge.MainActivity.22
+        new LokiAlertDialogBuilder(this).setTitle("Gemini設定").setMessage("APIキーとカスタム指示を保存します。GeminiアプリのGem本体ではなく、このグラスアプリ用の指示です。").setView(linearLayout).setPositiveButton("保存", new DialogInterface.OnClickListener() { // from class: com.example.rokidkeyboardbridge.MainActivity.22
             @Override // android.content.DialogInterface.OnClickListener
             public void onClick(DialogInterface dialogInterface, int i) {
                 MainActivity.this.getPreferences().edit().putString(MainActivity.KEY_API_KEY, editText.getText().toString().trim()).putString(MainActivity.KEY_CUSTOM_INSTRUCTIONS, editText2.getText().toString().trim()).putString(MainActivity.KEY_BRIDGE_TOKEN, bridgeToken.getText().toString().trim()).apply();
@@ -4778,7 +4782,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
-    private void toggleNavigationHudFromGlass() {
+    private void toggleNavigationHudFromGlass() {controlNavigationHudFromGlass("toggle");}
+    private void controlNavigationHudFromGlass(final String action) {
         startupNavigationBlocked=false;
         navigationResumePending=false;
         if (this.navigationButton != null) {
@@ -4788,7 +4793,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             @Override public void run() {
                 try {
                     JSONObject result = new JSONObject(MainActivity.this.fetchPhoneEndpointJson(
-                            "navigation_hud?action=toggle"));
+                            "navigation_hud?action="+action));
                     final boolean suppressed = result.optBoolean("suppressed", false);
                     final String navigationReply=result.optString("message",
                             suppressed ? "ナビHUDを停止しました" : "ナビHUDを再開しました");
@@ -4836,12 +4841,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         TextView feedback=new TextView(this); feedback.setTextColor(Color.YELLOW); feedback.setTextSize(14); root.addView(feedback);
         LinearLayout presets=new LinearLayout(this); root.addView(presets);
         for(String kind:new String[]{"home","work","favorites"}) {
-            Button button=new Button(this); button.setText("home".equals(kind)?"自宅":"work".equals(kind)?"勤務先":"登録地点");
+            Button button=new LokiActionButton(this); button.setText("home".equals(kind)?"自宅":"work".equals(kind)?"勤務先":"登録地点");
             NavigationChoiceDialog.styleButton(this,button);
             button.setOnClickListener(v->loadNavigationPlaces(input,feedback,kind)); presets.addView(button,new LinearLayout.LayoutParams(0,-2,1f));
         }
         String[] modes={"walking","driving","bicycling","transit"}; String[] labels={"徒歩","車","自転車","公共交通"};
-        final int[] selected={Math.max(0,Math.min(labels.length-1,getSharedPreferences("navigation_display",MODE_PRIVATE).getInt("selection_mode",0)))}; Button modeButton=new Button(this); modeButton.setText(labels[selected[0]]); NavigationChoiceDialog.styleButton(this,modeButton); root.addView(modeButton);
+        final int[] selected={Math.max(0,Math.min(labels.length-1,getSharedPreferences("navigation_display",MODE_PRIVATE).getInt("selection_mode",0)))}; Button modeButton=new LokiActionButton(this); modeButton.setText(labels[selected[0]]); NavigationChoiceDialog.styleButton(this,modeButton); root.addView(modeButton);
         // Explicit horizontal chain: geometry must not skip the last preset.
         for (int i = 0; i < presets.getChildCount(); i++) {
             View preset = presets.getChildAt(i);
@@ -4885,7 +4890,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         work.setOnKeyListener(savedFocusGuard);
         saved.setOnKeyListener(savedFocusGuard);
         modeButton.setOnClickListener(v->NavigationChoiceDialog.show(navigationReviewOwner(),"移動手段",labels,selected[0],(d,i)-> { selected[0]=i; getSharedPreferences("navigation_display",MODE_PRIVATE).edit().putInt("selection_mode",i).apply(); modeButton.setText(labels[i]); }));
-        AlertDialog dialog=new AlertDialog.Builder(navigationReviewOwner(),theme).setTitle("登録地点からナビ").setView(root)
+        AlertDialog dialog=new LokiAlertDialogBuilder(navigationReviewOwner(),theme).setTitle("登録地点からナビ").setView(root)
             .setPositiveButton("MAPナビ開始",null).setNegativeButton("閉じる",null).create();
         navigationDestinationDialog=dialog;
         dialog.setOnDismissListener(d->{if(navigationDestinationDialog==dialog)navigationDestinationDialog=null;});
@@ -4915,7 +4920,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             navigationChoiceDialog=navigationReviewChoice("ロキ共通経路を選択",labels,ticket,(d,which)->{
                 if(ticket!=navigationReviewTicket)return;
                 final String choice=choices.optJSONObject(which).optString("id");
-                AlertDialog confirm=new AlertDialog.Builder(navigationReviewOwner()).setTitle("出発前に経路を確認").setMessage(choices.optJSONObject(which).optString("review","経路の区間情報は未確認です")+"\n"+response.optString("stairsNotice","")).setPositiveButton("この経路で開始",(a,b)->{
+                AlertDialog confirm=new LokiAlertDialogBuilder(navigationReviewOwner()).setTitle("出発前に経路を確認").setMessage(choices.optJSONObject(which).optString("review","経路の区間情報は未確認です")+"\n"+response.optString("stairsNotice","")).setPositiveButton("この経路で開始",(a,b)->{
                     if(ticket!=navigationReviewTicket||navigationReviewCommitting)return;
                     navigationReviewCommitting=true;navigationReviewOpen=false;setStatus("選択した経路で開始中…",Color.YELLOW);
                     fetchGlassNavigationReview("navigation_start?"+base+"&routeChoice="+android.net.Uri.encode(choice)+"&id="+java.util.UUID.randomUUID(),ticket,result->{navigationReviewCommitting=false;startupNavigationBlocked=false;navigationReviewedStart();setStatus("スマホと同じ選択経路を表示します",Color.GREEN);});
@@ -4990,10 +4995,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void showNavigationQuickDisplayMenu(){
         if(navigationReviewEnvironment==null)showControlsTemporarily();android.content.SharedPreferences display=getSharedPreferences("navigation_display",MODE_PRIVATE);
         int selected=display.getBoolean("overview",false)?2:display.getBoolean("large_map",false)?1:0;
-        navigationChoiceDialog=NavigationChoiceDialog.show(navigationReviewOwner(),"ナビ：画面モード",new String[]{"操作モード（小さい地図）","大きい地図・現在地追従","全体マップ","目的地・案内のメニュー"},selected,(d,i)->{if(i<3)applyNavigationDisplaySize(i);else showNavigationDisplayMenu();});
+        navigationChoiceDialog=NavigationChoiceDialog.show(navigationReviewOwner(),"ナビ：画面モード",NavigationEntryPolicy.quickDisplayMenu(),selected,(d,i)->{if(i<3)applyNavigationDisplaySize(i);else if(i==3)showNavigationDisplayMenu();else controlNavigationHudFromGlass("hide");});
     }
     private void applyNavigationDisplaySize(int mode){if(mode<0||mode>2)return;getSharedPreferences("navigation_display",MODE_PRIVATE).edit().putBoolean("large_map",mode!=0).putBoolean("overview",mode==2).apply();if(navigationMap!=null)navigationMap.setOverview(mode==2);updateNavigationCommentLayout();if(navigationReviewEnvironment==null)showControlsTemporarily();}
-    private void showNavigationDisplayMenu(){long started=System.nanoTime();android.view.Choreographer.getInstance().postFrameCallback(frame->navigationSmoothMetrics.mark("actionFrame",started));final boolean navigating=mapNavigationActive&&!navigationHudSuppressed;NavigationChoiceDialog.show(navigationReviewOwner(),"ナビ",NavigationEntryPolicy.menu(navigating),0,(d,selected)->{if(navigating&&selected<3){applyNavigationDisplaySize(selected);return;}int i=selected-(navigating?3:0);if(i==0)resumeNavigationHudFromGlass();else if(i==1)showNavigationDestinationSelection();else if(i==2||i==3)showSavedNavigationPlans(false,i==2?"outbound":"return");else if(i==4)showNavigationAdvancedMenu();else if(i==5)navigationPocketRoute.show(this);else if(i==6)showNavigationCueSettings();else if(i==7)navigationSmoothMetrics.show(this);else showCalendarNavigationDays();});}
+    private void showNavigationDisplayMenu(){long started=System.nanoTime();android.view.Choreographer.getInstance().postFrameCallback(frame->navigationSmoothMetrics.mark("actionFrame",started));final boolean navigating=mapNavigationActive&&!navigationHudSuppressed;NavigationChoiceDialog.show(navigationReviewOwner(),"ナビ",NavigationEntryPolicy.menu(navigating),0,(d,selected)->{if(navigating&&selected<3){applyNavigationDisplaySize(selected);return;}int i=selected-(navigating?3:0);if(i==0)resumeNavigationHudFromGlass();else if(i==1)showNavigationDestinationSelection();else if(i==2)showCalendarNavigationDays();else if(i==3||i==4)showSavedNavigationPlans(false,i==3?"outbound":"return");else if(i==5)showNavigationAdvancedMenu();else if(i==6)navigationPocketRoute.show(this);else if(i==7)showNavigationCueSettings();else if(i==8)navigationSmoothMetrics.show(this);});}
     private void showCalendarNavigationDays(){final int ticket=beginNavigationReview();if(ticket<0)return;navigationReviewChoice("予定の日付",new String[]{"今日","明日"},ticket,(d,k)->loadCalendarNavigation(k,ticket));}
     private void loadCalendarNavigation(int day,int ticket){fetchGlassNavigationReview("navigation_calendar?day="+day,ticket,response->{JSONArray items=response.optJSONArray("items");if(items==null||items.length()==0){navigationReviewChoice(response.optString("message","予定を確認できません"),new String[]{"日付を選び直す","閉じる"},ticket,(d,k)->{finishNavigationReview("");if(k==0)showCalendarNavigationDays();});return;}String[] labels=new String[items.length()];for(int i=0;i<labels.length;i++)labels[i]=items.optJSONObject(i).optString("label");navigationReviewChoice((day==0?"今日":"明日")+"の予定"+(response.optBoolean("truncated")?"（先頭60件）":""),labels,ticket,(d,k)->{JSONObject e=items.optJSONObject(k);if(!e.optBoolean("available")){navigationReviewChoice(e.optString("reason","場所を確認してください"),new String[]{"予定を選び直す","閉じる"},ticket,(x,y)->{if(y==0)loadCalendarNavigation(day,ticket);else finishNavigationReview("");});return;}long loaded=android.os.SystemClock.elapsedRealtime();String[] modes={"walking","bicycling","driving","transit"};navigationReviewChoice(e.optString("label")+"：移動手段",new String[]{"徒歩","自転車","車","公共交通"},ticket,(x,y)->{if(android.os.SystemClock.elapsedRealtime()-loaded>300000){navigationReviewFailure("予定の確認期限が切れました。選び直してください");return;}navigationReviewConfirm("予定の場所を確認",e.optString("label")+"\n場所を経路サービスに送信します。今から出発する条件です。予定時刻への到着指定ではありません。","場所・経路を確認",ticket,()->{fetchGlassNavigationReview("navigation_calendar?stage=select&token="+android.net.Uri.encode(e.optString("token")),ticket,selected->{JSONObject event=selected.optJSONObject("item");if(!"selected".equals(selected.optString("status"))||event==null){navigationReviewFailure(selected.optString("message","予定を選び直してください"));return;}cancelGlassNavigationReview();startGlassNavigationPlace(event.optString("location"),event.optString("location"),modes[y]);});});});});});}
     private void showNavigationAdvancedMenu() {
@@ -5669,6 +5674,26 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
+    private String operationReactionContext="";
+    private long operationReactionContextAt;
+    void reactToButton(CharSequence label){
+        final String caption=label==null?"":label.toString();
+        // Run after the action: mode changes may create the target view, and a
+        // dismissed menu must not leave the reaction behind an expired HUD.
+        handler.post(()->showButtonReaction(caption));
+    }
+    private void showButtonReaction(String label){
+        if(isFinishing()||isDestroyed()||!mascotHostResumed)return;
+        long now=android.os.SystemClock.uptimeMillis();
+        showControlsTemporarily();
+        String text=label;
+        boolean contact=now-operationReactionContextAt<180000L
+            && ButtonReactionContext.touching(operationReactionContext);
+        boolean close=text.contains("閉じ")||text.contains("戻る")||text.contains("停止");
+        if(mascotView!=null)mascotView.reactToButton(now,contact,close);
+        if(fullBodyImage!=null)fullBodyImage.reactToButton(now,contact,close);
+    }
+
     private void focusLabel(final Button button, final String str) {
         HudButtonStyle.apply(button);
         button.setText(str);
@@ -5734,6 +5759,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if(!memoryRequest && !ConversationEntryPolicy.discussion(strTrim) && handlePhotoRecorderCommand(strTrim)) {
             continueVoiceAfterSubmittedTurn(voiceConversationAtStart);return;
         }
+        operationReactionContext=strTrim;operationReactionContextAt=android.os.SystemClock.uptimeMillis();
         if(fullBodyImage!=null)fullBodyImage.setUserContext(strTrim);
         if(fullBodyImage!=null && !FullBodyPerformancePolicy.requests(strTrim))fullBodyImage.cancelPerformance();
         if(!memoryRequest && !ConversationEntryPolicy.discussion(strTrim) && handleFullBodyPerformanceCommand(strTrim)) {
@@ -6438,6 +6464,34 @@ public final class MainActivity extends Activity implements SensorEventListener 
         });
     }
 
+    private boolean sourceMediaQuickSeekBusy;
+    private void skipSourceMediaForward() {
+        if(sourceMediaQuickSeekBusy)return;
+        sourceMediaQuickSeekBusy=true;
+        setStatus("30秒先へ送っています…",Color.LTGRAY);
+        new Thread(()->{try{
+            JSONObject result=new JSONObject(fetchPhoneEndpointJson("media_sessions"));
+            JSONArray sessions=result.optJSONArray("sessions");
+            String selected="";
+            if(result.optBoolean("ok")&&sessions!=null){
+                // Android returns active sessions in priority order. Use the first seekable session.
+                for(int i=0;i<sessions.length();i++){
+                    JSONObject row=sessions.optJSONObject(i);
+                    if(row!=null&&row.optBoolean("seek")&&!row.optString("id").isEmpty()){selected=row.optString("id");break;}
+                }
+            }
+            final String session=selected;
+            handler.post(()->{
+                if(!session.isEmpty()){seekSourceMedia(session,30000);return;}
+                sourceMediaQuickSeekBusy=false;
+                setStatus("30秒送りできる再生アプリがありません。SETで確認してください",Color.YELLOW);
+            });
+        }catch(Exception unavailable){handler.post(()->{
+            sourceMediaQuickSeekBusy=false;
+            setStatus("再生元に接続できません。SETで接続を確認してください",Color.YELLOW);
+        });}},"source-media-quick-forward").start();
+    }
+
     private void showSourceMediaSessions() {
         setStatus("接続端末の再生状態を確認中…",Color.LTGRAY);
         new Thread(()->{try{
@@ -6458,8 +6512,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         new Thread(()->{try{
             JSONObject request=new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("session",session).put("delta",delta).put("createdAt",System.currentTimeMillis());
             JSONObject result=new JSONObject(postTopicForm("media_seek","request="+URLEncoder.encode(request.toString(),"UTF-8")));
-            handler.post(()->{answer.setText(result.optString("message"));setStatus(result.optBoolean("ok")?"再生位置を確認しました":"再生位置を確認してください",result.optBoolean("ok")?Color.GREEN:Color.YELLOW);});
-        }catch(Exception error){handler.post(()->{answer.setText("音楽操作の結果を確認できません。再生元で位置を確認してください。");setStatus("操作結果未確認",Color.YELLOW);});}},"source-media-seek").start();
+            handler.post(()->{sourceMediaQuickSeekBusy=false;answer.setText(result.optString("message"));setStatus(result.optBoolean("ok")?"再生位置を確認しました":"再生位置を確認してください",result.optBoolean("ok")?Color.GREEN:Color.YELLOW);});
+        }catch(Exception error){handler.post(()->{sourceMediaQuickSeekBusy=false;answer.setText("音楽操作の結果を確認できません。再生元で位置を確認してください。");setStatus("操作結果未確認",Color.YELLOW);});}},"source-media-seek").start();
     }
     private AlertDialog showLegacyBluetoothPlaybackMenu() {
         showControlsTemporarily();
@@ -6528,7 +6582,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String[] navigationReviewLabels(JSONArray rows){if(rows==null||rows.length()==0)throw new IllegalArgumentException("候補がありません");String[] names=new String[rows.length()];for(int i=0;i<names.length;i++){JSONObject row=rows.optJSONObject(i);if(row==null)throw new IllegalArgumentException("候補の形式を確認できません");names[i]=row.optString("label",row.optString("name","候補 "+(i+1)));}return names;}
     private void navigationReviewConfirm(String title,String message,String positive,int ticket,Runnable action){
         if(ticket!=navigationReviewTicket)return;
-        AlertDialog dialog=new AlertDialog.Builder(navigationReviewOwner()).setTitle(title).setMessage(message).setPositiveButton(positive,(d,w)->{if(ticket==navigationReviewTicket&&!navigationMutationInFlight.get())try{action.run();}catch(Exception invalid){navigationReviewCallbackFailure();}}).setNegativeButton("キャンセル",(d,w)->finishNavigationReview("確認を取り消しました。新しい案内は開始していません")).create();trackNavigationConfirmation(dialog,ticket);dialog.show();dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.BLACK));NavigationChoiceDialog.styleButton(this,dialog.getButton(-1));NavigationChoiceDialog.styleButton(this,dialog.getButton(-2));NavigationChoiceDialog.installDialogSelection(dialog,dialog.getButton(-2));dialog.getButton(-2).requestFocus();
+        AlertDialog dialog=new LokiAlertDialogBuilder(navigationReviewOwner()).setTitle(title).setMessage(message).setPositiveButton(positive,(d,w)->{if(ticket==navigationReviewTicket&&!navigationMutationInFlight.get())try{action.run();}catch(Exception invalid){navigationReviewCallbackFailure();}}).setNegativeButton("キャンセル",(d,w)->finishNavigationReview("確認を取り消しました。新しい案内は開始していません")).create();trackNavigationConfirmation(dialog,ticket);dialog.show();dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.BLACK));NavigationChoiceDialog.styleButton(this,dialog.getButton(-1));NavigationChoiceDialog.styleButton(this,dialog.getButton(-2));NavigationChoiceDialog.installDialogSelection(dialog,dialog.getButton(-2));dialog.getButton(-2).requestFocus();
     }
     private void showNavigationCueSettings(){final int ticket=beginNavigationReview();if(ticket<0)return;fetchGlassNavigationReview("navigation_saved?stage=cues",ticket,response->{JSONObject settings=response.optJSONObject("settings");if(settings==null){navigationReviewFailure("通知設定を取得できません。開き直してください");return;}applyNavigationExperienceSettings(settings);navigationReviewChoice("通知タイミング・表示",new String[]{"徒歩の通知距離","自転車の通知距離","移動手段に合わせた表示："+(navigationAdaptivePresentation?"オン":"オフ")},ticket,(d,k)->{if(k==2){navigationReviewConfirm("表示設定を変更しますか？","移動手段に合わせた表示を切り替えます",navigationAdaptivePresentation?"オフにする":"オンにする",ticket,()->saveNavigationCueSetting("adaptive",navigationAdaptivePresentation?0:1,ticket));return;}String kind=k==0?"walkingTiming":"bicycleTiming";String[] labels=k==0?new String[]{"遅め：約80m以内","標準：約120m以内","早め：約180m以内"}:new String[]{"遅め：約150m以内","標準：約250m以内","早め：約400m以内"};navigationReviewChoice(k==0?"徒歩の通知距離":"自転車の通知距離",labels,ticket,(a,i)->navigationReviewConfirm("通知タイミングを変更しますか？",labels[i]+"。位置精度や移動速度で実際の通知位置は変わります。","この設定にする",ticket,()->saveNavigationCueSetting(kind,i,ticket)));});});}
     private void saveNavigationCueSetting(String kind,int value,int ticket){fetchGlassNavigationReview("navigation_saved?stage=cue_set&kind="+kind+"&value="+value,ticket,response->{JSONObject state=response.optJSONObject("settings");if(state!=null)applyNavigationExperienceSettings(state);setStatus("通知・表示設定を保存しました",Color.CYAN);});}
@@ -6551,7 +6605,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
       else {if(navigationMutationInFlight.get()){setStatus("操作結果を確認中です。自動で再送しません",Color.YELLOW);return;}if(navigationPreviewPending&&path.equals(navigationLastPreviewPath)&&ticket==navigationLastPreviewTicket){navigationSmoothMetrics.count("searchDiscarded");return;}}
       navigationLastPreviewPath=path;navigationLastPreviewTicket=ticket;navigationPreviewPending=true;final long started=System.nanoTime();navigationPreviewStarted=started;setStatus(mutation?(committing?"選択した経路で開始中…":"操作・設定を反映中…"):"ナビ候補を確認中…",Color.CYAN);android.view.Choreographer.getInstance().postFrameCallback(frame->navigationSmoothMetrics.mark("actionFrame",started));
       if(mutation){navigationPreviewJob.cancel();new Thread(()->{JSONObject result=null;Exception failure=null;try{result=new JSONObject(navigationReviewRequest(path,true));if(!result.optBoolean("ok"))throw new Exception("操作結果を確認できません");}catch(Exception e){failure=e;}final JSONObject value=result;final Exception error=failure;handler.post(()->{navigationMutationInFlight.set(false);navigationReviewCommitting=false;if(ticket!=navigationReviewTicket||isFinishing()||isDestroyed())return;navigationPreviewPending=false;navigationSmoothMetrics.mark("searchTotal",started);if(error!=null){navigationReviewFailure(committing?"開始状態を確認できません。現在の案内を確認してください。自動で再送しません":"操作・設定の反映状態をスマホで確認してください。自動で再送しません");return;}cancelGlassNavigationReview();try{receive.accept(value);}catch(Exception invalid){setStatus("操作結果の表示を確認できません。現在の案内・設定を確認してください。自動で再送しません",Color.YELLOW);}});},"NavigationMutationOnce").start();return;}
-      if(navigationReviewLoading!=null)navigationReviewLoading.dismiss();navigationReviewLoading=new AlertDialog.Builder(navigationReviewOwner()).setTitle("ナビを確認中").setMessage("候補を確認しています。キャンセルして選び直せます。").setNegativeButton("キャンセル",(d,w)->finishNavigationReview("候補確認を取り消しました。新しい案内は開始していません")).setOnCancelListener(d->finishNavigationReview("候補確認を取り消しました。新しい案内は開始していません")).create();navigationReviewLoading.show();NavigationChoiceDialog.styleButton(this,navigationReviewLoading.getButton(-2));NavigationChoiceDialog.installDialogSelection(navigationReviewLoading,navigationReviewLoading.getButton(-2));navigationReviewLoading.getButton(-2).requestFocus();handler.postDelayed(()->expireNavigationReview(ticket,started,path),navigationReviewEnvironment==null?75000L:navigationReviewEnvironment.timeoutMs);
+      if(navigationReviewLoading!=null)navigationReviewLoading.dismiss();navigationReviewLoading=new LokiAlertDialogBuilder(navigationReviewOwner()).setTitle("ナビを確認中").setMessage("候補を確認しています。キャンセルして選び直せます。").setNegativeButton("キャンセル",(d,w)->finishNavigationReview("候補確認を取り消しました。新しい案内は開始していません")).setOnCancelListener(d->finishNavigationReview("候補確認を取り消しました。新しい案内は開始していません")).create();navigationReviewLoading.show();NavigationChoiceDialog.styleButton(this,navigationReviewLoading.getButton(-2));NavigationChoiceDialog.installDialogSelection(navigationReviewLoading,navigationReviewLoading.getButton(-2));navigationReviewLoading.getButton(-2).requestFocus();handler.postDelayed(()->expireNavigationReview(ticket,started,path),navigationReviewEnvironment==null?75000L:navigationReviewEnvironment.timeoutMs);
       try{navigationPreviewJob.submit(()->{JSONObject result=new JSONObject(navigationReviewRequest(path,false));if(!result.optBoolean("ok"))throw new Exception("候補を取得できません");return result;},(job,value,error)->handler.post(()->{if(!navigationPreviewJob.current(job)||ticket!=navigationReviewTicket||isFinishing()||isDestroyed())return;if(navigationReviewLoading!=null){navigationReviewLoading.dismiss();navigationReviewLoading=null;}navigationPreviewPending=false;navigationSmoothMetrics.mark("searchTotal",started);if(error!=null){navigationReviewFailure("候補を取得できません。接続・条件を確認して選び直してください");return;}setStatus("取得できました。内容を確認してください",Color.CYAN);try{receive.accept((JSONObject)value);}catch(Exception invalid){navigationReviewFailure("候補の形式を確認できません。選び直してください");}}));}catch(java.util.concurrent.RejectedExecutionException busy){navigationReviewFailure("前の検索を終了中です。少し待って選び直してください");}
     }
     private void sendNavigationConversationReview(String action,String target){
@@ -7662,12 +7716,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         LinearLayout choices = new LinearLayout(this);
         choices.setOrientation(LinearLayout.VERTICAL); choices.setBackgroundColor(Color.BLACK);
         scroll.addView(choices); panel.addView(scroll);
-        AlertDialog dialog = new AlertDialog.Builder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+        AlertDialog dialog = new LokiAlertDialogBuilder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
                 .setView(panel).create();
         Button[] buttons = new Button[labels.length];
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
-            Button button = new Button(this);
+            Button button = new LokiActionButton(this);
             button.setText((i == current ? "✓ " : "") + labels[i]);
             button.setTextColor(Color.WHITE); button.setTextSize(18);
             button.setGravity(android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.LEFT);
@@ -7709,9 +7763,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
-    private void showOperationOverview(){new Thread(()->{StringBuilder message=new StringBuilder(AssistantActivityState.describe(assistantActivitySnapshot(),true)+"\n\n"+LocalHealthCheck.describe(LocalHealthCheck.snapshot(this)));try{message.append("\n\n").append(ConversationDeliveryState.label(readConversationDelivery(),true));}catch(Exception ignored){}String localStop=LocalConversationStop.summary(getPreferences().getString("last_local_conversation_stop_reason",""),getPreferences().getLong("last_local_conversation_stop_at",0));String failure=ConversationFailurePolicy.summary(getPreferences().getString("last_conversation_failure",""));if(!failure.isEmpty())message.append("\n\n").append(failure);else if(!localStop.isEmpty())message.append("\n\n").append(localStop);JSONArray transfers=TransferProgressStore.snapshot(this);for(int i=0;i<transfers.length();i++)message.append("\n\n").append(TransferProgressPolicy.label(transfers.optJSONObject(i)));try{JSONObject remote=new JSONObject(fetchPhoneEndpointJson("operation_status"));JSONArray cards=remote.optJSONArray("cards");if(cards!=null)for(int i=0;i<Math.min(12,cards.length());i++){JSONObject card=cards.getJSONObject(i);message.append("\n\n").append(card.optString("label")).append("：").append(card.optString("title"));}}catch(Exception unavailable){message.append("\n\nスマホの依頼状態は取得できません。再送はしていません。");}handler.post(()->{if(isFinishing()||isDestroyed())return;android.widget.Button retry=new android.widget.Button(this);retry.setText("未転送写真の取り込みを再開");retry.setOnClickListener(v->new AlertDialog.Builder(this).setMessage("スマホ保存未確認の写真だけを再確認・転送します。過去に削除した写真は一覧へ戻しません。撮影中は停止してから操作してください。").setPositiveButton("再開",(d,w)->transferRecorderPhotos()).setNegativeButton("戻る",null).show());android.widget.LinearLayout actions=new android.widget.LinearLayout(this);actions.setOrientation(1);actions.addView(retry);android.widget.Button notices=new android.widget.Button(this);notices.setText("保留通知を確認");notices.setOnClickListener(v->showDeferredNotices());actions.addView(notices);new AlertDialog.Builder(this).setTitle("依頼・転送・動作チェック").setView(actions).setMessage(message.toString()).setPositiveButton("閉じる",null).setNegativeButton("前の質問を戻す",(d,w)->restoreConversationRecovery()).setNeutralButton("グラスを再検査",(d,w)->{LocalHealthCheck.start(this,true);setStatus("ローカル検査中。しばらくして開き直してください",Color.CYAN);}).show();});},"OperationOverview").start();}
-    private void showObservationRecognition(){JSONObject r=observationRecognition;String text=r.optString("text");new AlertDialog.Builder(this).setTitle("認識："+r.optString("source")+" / "+r.optString("phase")).setMessage(text.isEmpty()?"認識文はまだありません。音声が不明瞭・取得できない場合もあります。":text).setPositiveButton("閉じる",null).setNeutralButton("会話欄で直す",(d,w)->{if(text.isEmpty())return;if(input.getText().toString().trim().isEmpty()){input.setText(text);input.requestFocus();}else new AlertDialog.Builder(this).setMessage("入力中の文章を認識文に置き換えますか？").setPositiveButton("置き換える",(a,b)->{input.setText(text);input.requestFocus();}).setNegativeButton("戻る",null).show();}).show();}
-    private void showConversationReference(){new AlertDialog.Builder(this).setTitle("会話の参照先").setItems(new String[]{"自動で選ぶ","直近の画像を使う","画像を使わず話す"},(d,w)->{try{applyWorkspaceCommand(new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("action","reference").put("mode",new String[]{"auto","image","none"}[w]).put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("expiresAt",System.currentTimeMillis()+600000));}catch(Exception ignored){}}).show();}
+    private void showOperationOverview(){new Thread(()->{StringBuilder message=new StringBuilder(AssistantActivityState.describe(assistantActivitySnapshot(),true)+"\n\n"+LocalHealthCheck.describe(LocalHealthCheck.snapshot(this)));try{message.append("\n\n").append(ConversationDeliveryState.label(readConversationDelivery(),true));}catch(Exception ignored){}String localStop=LocalConversationStop.summary(getPreferences().getString("last_local_conversation_stop_reason",""),getPreferences().getLong("last_local_conversation_stop_at",0));String failure=ConversationFailurePolicy.summary(getPreferences().getString("last_conversation_failure",""));if(!failure.isEmpty())message.append("\n\n").append(failure);else if(!localStop.isEmpty())message.append("\n\n").append(localStop);JSONArray transfers=TransferProgressStore.snapshot(this);for(int i=0;i<transfers.length();i++)message.append("\n\n").append(TransferProgressPolicy.label(transfers.optJSONObject(i)));try{JSONObject remote=new JSONObject(fetchPhoneEndpointJson("operation_status"));JSONArray cards=remote.optJSONArray("cards");if(cards!=null)for(int i=0;i<Math.min(12,cards.length());i++){JSONObject card=cards.getJSONObject(i);message.append("\n\n").append(card.optString("label")).append("：").append(card.optString("title"));}}catch(Exception unavailable){message.append("\n\nスマホの依頼状態は取得できません。再送はしていません。");}handler.post(()->{if(isFinishing()||isDestroyed())return;android.widget.Button retry=new LokiActionButton(this);retry.setText("未転送写真の取り込みを再開");retry.setOnClickListener(v->new LokiAlertDialogBuilder(this).setMessage("スマホ保存未確認の写真だけを再確認・転送します。過去に削除した写真は一覧へ戻しません。撮影中は停止してから操作してください。").setPositiveButton("再開",(d,w)->transferRecorderPhotos()).setNegativeButton("戻る",null).show());android.widget.LinearLayout actions=new android.widget.LinearLayout(this);actions.setOrientation(1);actions.addView(retry);android.widget.Button notices=new LokiActionButton(this);notices.setText("保留通知を確認");notices.setOnClickListener(v->showDeferredNotices());actions.addView(notices);new LokiAlertDialogBuilder(this).setTitle("依頼・転送・動作チェック").setView(actions).setMessage(message.toString()).setPositiveButton("閉じる",null).setNegativeButton("前の質問を戻す",(d,w)->restoreConversationRecovery()).setNeutralButton("グラスを再検査",(d,w)->{LocalHealthCheck.start(this,true);setStatus("ローカル検査中。しばらくして開き直してください",Color.CYAN);}).show();});},"OperationOverview").start();}
+    private void showObservationRecognition(){JSONObject r=observationRecognition;String text=r.optString("text");new LokiAlertDialogBuilder(this).setTitle("認識："+r.optString("source")+" / "+r.optString("phase")).setMessage(text.isEmpty()?"認識文はまだありません。音声が不明瞭・取得できない場合もあります。":text).setPositiveButton("閉じる",null).setNeutralButton("会話欄で直す",(d,w)->{if(text.isEmpty())return;if(input.getText().toString().trim().isEmpty()){input.setText(text);input.requestFocus();}else new LokiAlertDialogBuilder(this).setMessage("入力中の文章を認識文に置き換えますか？").setPositiveButton("置き換える",(a,b)->{input.setText(text);input.requestFocus();}).setNegativeButton("戻る",null).show();}).show();}
+    private void showConversationReference(){new LokiAlertDialogBuilder(this).setTitle("会話の参照先").setItems(new String[]{"自動で選ぶ","直近の画像を使う","画像を使わず話す"},(d,w)->{try{applyWorkspaceCommand(new JSONObject().put("requestId",java.util.UUID.randomUUID().toString()).put("action","reference").put("mode",new String[]{"auto","image","none"}[w]).put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("expiresAt",System.currentTimeMillis()+600000));}catch(Exception ignored){}}).show();}
     private void showTopicMenu() {
         stopRadioPlayback();
         topicMenuDepth++;
@@ -7741,7 +7795,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         String mode = new String[]{"continuous", "sound", "vision", "both"}[which - 2];
                         if ("sound".equals(mode) || "vision".equals(mode) || "both".equals(mode)) {
                             topicMenuDepth++;
-                            AlertDialog sensor = new AlertDialog.Builder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle(labels[which])
+                            AlertDialog sensor = new LokiAlertDialogBuilder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle(labels[which])
                                     .setMessage("発話の合間に周囲音を約4秒・カメラの静止画を取得し、Geminiへ送信します。端末には保存しません。TOPIC→停止で終了します。")
                                     .setPositiveButton("開始", (a, b) -> changeTopicMode(true, mode, currentTopicMinutes, null))
                                     .setNegativeButton("戻る", null).create();
@@ -9536,7 +9590,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 "Bluetooth再生音",
                 "両方"
         };
-        new AlertDialog.Builder(this)
+        new LokiAlertDialogBuilder(this)
                 .setTitle("AMBIENT入力")
                 .setSingleChoiceItems(choices, AmbientScenePolicy.scene(this.ambientInputMode)?this.ambientInputMode-3:this.ambientInputMode+3,
                         new DialogInterface.OnClickListener() {
@@ -9605,7 +9659,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private void setAmbientMode(boolean enabled) {
         if(enabled&&AmbientScenePolicy.scene(this.ambientInputMode)&&AmbientScenePolicy.camera(this.ambientInputMode)&&!getPreferences().getBoolean("amb_camera_cloud_consent_v447",false)){
-            new AlertDialog.Builder(this).setTitle("AMB画像をGeminiへ送信").setMessage("景色のほか、周囲の人や画面・文書が映る場合があります。カメラAMBを使う場面を確認してください。RECだけの撮影写真は送信しません。").setPositiveButton("理解して開始",(d,w)->{getPreferences().edit().putBoolean("amb_camera_cloud_consent_v447",true).apply();setAmbientMode(true);}).setNegativeButton("キャンセル",(d,w)->setAmbientMode(false)).show();return;
+            new LokiAlertDialogBuilder(this).setTitle("AMB画像をGeminiへ送信").setMessage("景色のほか、周囲の人や画面・文書が映る場合があります。カメラAMBを使う場面を確認してください。RECだけの撮影写真は送信しません。").setPositiveButton("理解して開始",(d,w)->{getPreferences().edit().putBoolean("amb_camera_cloud_consent_v447",true).apply();setAmbientMode(true);}).setNegativeButton("キャンセル",(d,w)->setAmbientMode(false)).show();return;
         }
 
         if (enabled && this.voiceLoopMode) {
@@ -11484,7 +11538,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         long age=proactiveDecisionAt==0?-1:Math.max(0,android.os.SystemClock.elapsedRealtime()-proactiveDecisionAt)/1000;
         PhotoRecorderService keep=PhotoRecorderService.active;MeetingRecorderService meeting=MeetingRecorderService.active;
         String capture="\nKEEP："+(keep==null?"停止中":PhotoRecorderService.status)+"\nKEEP画像の再利用："+(keep==null?"対象なし":keep.topicImageWaitReason())+"\n会議録音："+(meeting==null?"停止中":MeetingRecorderService.status)+"\n会議中の撮影："+(meeting==null?"対象なし":meeting.cameraWaitReason());
-        new AlertDialog.Builder(this).setTitle("TOPIC・AMBの発言・取得判定").setMessage(proactiveDecision+(age<0?"":"（"+age+"秒前）")+capture+"\n発言を出す直前の判定です。入力取得やAPIの稼働全体を示す診断ではありません。会議録音やKEEPの停止操作は行いません。").setPositiveButton("閉じる",null).show();
+        new LokiAlertDialogBuilder(this).setTitle("TOPIC・AMBの発言・取得判定").setMessage(proactiveDecision+(age<0?"":"（"+age+"秒前）")+capture+"\n発言を出す直前の判定です。入力取得やAPIの稼働全体を示す診断ではありません。会議録音やKEEPの停止操作は行いません。").setPositiveButton("閉じる",null).show();
     }
     private boolean deliverAmbientScene(String reaction,String emotion,int strength){
         if(!showAmbientResult("【AMB取得】\n"+reaction))return false;
@@ -13685,7 +13739,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private boolean saveDeferredNotices(JSONArray rows){try{return getPreferences().edit().putString("deferred_codex_notices",Base64.encodeToString(DeviceSecrets.photos().encrypt(rows.toString().getBytes(StandardCharsets.UTF_8)),2)).commit();}catch(Exception e){return false;}}
     private boolean deferCodexNotice(String id,String message,String kind,long issued){try{JSONArray current=readDeferredNotices();if(current==null)return false;JSONArray next=DeferredNotificationDigest.add(current,id,message,kind,issued,System.currentTimeMillis());if(next==null||!saveDeferredNotices(next))return false;deferredNoticeRefresh=0;return !kind.equals("question");}catch(Exception e){return false;}}
     private void refreshDeferredNoticeBadge(){long now=System.currentTimeMillis();if(now-deferredNoticeRefresh<5000)return;deferredNoticeRefresh=now;try{JSONArray rows=readDeferredNotices();if(rows==null){deferredNoticeBadge="保留通知の保存状態を確認してください";return;}JSONArray pending=DeferredNotificationDigest.unread(rows,now);deferredNoticeBadge=DeferredNotificationDigest.label(rows,now);if(pending.length()==0||codexNotificationBlocked())return;String signature=pending.toString();if(signature.equals(lastDeferredNoticeSignature))return;for(int i=0;i<pending.length();i++)if(pending.getJSONObject(i).optString("kind").equals("question"))return;lastDeferredNoticeSignature=signature;StringBuilder summary=new StringBuilder("会話・ナビ中に保留した通知 "+pending.length()+"件。確認は「依頼・転送・動作チェック」から。\n");for(int i=0;i<Math.min(3,pending.length());i++){String text=pending.getJSONObject(i).optString("message");summary.append("・").append(text.substring(0,Math.min(80,text.length()))).append("\n");}showAssistantNotification("保留通知",summary.toString(),"info",false);}catch(Exception e){deferredNoticeBadge="保留通知の状態を確認してください";}}
-    private void showDeferredNotices(){try{JSONArray rows=readDeferredNotices();if(rows==null)throw new Exception();JSONArray shown=DeferredNotificationDigest.unread(rows,System.currentTimeMillis());StringBuilder text=new StringBuilder(shown.length()==0?"保留中の通知はありません。":"確認待ちを先に表示します。発行から5分を過ぎた通知は読み上げません。\n");for(int i=0;i<shown.length();i++){JSONObject row=shown.getJSONObject(i);text.append("\n").append(row.optString("kind").equals("question")?"確認待ち：":"通知：").append(row.optString("message")).append("\n");}new AlertDialog.Builder(this).setTitle("保留通知").setMessage(text.toString()).setPositiveButton("表示分を確認済みにする",(d,w)->{try{JSONArray current=readDeferredNotices();if(current!=null)saveDeferredNotices(DeferredNotificationDigest.markRead(current,shown,System.currentTimeMillis()));deferredNoticeRefresh=0;}catch(Exception ignored){}}).setNegativeButton("閉じる",null).show();}catch(Exception e){setStatus("保留通知を読み取れません。自動削除・再送はしていません",Color.YELLOW);}}
+    private void showDeferredNotices(){try{JSONArray rows=readDeferredNotices();if(rows==null)throw new Exception();JSONArray shown=DeferredNotificationDigest.unread(rows,System.currentTimeMillis());StringBuilder text=new StringBuilder(shown.length()==0?"保留中の通知はありません。":"確認待ちを先に表示します。発行から5分を過ぎた通知は読み上げません。\n");for(int i=0;i<shown.length();i++){JSONObject row=shown.getJSONObject(i);text.append("\n").append(row.optString("kind").equals("question")?"確認待ち：":"通知：").append(row.optString("message")).append("\n");}new LokiAlertDialogBuilder(this).setTitle("保留通知").setMessage(text.toString()).setPositiveButton("表示分を確認済みにする",(d,w)->{try{JSONArray current=readDeferredNotices();if(current!=null)saveDeferredNotices(DeferredNotificationDigest.markRead(current,shown,System.currentTimeMillis()));deferredNoticeRefresh=0;}catch(Exception ignored){}}).setNegativeButton("閉じる",null).show();}catch(Exception e){setStatus("保留通知を読み取れません。自動削除・再送はしていません",Color.YELLOW);}}
     private boolean codexNotificationBlocked(){
         return codexInstructionBusy||!activityForeground||isFinishing()||isDestroyed()
             ||ambientPausedForNavigation||geminiRequestActive||conversationActive||voiceRecording
@@ -13799,7 +13853,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void setConversationDelivery(String phase,String stage,String id,String reason){try{getPreferences().edit().putString("conversation_delivery",ConversationDeliveryState.safe(new JSONObject().put("phase",phase).put("stage",stage).put("id",id).put("reason",reason).put("at",System.currentTimeMillis())).toString()).apply();workspaceSyncAt=0;}catch(Exception ignored){}}
     private void recoverConversationDelivery(){JSONObject last=readConversationDelivery();if("RUNNING".equals(last.optString("phase")))setConversationDelivery("UNCONFIRMED","",last.optString("id"),"RESTART");}
     private void saveConversationRecovery(String text,String id){try{JSONObject item=new JSONObject().put("message",text).put("id",id).put("at",System.currentTimeMillis());getPreferences().edit().putString("conversation_recovery",Base64.encodeToString(DeviceSecrets.photos().encrypt(item.toString().getBytes(StandardCharsets.UTF_8)),2)).apply();}catch(Exception ignored){Log.w(TAG,"Recovery storage unavailable; no text logged");}}
-    private void restoreConversationRecovery(){try{String raw=getPreferences().getString("conversation_recovery","");JSONObject item=new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(raw,2)),StandardCharsets.UTF_8));long age=System.currentTimeMillis()-item.getLong("at");if(age<0||age>86400000L)throw new Exception();new AlertDialog.Builder(this).setTitle("前の質問を確認").setMessage(item.getString("message")+"\n\n送信状況・履歴を確認してください。実行済みの操作を新しく送ると重複する可能性があります。画像はスマホの送信控えで確認してください。自動送信はしません。").setPositiveButton("入力へ戻す",(d,w)->{if(input!=null){input.setText(item.optString("message"));input.requestFocus();setStatus("下書きを復元。送信状況を確認してください",Color.YELLOW);}}).setNegativeButton("閉じる",null).show();}catch(Exception unavailable){setStatus("復元できる質問がありません（保存は24時間）",Color.YELLOW);}}
+    private void restoreConversationRecovery(){try{String raw=getPreferences().getString("conversation_recovery","");JSONObject item=new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(raw,2)),StandardCharsets.UTF_8));long age=System.currentTimeMillis()-item.getLong("at");if(age<0||age>86400000L)throw new Exception();new LokiAlertDialogBuilder(this).setTitle("前の質問を確認").setMessage(item.getString("message")+"\n\n送信状況・履歴を確認してください。実行済みの操作を新しく送ると重複する可能性があります。画像はスマホの送信控えで確認してください。自動送信はしません。").setPositiveButton("入力へ戻す",(d,w)->{if(input!=null){input.setText(item.optString("message"));input.requestFocus();setStatus("下書きを復元。送信状況を確認してください",Color.YELLOW);}}).setNegativeButton("閉じる",null).show();}catch(Exception unavailable){setStatus("復元できる質問がありません（保存は24時間）",Color.YELLOW);}}
     private String conversationFailureCode(Throwable error) {
         int http=0;String finish="";Throwable cause=error;
         for(int depth=0;cause!=null&&depth<8;depth++,cause=cause.getCause()){
@@ -14433,7 +14487,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private void pairWithPhone() {
         if(getPreferences().getString(KEY_BRIDGE_TOKEN,"").length()<16 && getPreferences().getString("bridge_tls_pin","").isEmpty()){
             final android.widget.EditText pin=new android.widget.EditText(this);pin.setHint("スマホに表示した証明書SHA256");
-            new android.app.AlertDialog.Builder(this).setTitle("スマホの証明書を確認").setMessage("スマホのペアリング画面に表示されたSHA256を入力してください。ネットワークから取得した値をそのまま信用しないでください。").setView(pin).setPositiveButton("登録",(d,w)->{try{getPreferences().edit().putString("bridge_tls_pin",BridgeCertificatePolicy.normalize(pin.getText().toString())).apply();pairWithPhone();}catch(Exception e){setStatus("証明書の入力が不正です",Color.YELLOW);}}).setNegativeButton("キャンセル",null).show();return;
+            new LokiAlertDialogBuilder(this).setTitle("スマホの証明書を確認").setMessage("スマホのペアリング画面に表示されたSHA256を入力してください。ネットワークから取得した値をそのまま信用しないでください。").setView(pin).setPositiveButton("登録",(d,w)->{try{getPreferences().edit().putString("bridge_tls_pin",BridgeCertificatePolicy.normalize(pin.getText().toString())).apply();pairWithPhone();}catch(Exception e){setStatus("証明書の入力が不正です",Color.YELLOW);}}).setNegativeButton("キャンセル",null).show();return;
         }
 
         setStatus("スマホを検索中…", Color.YELLOW);
@@ -17596,7 +17650,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         for (String credit : credits) sources += "\n" + credit;
                     }
                     sources += "\n\n信号位置: © OpenStreetMap contributors\n登録位置の参考表示です。未登録の信号もあります。赤・青の状態や通行可否は示しません。\n信号検索には現在地周辺を約200m単位に丸めた範囲をOverpass APIへ送信します。";
-                    new android.app.AlertDialog.Builder(MainActivity.this).setTitle("地図のデータ提供元")
+                    new LokiAlertDialogBuilder(MainActivity.this).setTitle("地図のデータ提供元")
                             .setMessage(sources).setPositiveButton("閉じる", null).show();
                 }
             });
@@ -18286,6 +18340,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private final class MascotView extends View {
+        private final ButtonReactionMotion buttonReaction=new ButtonReactionMotion();
+        void reactToButton(long now,boolean contact,boolean close){buttonReaction.begin(now,contact,close);invalidate();}
+        @Override public void draw(Canvas canvas){
+            long now=android.os.SystemClock.uptimeMillis();int saved=canvas.save();
+            try{buttonReaction.apply(canvas,getWidth(),getHeight(),now);super.draw(canvas);}
+            finally{canvas.restoreToCount(saved);}
+            if(buttonReaction.active(now)&&isShown()&&!cameraPaused)postInvalidateDelayed(33);
+        }
+
         private ApprovedFaceRenderer approvedFaceRenderer;
         private AngleState angleState = AngleState.THREE_QUARTER;
         private long frontHoldUntil;
@@ -19602,7 +19665,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if (!preparedFrameAvailable) return;
             if (approvedFaceRenderer != null && approvedFaceRenderer.ready()) {
                 approvedFaceRenderer.setUiPriority(MeetingRecorderService.active!=null || (navigationPanel!=null && navigationPanel.getVisibility()==View.VISIBLE));
-                approvedFaceRenderer.draw(canvas, getWidth(), getHeight(), expression, mode == 2 && speakingAnimationEnabled, mode);
+                approvedFaceRenderer.draw(canvas, getWidth(), getHeight(), buttonReaction.face(expression,android.os.SystemClock.uptimeMillis()), mode == 2 && speakingAnimationEnabled, mode);
                 return;
             }
             if (portraitReady) drawBitmapMascot(canvas);

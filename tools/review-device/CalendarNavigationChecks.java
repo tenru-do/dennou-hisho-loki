@@ -12,6 +12,6 @@ public final class CalendarNavigationChecks {
  JSONObject empty=CalendarNavigation.readData((uri,projection,selection,args,sort,signal)->new MatrixCursor(projection),0,now,zone,new CancellationSignal());ok(empty.optString("status").equals("no_calendar"));
  JSONObject bounded=CalendarNavigation.readData((uri,projection,selection,args,sort,signal)->{MatrixCursor c=new MatrixCursor(projection);if(uri.toString().contains("calendars"))c.addRow(new Object[]{7});else for(int i=0;i<100;i++)c.addRow(new Object[]{i,now+1000,now+2000,0,"予定"+i,"駅"});return c;},0,now,zone,new CancellationSignal());ok(bounded.getJSONArray("items").length()==60);ok(bounded.optBoolean("truncated"));
  ok(CalendarNavigation.resolve(denied,"invalid").optString("status").equals("changed"));String token=CalendarNavigation.ticket(e,0);ok(token.matches("[a-f0-9-]{36}"));ok(CalendarNavigation.resolve(denied,token).optString("status").equals("changed"));for(int i=0;i<257;i++)CalendarNavigation.ticket(e,0);ok(CalendarNavigation.resolve(denied,token).optString("status").equals("changed"));
- String[] menu=com.example.rokidkeyboardbridge.NavigationEntryPolicy.menu();ok(menu[8].equals("予定から目的地"));ok(menu[0].equals("現在の案内を表示"));return n;
+ String[] menu=com.example.rokidkeyboardbridge.NavigationEntryPolicy.menu();ok(menu[2].equals("予定から目的地"));ok(menu[0].equals("現在の案内を表示"));return n;
  }
 }

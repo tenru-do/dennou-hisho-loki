@@ -101,7 +101,7 @@ final class NavigationChoiceDialog {
     }
     private static AlertDialog show(Activity activity,String title,String[] labels,int current,DialogInterface.OnClickListener action,boolean wrap){
         int theme=activity.getResources().getIdentifier("NavigationDialogTheme","style",activity.getPackageName());
-        AlertDialog dialog=new AlertDialog.Builder(activity,theme).create();
+        AlertDialog dialog=new LokiAlertDialogBuilder(activity,theme).create();
         Context context=dialog.getContext();
         LinearLayout root=new LinearLayout(context);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.BLACK);
         root.setPadding(dp(context,8),dp(context,6),dp(context,8),dp(context,6));
@@ -112,14 +112,14 @@ final class NavigationChoiceDialog {
         root.addView(scroll,new LinearLayout.LayoutParams(-1,Math.min(dp(context,192),Math.max(dp(context,48),available-dp(context,100)))));
         Button[] buttons=new Button[labels.length];
         for(int i=0;i<labels.length;i++){
-            final int index=i;Button b=new Button(context);b.setText((i==current?"✓ ":"")+labels[i]);b.setTextColor(i==current?Color.CYAN:Color.WHITE);
+            final int index=i;Button b=new LokiActionButton(context);b.setText((i==current?"✓ ":"")+labels[i]);b.setTextColor(i==current?Color.CYAN:Color.WHITE);
             b.setTextSize(16);b.setAllCaps(false);b.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);b.setPadding(dp(context,8),0,dp(context,8),0);
             b.setMinHeight(0);b.setMinimumHeight(0);b.setBackgroundTintList(null);b.setStateListAnimator(null);b.setBackground(background(context,i==current));
             enableSelection(b);b.setOnClickListener(v->{dialog.dismiss();action.onClick(dialog,index);});
             if(wrap){b.setPadding(dp(context,8),dp(context,6),dp(context,8),dp(context,6));b.setMinHeight(dp(context,48));b.setSingleLine(false);}
             choices.addView(b,new LinearLayout.LayoutParams(-1,wrap?-2:dp(context,48)));buttons[i]=b;
         }
-        Button close=new Button(context);close.setText("閉じる");close.setTextColor(Color.WHITE);close.setTextSize(16);close.setAllCaps(false);
+        Button close=new LokiActionButton(context);close.setText("閉じる");close.setTextColor(Color.WHITE);close.setTextSize(16);close.setAllCaps(false);
         close.setMinHeight(0);close.setMinimumHeight(0);close.setBackgroundTintList(null);close.setStateListAnimator(null);close.setBackground(background(context,false));close.setOnClickListener(v->dialog.cancel());
         root.addView(close,new LinearLayout.LayoutParams(-1,dp(context,40)));
         dialog.setView(root,0,0,0,0);installDialogSelection(dialog,buttons.length>0?buttons[Math.max(0,Math.min(current,buttons.length-1))]:close);dialog.show();Window window=dialog.getWindow();

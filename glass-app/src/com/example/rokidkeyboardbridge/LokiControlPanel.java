@@ -15,7 +15,7 @@ final class LokiControlPanel {
   TextView level=new TextView(activity);level.setTextColor(Color.WHITE);level.setTextSize(12);root.addView(level);
   SeekBar slider=new SeekBar(activity);slider.setMax(95);slider.setProgress(QuickControlPolicy.brightness(initial)-5);root.addView(slider);
   TextView pad=new TextView(activity);pad.setTextColor(Color.WHITE);pad.setTextSize(12);pad.setPadding(8,10,8,10);pad.setText("上下スワイプ：↑明るく　↓暗く");pad.setFocusable(true);pad.setFocusableInTouchMode(true);root.addView(pad);
-  AlertDialog dialog=new AlertDialog.Builder(activity).setView(root).setNegativeButton("閉じる",null).setNeutralButton("本体の値を確認",null).create();
+  AlertDialog dialog=new LokiAlertDialogBuilder(activity).setView(root).setNegativeButton("閉じる",null).setNeutralButton("本体の値を確認",null).create();
   int[] percent={Math.max(0,Math.min(100,initial))};boolean[] syncing={false};
   Runnable label=()->level.setText("本体の明るさ："+percent[0]+"%");label.run();
   java.util.function.IntConsumer refresh=value->{percent[0]=Math.max(0,Math.min(100,value));syncing[0]=true;slider.setProgress(Math.max(0,percent[0]-5));syncing[0]=false;label.run();};
@@ -37,5 +37,5 @@ final class LokiControlPanel {
    Button reset=dialog.getButton(AlertDialog.BUTTON_NEUTRAL);NavigationChoiceDialog.styleButton(activity,reset);reset.setTextSize(12);reset.setOnClickListener(v->{actions.systemBrightness();WindowManager.LayoutParams p=window.getAttributes();p.screenBrightness=-1;window.setAttributes(p);int actual=actions.currentBrightness();if(actual>=0)refresh.accept(actual);});NavigationChoiceDialog.styleButton(activity,dialog.getButton(AlertDialog.BUTTON_NEGATIVE));pad.requestFocus();
   });dialog.show();return dialog;
  }
- private static Button button(Activity activity,LinearLayout row,String label){Button b=new Button(activity);b.setText(label);NavigationChoiceDialog.styleButton(activity,b);b.setTextSize(13);b.setPadding(4,0,4,0);b.setIncludeFontPadding(false);b.setGravity(Gravity.CENTER);row.addView(b,new LinearLayout.LayoutParams(0,Math.round(32*activity.getResources().getDisplayMetrics().density),1));return b;}
+ private static Button button(Activity activity,LinearLayout row,String label){Button b=new LokiActionButton(activity);b.setText(label);NavigationChoiceDialog.styleButton(activity,b);b.setTextSize(13);b.setPadding(4,0,4,0);b.setIncludeFontPadding(false);b.setGravity(Gravity.CENTER);row.addView(b,new LinearLayout.LayoutParams(0,Math.round(32*activity.getResources().getDisplayMetrics().density),1));return b;}
 }

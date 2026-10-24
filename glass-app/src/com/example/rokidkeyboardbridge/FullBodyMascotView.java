@@ -8,6 +8,15 @@ import java.util.Locale;
 
 /** Full-body expression and idle frames. Does not run the portrait animation pipeline. */
 public final class FullBodyMascotView extends View {
+    private final ButtonReactionMotion buttonReaction=new ButtonReactionMotion();
+    public void reactToButton(long now,boolean contact,boolean close){buttonReaction.begin(now,contact,close);invalidate();}
+    @Override public void draw(Canvas canvas){
+        long now=android.os.SystemClock.uptimeMillis();int saved=canvas.save();
+        try{buttonReaction.apply(canvas,getWidth(),getHeight(),now);super.draw(canvas);}
+        finally{canvas.restoreToCount(saved);}
+        if(buttonReaction.active(now)&&hostResumed&&isShown())postInvalidateDelayed(33);
+    }
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF destination = new RectF();
     private final RectF blendDestination=new RectF();
