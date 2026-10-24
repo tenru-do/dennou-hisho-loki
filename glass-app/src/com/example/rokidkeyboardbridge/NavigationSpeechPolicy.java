@@ -1,0 +1,2 @@
+package com.example.rokidkeyboardbridge;
+public final class NavigationSpeechPolicy {public static boolean waitForBoundary(boolean urgent,long remaining,long age){return !urgent&&remaining>0&&age>=0&&age<6000;}public static boolean transitFix(long now,long sample,double accuracy){return sample>0&&now>=sample&&now-sample<=30000&&Double.isFinite(accuracy)&&accuracy>=0&&accuracy<=100;}private NavigationSpeechPolicy(){}}

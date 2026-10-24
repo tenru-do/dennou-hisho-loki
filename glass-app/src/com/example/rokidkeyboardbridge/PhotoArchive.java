@@ -49,11 +49,14 @@ final class PhotoArchive {
   byte[] bytes=Files.readAllBytes(file.toPath());if(!file.getName().endsWith(".gcm"))return bytes;
   try{if(cipher==null)throw new IOException("missing photo key");return cipher.decrypt(bytes);}catch(Exception e){throw new IOException("写真の復号・検証に失敗",e);}
  }
- synchronized void removeTransferred(File photo,org.json.JSONObject receipt,String expectedSha,int total)throws IOException{
+ synchronized void verifyTransferred(File photo,org.json.JSONObject receipt,String expectedSha,int total)throws IOException{
   String id=photo.getName().length()>=50?photo.getName().substring(0,50):"";
   if(!photo.getCanonicalFile().getParentFile().equals(root.getCanonicalFile())||!photo.getName().matches("[0-9]{13}-[a-f0-9-]{36}\\.jpg(?:\\.gcm)?"))throw new IOException("invalid transfer deletion target");
   if(receipt==null||!receipt.optBoolean("ok")||!receipt.optBoolean("complete")||(!receipt.optBoolean("stored")&&!receipt.optBoolean("deleted"))||!id.equals(receipt.optString("id"))||!expectedSha.equals(receipt.optString("sha"))||total!=receipt.optInt("total",-1))throw new IOException("missing verified phone receipt");
   try{byte[] original=read(photo);StringBuilder hash=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(original))hash.append(String.format(Locale.US,"%02x",b&255));if(original.length!=total||!expectedSha.equals(hash.toString()))throw new IOException("source changed during transfer");}catch(IOException e){throw e;}catch(Exception e){throw new IOException("source verification failed",e);}
+ }
+ synchronized void removeTransferred(File photo,org.json.JSONObject receipt,String expectedSha,int total)throws IOException{
+  verifyTransferred(photo,receipt,expectedSha,total);
   if(!photo.delete())throw new IOException("transferred photo deletion failed");
   File meta=new File(root,photo.getName()+".meta.gcm");if(meta.exists()&&!meta.delete())throw new IOException("transferred metadata deletion failed");File keep=marker(photo);if(keep.exists()&&!keep.delete())throw new IOException("transferred KEEP cleanup failed");
  }

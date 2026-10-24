@@ -3,6 +3,7 @@ package com.example.rokidkeyboardbridge;
 final class NativeSpeechSession {
  private long until;
  synchronized boolean active(long now){return until>0&&now<until;}
+ synchronized long remaining(long now){return Math.max(0,until-now);}
  synchronized void sent(long now,long duration){until=now+Math.max(1000,Math.min(600000,duration));}
  synchronized boolean takeStop(long now){boolean stop=active(now);until=0;return stop;}
 }

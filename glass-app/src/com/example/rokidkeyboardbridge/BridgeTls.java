@@ -20,6 +20,6 @@ final class BridgeTls {
    }
   }
   HttpsURLConnection c=(HttpsURLConnection)new URL("https",url.getHost(),8766,url.getFile()).openConnection();
-  final String expected=pin;c.setSSLSocketFactory(BridgeCertificatePolicy.pinned(pin));c.setHostnameVerifier((host,session)->{try{return BridgeCertificatePolicy.fingerprint(session.getPeerCertificates()[0].getEncoded()).equals(expected);}catch(Exception e){return false;}});c.setInstanceFollowRedirects(false);return c;
+  final String expected=pin;c.setSSLSocketFactory(BridgeCertificatePolicy.pinned(pin));c.setHostnameVerifier((host,session)->{try{java.security.cert.Certificate peer=session.getPeerCertificates()[0];((java.security.cert.X509Certificate)peer).checkValidity();return BridgeCertificatePolicy.fingerprint(peer.getEncoded()).equals(expected);}catch(Exception e){return false;}});c.setInstanceFollowRedirects(false);return c;
  }
 }

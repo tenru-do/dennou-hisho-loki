@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"
     package="com.example.rokidgeminisecretary"
-    android:versionCode="254"
-    android:versionName="0.9.254-everyday">
+    android:versionCode="287"
+    android:versionName="0.9.287-source-media">
 
+    <queries>
+        <package android:name="com.google.android.apps.youtube.music" />
+        <package android:name="jp.radiko.Player" />
+    </queries>
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />

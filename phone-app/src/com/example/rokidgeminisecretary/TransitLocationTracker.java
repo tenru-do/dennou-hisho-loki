@@ -76,6 +76,13 @@ public final class TransitLocationTracker implements LocationListener {
     private long lastQueryAt;
     private long lastMovingAt;
     private long navigationActiveUntil;
+    private boolean navigationRelaxed;
+    private long navigationContextAt,navigationPowerChangedAt;
+    public static synchronized void setNavigationRelaxed(boolean relaxed){if(instance!=null)instance.setRelaxedInternal(relaxed);}
+    private synchronized void setRelaxedInternal(boolean desired){long now=System.currentTimeMillis();navigationContextAt=now;desired=desired&&context.getSharedPreferences("loki_navigation_power",0).getBoolean("adaptive",true)&&now<navigationActiveUntil;
+        if(desired==navigationRelaxed)return;if(desired&&now-navigationPowerChangedAt<10000)return;navigationRelaxed=desired;navigationPowerChangedAt=now;if(registered)registerLocationUpdates(highRateTracking);}
+    public static synchronized String navigationPowerLabel(Context c){return instance!=null&&instance.navigationRelaxed?"GPS省電力：更新要求8秒間隔":"GPS精度優先";}
+
     private float smoothedSpeed;
     private float smoothedHeading = Float.NaN;
     private String pendingPredictionKey = "";
@@ -166,7 +173,8 @@ public final class TransitLocationTracker implements LocationListener {
         }
         long gpsInterval = highRate ? ACTIVE_GPS_INTERVAL_MS : IDLE_GPS_INTERVAL_MS;
         long networkInterval = highRate ? ACTIVE_NETWORK_INTERVAL_MS : IDLE_NETWORK_INTERVAL_MS;
-        float gpsDistance = highRate ? 10.0f : 50.0f;
+        if(highRate&&navigationRelaxed){gpsInterval=8000L;networkInterval=12000L;}
+        float gpsDistance = highRate ? (navigationRelaxed?5.0f:0.0f) : 50.0f;
         float networkDistance = highRate ? 25.0f : 75.0f;
         if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
@@ -206,6 +214,7 @@ public final class TransitLocationTracker implements LocationListener {
             return;
         }
         final long now = System.currentTimeMillis();
+        synchronized(this){if(navigationRelaxed&&now-navigationContextAt>20000){navigationRelaxed=false;registerLocationUpdates(highRateTracking);}}
         final Location prior;
         final float speed;
         final float heading;

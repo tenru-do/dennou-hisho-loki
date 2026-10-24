@@ -11,6 +11,7 @@ final class JourneyHud {
         String mode = journey.optString("requestedMode", "");
         boolean roadJourney = "walking".equals(mode) || "bicycling".equals(mode)
                 || "WALK".equals(mode) || "BICYCLE".equals(mode)
+                || "driving".equals(mode) || "DRIVE".equals(mode)
                 || "transit".equalsIgnoreCase(mode);
         JSONObject leg = journey.optJSONObject("currentLeg");
         // Walking/cycling use the complete valid road geometry even before GPS selects a step.

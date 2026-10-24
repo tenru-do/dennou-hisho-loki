@@ -9,7 +9,7 @@ public final class FullBodyActionsTest {
   Context context=new ContextWrapper(system){public android.content.pm.ApplicationInfo getApplicationInfo(){android.content.pm.ApplicationInfo i=new android.content.pm.ApplicationInfo();i.sourceDir=args[0];return i;}public AssetManager getAssets(){return assets;}public Resources getResources(){return resources;}};
   boolean[] visual={true};int[] changes={0};FullBodyStatusView status=new FullBodyStatusView(context,()->visual[0],()->changes[0]++);
   for(int i=0;i<20;i++){status.setText("VOICE音声取得 "+i);status.setVisibility(View.VISIBLE);if(status.getVisibility()!=View.GONE)throw new AssertionError("Legacy VOICE status overlaps comments");}
-  if(changes[0]<20)throw new AssertionError("Diagnostics not refreshed");visual[0]=false;status.setVisibility(View.VISIBLE);if(status.getVisibility()!=View.VISIBLE)throw new AssertionError("Face status lost");
+  if(changes[0]<20)throw new AssertionError("Diagnostics not refreshed");visual[0]=false;status.setVisibility(View.VISIBLE);if(status.getVisibility()!=View.GONE)throw new AssertionError("Face status overlays comments");
   for(String text:new String[]{"ジークンドーの動きを見せて","ジートクンドーをやってみて","截拳道を披露して","show Jeet Kune Do"})if(!FullBodyPerformancePolicy.requests(text))throw new AssertionError("Explicit request missed");
   for(String text:new String[]{"ジークンドーとは何？","ジークンドーを見せないで","ジークンドーはやらなくていい","『ジークンドーを見せて』の意味は？","don't show JKD","コーヒーを見せて"})if(FullBodyPerformancePolicy.requests(text))throw new AssertionError("Unexpected action");
   if(FullBodyIdleActivity.kind(464999)==2||FullBodyIdleActivity.kind(465000)!=2||FullBodyIdleActivity.kind(471699)!=2||FullBodyIdleActivity.kind(471700)==2)throw new AssertionError("Rare pen cadence");
@@ -31,6 +31,6 @@ public final class FullBodyActionsTest {
    if(action==0){set(view,"mode",1);set(view,"lastDrawnBitmap",null);set(view,"previousBitmap",null);Bitmap image=Bitmap.createBitmap(240,598,Bitmap.Config.ARGB_8888);draw.invoke(view,new Canvas(image));Field f=FullBodyMascotView.class.getDeclaredField("lastDrawnPose");f.setAccessible(true);if(f.getInt(view)>=234)throw new AssertionError("Pen not preempted by listening");image.recycle();}
    for(Bitmap b:frames)b.recycle();source.recycle();
   }
-  if(max>8000000)throw new AssertionError("Action cache too big");System.out.println("PASS VOICE overlap prevention, face status restoration, explicit/negative/quoted action routing, rare pen 6/hour, native 18 action exports, listening preemption; max action bytes="+max);
+  if(max>8000000)throw new AssertionError("Action cache too big");System.out.println("PASS VOICE overlap prevention, face status overlay suppression, explicit/negative/quoted action routing, rare pen 6/hour, native 18 action exports, listening preemption; max action bytes="+max);
  }
 }

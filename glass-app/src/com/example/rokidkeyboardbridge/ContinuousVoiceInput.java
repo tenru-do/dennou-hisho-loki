@@ -25,6 +25,7 @@ final class ContinuousVoiceInput {
         consumer=new Thread(this::consume,"VoiceSttOrdered");
         consumer.start();producer.start();
     }
+    boolean speaking(){return source.speaking();}
     boolean finishing(){return finishing;}
     boolean hasUnfinishedAudio(){synchronized(queue){return decoding||!queue.isEmpty()||source.speaking();}}
     void finish(){finishing=true;source.stop();synchronized(queue){queue.notifyAll();}}
@@ -60,7 +61,7 @@ final class ContinuousVoiceInput {
                     pcm=queue.removeFirst();decoding=true;queue.notifyAll();
                 }
                 listener.state(finishing?"最後の音声を認識中":"音声認識中・追加発話も受付中");
-                try{String text;try{text=decoder.decode(pcm);}finally{decoding=false;}if(!invalid()&&text!=null&&!text.trim().isEmpty())listener.text(text.trim());}
+                try{String text;try{text=decoder.decode(pcm);}finally{decoding=false;}if(!invalid()){if(text!=null&&!text.trim().isEmpty())listener.text(text.trim());else listener.error("音声を聞き取れませんでした");}}
                 catch(Exception e){if(!invalid())listener.error("音声認識に失敗: "+e.getClass().getSimpleName()+"（次の発話は保持）");}
             }
         }catch(InterruptedException ignored){Thread.currentThread().interrupt();}

@@ -1,7 +1,7 @@
 """Permission-free isolated tests. Never starts or accesses the user's Loki application."""
 from pathlib import Path
 import argparse,hashlib,json,os,re,subprocess,uuid,zipfile
-p=argparse.ArgumentParser();p.add_argument('--output',required=True,type=Path);args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',required=True,type=Path);p.add_argument('--only-stability',action='store_true');args=p.parse_args()
 r=Path(__file__).resolve().parents[2];src=Path(__file__).parent;sdk=Path('C:/Users/user/AppData/Local/Android/Sdk');bt=sdk/'build-tools/37.0.0';java=Path('C:/Program Files/Android/Android Studio/jbr/bin');adb=sdk/'platform-tools/adb.exe';pkg='com.example.lokireviewchecks';dest=args.output.resolve();dest.mkdir(parents=True,exist_ok=False);build=r/'.build-review-device';build.mkdir(exist_ok=True)
 def command(*parts,binary=False):
  q=subprocess.run(list(map(str,parts)),capture_output=True)
@@ -15,7 +15,7 @@ def device(*parts,binary=False):return command(adb,'-s',serial,*parts,binary=bin
 if ('package:'+pkg) in device('shell','pm','list','packages',pkg).splitlines():raise RuntimeError('Diagnostic package already exists; preserve it and stop')
 glass=r/'.build-integration/glass/loki-glass-integration.apk';glassHash=sha(glass);source=r/'.build-integration/phone/loki-phone-integration.apk';sourceHash=sha(source);android=sdk/'platforms/android-35/android.jar'
 for name in ['classes','dex','host','host-dex']:(build/name).mkdir(exist_ok=True)
-command(java/'javac.exe','-encoding','UTF-8','-cp',str(android)+';'+str(r/'.build-integration/phone/classes')+';'+str(r/'.build-integration/glass/classes'),'-d',build/'classes',src/'ReviewChecks.java',src/'ReliabilityChecks.java',src/'MaintenanceChecks.java',src/'ExperienceChecks.java',src/'GlassReservationChecks.java',src/'ConversationUpgradeChecks.java',src/'ConversationPlusChecks.java',src/'ConversationReliabilityChecks.java',src/'ConversationStreamChecks.java',src/'ConversationToolsChecks.java',src/'UsabilityChecks.java',src/'EverydayChecks.java')
+command(java/'javac.exe','-encoding','UTF-8','-cp',str(android)+';'+str(r/'.build-integration/phone/classes')+';'+str(r/'.build-integration/glass/classes'),'-d',build/'classes',src/'ReviewChecks.java',src/'CalendarNavigationChecks.java',src/'StabilityChecks.java',src/'PhoneWorkspaceChecks.java',src/'NavigationReviewChecks.java',src/'PlaceContinuityChecks.java',src/'NavigationConversationChecks.java',src/'NavigationRefinementChecks.java',src/'NavigationExperienceChecks.java',src/'SavedNavigationRoutesChecks.java',src/'NavigationCommuteChecks.java',src/'NavigationShortcutsChecks.java',src/'NavigationSmoothChecks.java',src/'NavigationContinuityChecks.java',src/'NavigationModeMatrixChecks.java',src/'NavigationFlowChecks.java',src/'NavigationEnduranceChecks.java',src/'NavigationTransferChecks.java',src/'VoiceQualityChecks.java',src/'SpeechStartupChecks.java',src/'ReliabilityChecks.java',src/'MaintenanceChecks.java',src/'ExperienceChecks.java',src/'GlassReservationChecks.java',src/'ConversationUpgradeChecks.java',src/'ConversationPlusChecks.java',src/'ConversationReliabilityChecks.java',src/'ConversationStreamChecks.java',src/'ConversationToolsChecks.java',src/'UsabilityChecks.java',src/'EverydayChecks.java',src/'ReconnectChecks.java',src/'AnswerOutboxChecks.java',src/'AnswerCorrectionChecks.java',src/'QuickSpeechChecks.java',src/'WearNetworkChecks.java',src/'PhotoFollowUpChecks.java',src/'NavigationControlsChecks.java',src/'NavigationPlusChecks.java',src/'NavigationAssistanceChecks.java',src.parent/'NavigationPolicyTest.java',src.parent/'NavigationRouteChoicesTest.java',src.parent/'TransitBoardingStartTest.java',src.parent/'MultimodalJourneyTest.java',src.parent/'JourneyHudTest.java')
 command(java/'java.exe','-cp',bt/'lib/d8.jar','com.android.tools.r8.D8','--lib',android,'--output',build/'dex',*list((build/'classes').rglob('*.class')))
 command(java/'javac.exe','-encoding','UTF-8','-cp',android,'-d',build/'host',src/'Audit.java')
 command(java/'java.exe','-cp',bt/'lib/d8.jar','com.android.tools.r8.D8','--lib',android,'--output',build/'host-dex',*list((build/'host').rglob('*.class')))
@@ -36,9 +36,10 @@ try:
   device('push',local,remote+'-'+name);device('shell','chmod','444',remote+'-'+name);device('shell','run-as',pkg,'cp',remote+'-'+name,folder+'/'+name);device('shell','run-as',pkg,'chmod','444',folder+'/'+name)
   if device('shell','run-as',pkg,'sha256sum',folder+'/'+name).split()[0]!=sha(local):raise RuntimeError('Test input copy hash mismatch')
  print('Running candidate APK classes under separate UID; no network/capture/playback permissions',flush=True)
- result=device('shell','am','instrument','-w','-e','run',run,pkg+'/.Audit');(dest/'instrumentation.txt').write_text(result,encoding='utf-8')
+ result=device('shell','am','instrument','-w','-e','run',run,*(['-e','poses','stability'] if args.only_stability else []),pkg+'/.Audit');(dest/'instrumentation.txt').write_text(result,encoding='utf-8')
  if 'failure=' in result or 'INSTRUMENTATION_CODE: -1' not in result:raise RuntimeError('Isolated checks failed: '+result[:1200])
  report=json.loads(device('shell','run-as',pkg,'cat',folder+'/review/result.json'));report.update(sourceApkSha256=sourceHash,glassApkSha256=glassHash,testApkSha256=sha(build/'test.apk'),model='SM-S942Q');(dest/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report),flush=True)
+ if report.get('navigationModeMatrix',{}).get('failed',0):raise RuntimeError('Navigation mode matrix failures; inspect result.json')
  for style in ['short','detailed']:(dest/('provider-'+style+'.json')).write_bytes(device('exec-out','run-as',pkg,'cat',folder+'/review/stream/provider-'+style+'.json',binary=True))
 finally:
  if installed:

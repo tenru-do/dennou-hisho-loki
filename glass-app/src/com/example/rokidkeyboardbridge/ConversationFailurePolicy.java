@@ -9,6 +9,7 @@ final class ConversationFailurePolicy {
         Throwable cause = error;
         for (int depth = 0; cause != null && depth < 8; depth++, cause = cause.getCause()) {
             if (cause instanceof ContentRestrictionPolicy.Stop) return "UNKNOWN".equals(((ContentRestrictionPolicy.Stop)cause).category)?"MODEL_DECLINED":"SAFETY_STOP";
+            if (cause instanceof ConversationContextReview.Unresolved) return "CONTEXT_MISMATCH";
             if (cause instanceof ConversationAnswerGuard.Incomplete) return ((ConversationAnswerGuard.Incomplete) cause).reason;
             if (cause instanceof LocalConversationStop) return "REFERENCE_CHANGED";
             // HTTP/provider metadata is supplied separately by the activity.
@@ -33,6 +34,7 @@ final class ConversationFailurePolicy {
 
     static String title(String code) {
         if ("TIMEOUT".equals(code) || "CONNECTION".equals(code)) return "接続を完了できませんでした";
+        if ("CONTEXT_MISMATCH".equals(code)) return "会話の参照先を確認してください";
         if ("REFERENCE_CHANGED".equals(code)) return "画像参照の更新・失効";
         if ("INTERRUPTED".equals(code)) return "会話処理が中断しました";
         return "回答を完了できませんでした";
@@ -40,6 +42,7 @@ final class ConversationFailurePolicy {
 
     static String detail(String code) {
         switch (code) {
+            case "CONTEXT_MISMATCH": return "前の会話と今回の対象を照合できなかったため、回答を止めました。新しい話なら「新しい話題」と伝えるか、対象名を添えてください。自動再送はしていません。";
             case "REFERENCE_CHANGED": return LocalConversationStop.message(code);
             case "SAFETY_STOP": return ContentRestrictionPolicy.message("回答","CONTENT")+"このやり取りは会話履歴に保存しません。";
             case "MODEL_DECLINED": return ContentRestrictionPolicy.message("回答","UNKNOWN");
@@ -84,7 +87,7 @@ final class ConversationFailurePolicy {
     }
 
     static boolean validCode(String code) {
-        return code != null && code.matches("REFERENCE_CHANGED|SAFETY_STOP|MODEL_DECLINED|TIMEOUT|CONNECTION|INTERRUPTED|RATE_LIMIT|AUTHORIZATION|BILLING|MODEL_UNAVAILABLE|SERVICE_UNAVAILABLE|API_REJECTED|OUTPUT_LIMIT|INCOMPLETE_RESPONSE|NO_ANSWER|PROCESSING");
+        return code != null && code.matches("CONTEXT_MISMATCH|REFERENCE_CHANGED|SAFETY_STOP|MODEL_DECLINED|TIMEOUT|CONNECTION|INTERRUPTED|RATE_LIMIT|AUTHORIZATION|BILLING|MODEL_UNAVAILABLE|SERVICE_UNAVAILABLE|API_REJECTED|OUTPUT_LIMIT|INCOMPLETE_RESPONSE|NO_ANSWER|PROCESSING");
     }
 
     static JSONObject record(String code, String stage, long at) throws org.json.JSONException {

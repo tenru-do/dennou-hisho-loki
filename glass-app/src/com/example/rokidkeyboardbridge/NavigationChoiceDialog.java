@@ -120,7 +120,7 @@ final class NavigationChoiceDialog {
             choices.addView(b,new LinearLayout.LayoutParams(-1,wrap?-2:dp(context,48)));buttons[i]=b;
         }
         Button close=new Button(context);close.setText("閉じる");close.setTextColor(Color.WHITE);close.setTextSize(16);close.setAllCaps(false);
-        close.setMinHeight(0);close.setMinimumHeight(0);close.setBackgroundTintList(null);close.setStateListAnimator(null);close.setBackground(background(context,false));close.setOnClickListener(v->dialog.dismiss());
+        close.setMinHeight(0);close.setMinimumHeight(0);close.setBackgroundTintList(null);close.setStateListAnimator(null);close.setBackground(background(context,false));close.setOnClickListener(v->dialog.cancel());
         root.addView(close,new LinearLayout.LayoutParams(-1,dp(context,40)));
         dialog.setView(root,0,0,0,0);installDialogSelection(dialog,buttons.length>0?buttons[Math.max(0,Math.min(current,buttons.length-1))]:close);dialog.show();Window window=dialog.getWindow();
         window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));window.getDecorView().setBackgroundColor(Color.BLACK);window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);

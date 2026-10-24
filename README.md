@@ -9,7 +9,9 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 
 ## セキュリティ対策版のソース
 
-現在のソースと配布APKはグラスv607・スマホv254です。Audio Relayはv20です。回答の冒頭表示・送信待ちのスマホ編集・待ち状況・参照セットの差分更新・スマホでの辞書編集と試聴・トップ配置プリセット・更新確認を追加しました。使い方と実測は [v607/v254](docs/releases/glass-v607.md)、確認範囲は [公開前の検査](docs/releases/glass-v607-security.md) を参照してください。前版の通知待ち・辞書・参照セット・写真の画質案内は [v606/v253](docs/releases/glass-v606.md) に記載しています。
+最新の検証中ソースはグラスv640・スマホv287です。会話の文脈継続、スマホUIの整理、共有ナビの復旧と経路選択、予定からの目的地選択、KEEP写真のコピー経路、読み上げ操作、再生元Android端末の30秒送り・戻しを更新しました。変更と未確認範囲は [v640/v287 リリース候補](docs/releases/glass-v640.md)、音楽操作は [使い方](docs/source-media-control.md) を参照してください。正式版としての全手動検証と連続12時間観測は完了していません。
+
+公開済みの配布APKは引き続きグラスv607・スマホv254です。Audio Relayはv20です。前回配布の内容は [v607/v254](docs/releases/glass-v607.md)、確認範囲は [公開前の検査](docs/releases/glass-v607-security.md) を参照してください。
 
 会話の途中表示・上部入力欄・BT30のSET内への移動は [v605/v252](docs/releases/glass-v605.md)、記録・保守機能は [v596/v240](docs/releases/glass-v596.md)、複数画像・動画は [添付の使い方](docs/MEDIA-ATTACHMENTS.md)、接続の対策は [SECURITY-v447.md](docs/SECURITY-v447.md) に記載しています。装着時の見え方・全機能の長期運用は未検証です。
 

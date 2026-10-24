@@ -7,6 +7,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 final class NavitimeNavigationClient {
+    static String stairsQuery(String endpoint,String query,boolean requested){return requested&&(endpoint.equals("route_transit")||endpoint.equals("shape_transit"))?query+"&walk_route=avoid_step":query;}
     static final String HOST="navitime-route-totalnavi.p.rapidapi.com";
     static final String SIGNUP="https://rapidapi.com/navitimejapan-navitimejapan/api/navitime-route-totalnavi";
     static boolean enabled(Context c){return c.getSharedPreferences("loki_navitime_secure",0).contains("cipher");}
@@ -19,10 +20,11 @@ final class NavitimeNavigationClient {
         if(!p.edit().putInt("requests",used+1).putLong("minute",minute).putInt("recent",recent+1).commit())throw new Exception("navitime_usage_save_failed");
     }
     private static JSONObject requestJson(Context c,String endpoint,String query)throws Exception {
+        query=stairsQuery(endpoint,query,c.getSharedPreferences("loki_navigation_controls",0).getBoolean("avoidStairs",false));
         String key=NavitimeCredentialStore.read(c);if(key.isEmpty())throw new Exception("navitime_not_configured");
-        reserve(c);HttpURLConnection conn=null;
+        NavigationRouteDeadline.check();reserve(c);HttpURLConnection conn=null;
         try {
-            conn=(HttpURLConnection)new URL("https://"+HOST+"/"+endpoint+"?"+query).openConnection();
+            StabilityMetrics.networkAttempt();conn=(HttpURLConnection)new URL("https://"+HOST+"/"+endpoint+"?"+query).openConnection();
             conn.setInstanceFollowRedirects(false);conn.setConnectTimeout(8000);conn.setReadTimeout(15000);conn.setUseCaches(false);
             conn.setRequestProperty("X-RapidAPI-Key",key);conn.setRequestProperty("X-RapidAPI-Host",HOST);
             int status=conn.getResponseCode();
@@ -32,7 +34,7 @@ final class NavitimeNavigationClient {
                 throw new Exception("navitime_http_"+status);
             }
             try(InputStream input=conn.getInputStream();ByteArrayOutputStream bytes=new ByteArrayOutputStream()){
-                byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1){if(bytes.size()+n>4000000)throw new Exception("navitime_response_too_large");bytes.write(buffer,0,n);}
+                byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1){NavigationRouteDeadline.check();if(bytes.size()+n>4000000)throw new Exception("navitime_response_too_large");bytes.write(buffer,0,n);}
                 c.getSharedPreferences("loki_navitime_secure",0).edit().putString("last_result","http_200").putBoolean("verified",true).apply();
                 return new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8));
             }
@@ -43,9 +45,10 @@ final class NavitimeNavigationClient {
         return requestJson(c,"route_transit",NavitimeRequestPolicy.routeQuery(lat,lng,toLat,toLng,departure));
     }
     interface AccessListener { void ready(android.location.Address station,JSONObject route,String mode) throws Exception; }
-    static JSONArray choices(Context c,double lat,double lng,String destination)throws Exception {
+    static JSONArray choices(Context c,double lat,double lng,String destination)throws Exception {return choices(c,lat,lng,destination,false);}
+    static JSONArray choices(Context c,double lat,double lng,String destination,boolean nowOnly)throws Exception {
         double[] target=GoogleNavigationClient.destinationCoordinates(c,destination);
-        String departure=c.getSharedPreferences("loki_navitime_secure",0).getString("departure","");
+        String departure=nowOnly?"":c.getSharedPreferences("loki_navitime_secure",0).getString("departure","");
         long now=System.currentTimeMillis();
         if(!departure.isEmpty()){
             try{now=java.time.LocalDateTime.parse(departure).atZone(java.time.ZoneId.of("Asia/Tokyo")).toInstant().toEpochMilli();}

@@ -73,6 +73,7 @@ final class ImageQuestions {
         validateInput(requestId,question,jpeg);
         org.json.JSONArray kinds=ImageAttachmentKinds.normalize(sourceKinds,imageCount);
         if(imageCount<1||imageCount>6)throw new IOException("画像枚数が無効です（1〜6枚）");
+        TransferNetwork.require(c,TransferNetwork.encodedEstimate(jpeg.length),kinds.toString().contains("video"));
         ConversationRecoveryStore.save(c,RecorderPhotoStore.hash(requestId.getBytes(java.nio.charset.StandardCharsets.UTF_8)),"image-question",new JSONObject().put("requestId",requestId).put("message",question).put("image",Base64.encodeToString(jpeg,Base64.NO_WRAP)).put("imageCount",imageCount).put("kinds",kinds));
         if(MediaGenerationContext.video(c,question,true))return VideoGeneration.enqueue(c,requestId,question,jpeg,"");
         if(MediaGenerationContext.kind(c,question,true)==MediaGenerationIntent.Kind.IMAGE)return ImageGeneration.enqueue(c,requestId,question,jpeg,"");
