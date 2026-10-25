@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "releaseType": "alpha_prerelease",
+  "status": "automatic_pass_manual_pending",
+  "glassVersion": 651,
+  "phoneVersion": 290,
+  "sourceCodeCommit": "5b5a72d025c58e5ff47e6059eeea25724172b17a",
+  "apkSha256": {
+    "glass": "57e8ec09355856186b7506832647ff60f9d3880ad1f83e088fe0feb3fad883bc",
+    "phone": "3a5b9166cd5bac871cd6fdb9343403a3a2057e3c5268d091f66d9d9a2bbfbc5f"
+  },
+  "distributionAPKs": [
+    {
+      "app": "glass",
+      "version": 651,
+      "sha256": "57e8ec09355856186b7506832647ff60f9d3880ad1f83e088fe0feb3fad883bc",
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "sameCodeAndAssetsAsVerifiedDevelopment": true,
+      "debuggable": false,
+      "allowBackup": false,
+      "zipVerified": true,
+      "credentialAndDeviceIdentifierScanPassed": true
+    },
+    {
+      "app": "phone",
+      "version": 290,
+      "sha256": "3a5b9166cd5bac871cd6fdb9343403a3a2057e3c5268d091f66d9d9a2bbfbc5f",
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "sameCodeAndAssetsAsVerifiedDevelopment": true,
+      "debuggable": false,
+      "allowBackup": false,
+      "zipVerified": true,
+      "credentialAndDeviceIdentifierScanPassed": true
+    }
+  ],
+  "manifestMatchesDevelopmentExceptDebugFlag": true,
+  "automatic": {
+    "distributionApkNativeChecksPassed": 4484,
+    "securityIngressChecksIncluded": 35,
+    "navigationModeMatrixPassed": 67,
+    "navigationModeMatrixFailed": 0,
+    "distributionApkUiChecksPassed": 153,
+    "distributionApkUiChecksFailed": 0,
+    "webSuitesPassed": 24,
+    "observationParserChecksPassed": 5,
+    "scope": "exact distribution APK classes under a separate permission-free UID; synthetic records/provider/transport; Web code and assets identical to the verified development builds; not a full normal installation on the distribution signature"
+  },
+  "liveSecurityTests": {
+    "state": "passed_on_installed_development_builds",
+    "sameCodeAndAssetsAsDistribution": true,
+    "authenticationBeforeBody": true,
+    "signatureBroadcastDeniedOnAndroid32": true
+  },
+  "manualChecks": {
+    "voice_microphone_and_audibility": {
+      "state": "not_run_this_release"
+    },
+    "media_app_seek": {
+      "state": "not_run_this_release"
+    },
+    "photo_capture_and_import": {
+      "state": "not_run_this_release"
+    },
+    "real_world_navigation_and_disconnect_recovery": {
+      "state": "not_run_this_release"
+    },
+    "controlled_battery_latency_comparison": {
+      "state": "not_run_this_release"
+    },
+    "fixed_version_twelve_hour_observation": {
+      "state": "not_run_this_release"
+    }
+  },
+  "allAutomaticChecksPassed": true,
+  "allChecksPassed": false,
+  "providerRequestsFromTests": 0,
+  "realWorldMovementVerified": false,
+  "continuousTwelveHourSoakPassed": false
+}
