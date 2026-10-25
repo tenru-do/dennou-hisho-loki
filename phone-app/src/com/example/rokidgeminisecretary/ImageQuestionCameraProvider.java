@@ -15,10 +15,12 @@ public final class ImageQuestionCameraProvider extends ContentProvider {
     public boolean onCreate(){return true;}
     public String getType(Uri u){return "image/jpeg";}
     public ParcelFileDescriptor openFile(Uri u,String mode)throws FileNotFoundException {
+        if(!"content".equals(u.getScheme())||!getContext().getPackageName().concat(".image-camera").equals(u.getAuthority())||u.getPathSegments().size()!=1)throw new FileNotFoundException();
         File f=target(getContext(),u.getLastPathSegment());
         if(!f.exists()||System.currentTimeMillis()-f.lastModified()>ImageQuestions.TTL)throw new FileNotFoundException();
         if(!mode.equals("w")&&!mode.equals("rw")&&!mode.equals("r"))throw new FileNotFoundException();
-        return ParcelFileDescriptor.open(f,mode.equals("r")?ParcelFileDescriptor.MODE_READ_ONLY:(mode.equals("rw")?ParcelFileDescriptor.MODE_READ_WRITE:ParcelFileDescriptor.MODE_WRITE_ONLY)|ParcelFileDescriptor.MODE_TRUNCATE);
+        int flags=mode.equals("r")?ParcelFileDescriptor.MODE_READ_ONLY:(mode.equals("rw")?ParcelFileDescriptor.MODE_READ_WRITE:ParcelFileDescriptor.MODE_WRITE_ONLY)|ParcelFileDescriptor.MODE_TRUNCATE;
+        return ParcelFileDescriptor.open(f,flags);
     }
     public Cursor query(Uri u,String[] p,String s,String[] a,String order){return null;}
     public Uri insert(Uri u,ContentValues v){throw new UnsupportedOperationException();}

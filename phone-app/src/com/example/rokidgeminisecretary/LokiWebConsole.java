@@ -87,6 +87,7 @@ final class LokiWebConsole {
     }
     static synchronized void changeSession(Context c,JSONObject input)throws Exception{JSONArray raw=new JSONArray(prefs(c).getString("sessions","[]")),next=new JSONArray();boolean found=false;for(int i=0;i<raw.length();i++){JSONObject entry=raw.getJSONObject(i);if(input.getString("id").equals(WebSessionAdmin.handle(entry))){found=true;if(!input.getString("revision").equals(WebSessionAdmin.revision(entry)))throw new IOException("端末の権限が更新されています");String action=input.getString("action");if(action.equals("revoke"))continue;if(!action.matches("read|full"))throw new IOException("権限が不正です");entry.put("scope",action);}next.put(entry);}if(!found)throw new IOException("接続端末がありません");if(!prefs(c).edit().putString("sessions",next.toString()).commit())throw new IOException("権限を保存できません");}
     private static String digest(String value) throws Exception { return RecorderPhotoStore.hash(value.getBytes(StandardCharsets.UTF_8)); }
+    static boolean credentialValid(Context c,String token){try{return authenticate(c,token)!=null;}catch(Exception invalid){return false;}}
     private static synchronized JSONObject authenticate(Context c, String token) throws Exception {
         if (token == null || !token.matches("[a-f0-9]{64}")) return null;
         JSONArray sessions = new JSONArray(prefs(c).getString("sessions", "[]"));

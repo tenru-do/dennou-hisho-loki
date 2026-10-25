@@ -313,8 +313,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private Button quickSpeechButton;private int quickMorningPausedGeneration=-1;
     private boolean quickSpeechHeld(){return conversationPlayback.resumable(ttsGeneration)||(morningPlaybackPaused&&quickMorningPausedGeneration==ttsGeneration);}
     private boolean quickSpeechAvailable(){return morningPlaybackActive||quickSpeechHeld()||conversationPlayback.pausable(ttsGeneration);}
-    private final Runnable quickSpeechTick=new Runnable(){public void run(){if(!activityForeground)return;updateQuickSpeechButton();handler.postDelayed(this,250);}};
-    private void updateQuickSpeechButton(){if(quickSpeechButton==null)return;layoutQuickSpeechButton();boolean available=quickSpeechAvailable();quickSpeechButton.setVisibility(available?View.VISIBLE:View.GONE);if(status!=null)status.setVisibility(available?View.INVISIBLE:View.VISIBLE);quickSpeechButton.setText(quickSpeechHeld()?(wearPause.removed()?"取り外し検知・読み上げ停止中":"TAP: 続きから再開"):"TAP: 読み上げ停止");quickSpeechButton.setContentDescription(quickSpeechHeld()?"決定タップでも、停止した区切りから再開":"決定タップでも、読み上げを一時停止");}
+    private final Runnable quickSpeechTick=new Runnable(){public void run(){if(activityForeground)updateQuickSpeechButton();}};
+    private void updateQuickSpeechButton(){
+        // The hardware tap handles pause/resume. Never place its hint over an answer,
+        // and never restore status overlays while updating speech availability.
+        hideCommentStatusOverlays();
+    }
     private void toggleQuickSpeech(){try{if(quickSpeechHeld()&&android.os.SystemClock.elapsedRealtime()<navigationPriorityUntil){setStatus("ナビ音声の終了後に決定タップで再開してください",Color.CYAN);return;}if(wearPause.removed()&&quickSpeechHeld()){setStatus("装着してから決定タップで再開してください",Color.CYAN);return;}if(morningPlaybackActive){morningPlaybackActive=false;morningPlaybackPaused=true;stopRokidTtsForUserSpeech();quickMorningPausedGeneration=ttsGeneration;updateTopicButtonLabel();setMascotMode(0);setConversationActive(false);setStatus("読み上げ停止中。タップで区切りから続き",Color.CYAN);Log.i(TAG,"QuickSpeech paused topic");}else if(morningPlaybackPaused&&quickMorningPausedGeneration==ttsGeneration){quickMorningPausedGeneration=-1;startMorningPlayback(morningResumeChunkIndex);Log.i(TAG,"QuickSpeech resumed topic");}else{String id=conversationPlayback.current(ttsGeneration);if(conversationPlayback.resumable(ttsGeneration)){String text=conversationPlayback.text(id,ttsGeneration,false);stopRokidTtsForUserSpeech();conversationSpeechArm=id;speakWithPhoneTtsChunked("",text);setStatus("停止した区切りから読み直します",Color.CYAN);Log.i(TAG,"QuickSpeech resumed answer");}else if(conversationPlayback.pausable(ttsGeneration)){int before=ttsGeneration;stopRokidTtsForUserSpeech();conversationPlayback.pause(id,before,ttsGeneration);setMascotMode(0);setConversationActive(false);setStatus("読み上げ停止中。タップで区切りから続き",Color.CYAN);Log.i(TAG,"QuickSpeech paused answer");}}updateQuickSpeechButton();setGlanceHudVisible(true);}catch(Exception changed){setStatus("読み上げが切り替わりました。最新の回答で操作してください",Color.YELLOW);updateQuickSpeechButton();}}
 
     private int latencySpeechGeneration=-1;
@@ -1227,12 +1231,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.sharedMemoryManager = SharedMemoryManager.getInstance(this);
         this.sharedMemoryManager.refreshAsync();
         IntentFilter rokidAiTextFilter = new IntentFilter(ACTION_ROKID_AI_TEXT);
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(this.rokidAiTextReceiver, rokidAiTextFilter,
-                    Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(this.rokidAiTextReceiver, rokidAiTextFilter);
-        }
+        RokidAiInternalEvents.register(this,this.rokidAiTextReceiver,rokidAiTextFilter);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         getWindow().getDecorView().setBackgroundColor(Color.BLACK);
         getWindow().setSoftInputMode(19);
@@ -1394,6 +1393,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     @Override // android.app.Activity
     protected void onPause() {
+        unregisterHeadPoseSensor();
         this.mascotHostResumed = false;
         if (fullBodyImage != null) fullBodyImage.setHostResumed(false);
         if (this.mascotView != null) this.mascotView.reconcileRendering();
@@ -2211,7 +2211,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         this.navigationHud.setHorizontallyScrolling(false);
         this.navigationHud.setEllipsize(android.text.TextUtils.TruncateAt.END);
         this.navigationHud.setMinWidth(0);
-        this.navigationHud.setLineSpacing(0.0f, 0.94f);
+        this.navigationHud.setLineSpacing(0.0f, 1.0f);
+        this.navigationHud.setIncludeFontPadding(true);
         this.navigationHud.setBackgroundColor(Color.TRANSPARENT);
         this.navigationHud.setVisibility(View.GONE);
         this.navigationGuidanceColumn = new LinearLayout(this);
@@ -2322,6 +2323,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         });
         FrameLayout frameLayout = new FrameLayout(this);
         this.hudRoot = frameLayout;
+        frameLayout.addOnLayoutChangeListener((v,l,t,r,b,oldL,oldT,oldR,oldB)->{
+            if(r-l!=oldR-oldL||b-t!=oldB-oldT)handler.post(()->{if(!isFinishing()&&!isDestroyed())updateNavigationCommentLayout();});
+        });
         frameLayout.setBackgroundColor(Color.BLACK);
         this.navigationOverviewScroll = new ScrollView(this);
         this.navigationOverviewScroll.setBackgroundColor(Color.BLACK);
@@ -2354,8 +2358,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         FrameLayout.LayoutParams speechLayout=new FrameLayout.LayoutParams(dp(216),dp(20),51);speechLayout.leftMargin=dp(96);speechLayout.topMargin=dp(52);frameLayout.addView(quickSpeechButton,speechLayout);
         this.navigationClock = new TextView(this);
         this.navigationClock.setTextColor(Color.rgb(150, 255, 175));
-        this.navigationClock.setTextSize(14);
-        this.navigationClock.setGravity(android.view.Gravity.RIGHT);
+        NavigationHeaderStyle.apply(this.navigationClock);
         this.navigationClock.setVisibility(View.GONE);
         FrameLayout.LayoutParams clockLayout = new FrameLayout.LayoutParams(dp(190), dp(28),
                 android.view.Gravity.TOP | android.view.Gravity.RIGHT);
@@ -2443,7 +2446,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private int fullBodyExpression;
     private int visualLayoutWidth = -1, visualLayoutHeight = -1;
 
-    private void layoutQuickSpeechButton(){if(quickSpeechButton==null)return;boolean full=isFullBodyMode();FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(full?Math.max(1,(hudRoot==null?dp(312):hudRoot.getWidth())/2-dp(12)):dp(216),dp(20),full?android.view.Gravity.BOTTOM|android.view.Gravity.RIGHT:android.view.Gravity.TOP|android.view.Gravity.LEFT);if(full){p.rightMargin=dp(6);p.bottomMargin=dp(44);}else{p.leftMargin=dp(96);p.topMargin=dp(52);}quickSpeechButton.setLayoutParams(p);}
+    private void layoutQuickSpeechButton(){if(quickSpeechButton!=null&&quickSpeechButton.getVisibility()!=View.GONE)quickSpeechButton.setVisibility(View.GONE);}
+
     private void hideCommentStatusOverlays(){if(status!=null)status.setVisibility(View.GONE);if(fullBodyStatus!=null)fullBodyStatus.setVisibility(View.GONE);if(voiceTranscriptView!=null){voiceTranscriptView.setText("");voiceTranscriptView.setVisibility(View.GONE);}layoutQuickSpeechButton();}
     private void showHudStatusDetails(){String current=status==null?"":status.getText().toString();NavigationChoiceDialog.show(this,"接続・動作状態",new String[]{fullBodyConnectionStatus.isEmpty()?"接続情報の取得待ち":fullBodyConnectionStatus,current.isEmpty()?"動作メッセージなし":current,PhotoRecorderService.active==null?"連続撮影は停止中":PhotoRecorderService.status},-1,(d,w)->{});}
     private void applyFullBodyLayout() {
@@ -2512,7 +2516,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         String current=status==null?"":status.getText().toString();
         if(fullBodyGeminiPaymentRequired || current.contains("402"))current="Gemini 402：前払い残高不足";
         else if(geminiRequestActive)current="Gemini：処理中";
-        fullBodyStatus.setText(fullBodyConnectionStatus+"\n"+current+(PhotoRecorderService.active!=null?"\n"+PhotoRecorderService.status:""));
+        String label=fullBodyConnectionStatus+"\n"+current+(PhotoRecorderService.active!=null?"\n"+PhotoRecorderService.status:"");
+        if(!android.text.TextUtils.equals(fullBodyStatus.getText(),label))fullBodyStatus.setText(label);
     }
 
     private void restoreStandardVisualLayout() {
@@ -2573,10 +2578,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String meetingRemoteId="",meetingRemoteAction="",meetingRemoteStatus="",meetingRemotePhase="UNCONFIRMED",meetingStartOwnerId="";
     private long meetingStatePostedAt;
     private final java.util.concurrent.atomic.AtomicBoolean meetingStateBusy=new java.util.concurrent.atomic.AtomicBoolean();
+    private final IdleStateSync meetingStateSync=new IdleStateSync();
     private void publishMeetingState(){
         if(System.currentTimeMillis()-meetingStatePostedAt<4000||!meetingStateBusy.compareAndSet(false,true))return;meetingStatePostedAt=System.currentTimeMillis();
         try{MeetingRecorderService recorder=MeetingRecorderService.active;JSONObject snapshot=new JSONObject().put("recording",recorder!=null).put("sessionId",recorder==null?"":recorder.recordingId).put("mode",recorder==null?0:recorder.mode).put("photos",PhotoRecorderService.active!=null).put("topic",radioModeEnabled).put("status",MeetingRecorderService.status).put("progress",recorder==null?new JSONObject():recorder.progress()).put("requestId",meetingRemoteId).put("requestStatus",meetingRemoteStatus).put("requestPhase",meetingRemotePhase);
-            topicControlWorker.execute(()->{try{postTopicForm("meeting_state","state="+URLEncoder.encode(snapshot.toString(),"UTF-8"));}catch(Exception ignored){}finally{meetingStateBusy.set(false);}});
+            final String payload=snapshot.toString();
+            if(!meetingStateSync.shouldSend(payload,android.os.SystemClock.elapsedRealtime(),6000L)){meetingStateBusy.set(false);return;}
+            topicControlWorker.execute(()->{try{postTopicForm("meeting_state","state="+URLEncoder.encode(payload,"UTF-8"));meetingStateSync.delivered(payload,android.os.SystemClock.elapsedRealtime());}catch(Exception ignored){}finally{meetingStateBusy.set(false);}});
         }catch(Exception ignored){meetingStateBusy.set(false);}
     }
     private void handleMeetingRemote(JSONObject request){
@@ -2659,13 +2667,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
         publishMeetingState();
         if(keepButton!=null){
             boolean recording=PhotoRecorderService.active!=null;
-            keepButton.setText(recording?"STOP":"KEEP");
-            keepButton.setContentDescription(recording?"STOP：連続撮影をすぐ停止。長押しで写真メニュー":"KEEP：連続撮影を開始。長押しで写真メニュー");
+            String label=recording?"STOP":"KEEP";
+            String description=recording?"STOP：連続撮影をすぐ停止。長押しで写真メニュー":"KEEP：連続撮影を開始。長押しで写真メニュー";
+            if(!android.text.TextUtils.equals(keepButton.getText(),label))keepButton.setText(label);
+            if(!android.text.TextUtils.equals(keepButton.getContentDescription(),description))keepButton.setContentDescription(description);
         }
         if(fullBodyStatus!=null)refreshFullBodyStatus();
         if(MeetingRecorderService.active!=null){lastMeetingHudStatus=MeetingRecorderService.status;setStatus(lastMeetingHudStatus,Color.rgb(90,220,120));}
         else if(!lastMeetingHudStatus.isEmpty()&&!lastMeetingHudStatus.equals(MeetingRecorderService.status)){lastMeetingHudStatus=MeetingRecorderService.status;setStatus(lastMeetingHudStatus,Color.YELLOW);}
-        handler.postDelayed(this,1000);
+        boolean active=activityForeground||PhotoRecorderService.active!=null||MeetingRecorderService.active!=null||photoTransferRunning.get()||meetingTransferBusy.get();
+        handler.postDelayed(this,active?1000L:3000L);
     }};
     private void stopPhotoRecorderImmediately(){
         PhotoRecorderService recorder=PhotoRecorderService.active;
@@ -2922,8 +2933,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
     }
 
+    private final float[] headRotationMatrix=new float[9];
     @Override
     public void onSensorChanged(SensorEvent event) {
+        if (!activityForeground) return;
         if (event == null || event.sensor == null || event.values == null) {
             return;
         }
@@ -2943,7 +2956,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             }
             return;
         }
-        float[] rotation = new float[9];
+        float[] rotation = headRotationMatrix;
         try {
             SensorManager.getRotationMatrixFromVector(rotation, event.values);
         } catch (Exception e) {
@@ -5036,6 +5049,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return Math.max(1, (width - 12) / 2);
     }
 
+    private int navigationHeaderHeight(){
+        if(navigationClock==null)return dp(36);
+        return NavigationHeaderStyle.height(navigationClock);
+    }
+
     private void updateNavigationCommentLayout() {
         hideCommentStatusOverlays();
         if (isFullBodyMode() && (navigationPanel == null || navigationPanel.getVisibility() != View.VISIBLE)) { applyFullBodyLayout(); return; }
@@ -5075,7 +5093,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
         boolean overviewLayout = navigationMain && getSharedPreferences("navigation_display", MODE_PRIVATE)
                 .getBoolean("overview", false);
-        int mapHeight = dp(overviewLayout ? 148 : HudMapPresentation.sizeDp(navigationMain));
+        int requestedMapHeight=dp(overviewLayout ? 148 : HudMapPresentation.sizeDp(navigationMain));
+        int navigationControls=Math.max(dp(24),buttonPanel==null?0:buttonPanel.getMeasuredHeight()+dp(2));
+        int rootHeight=hudRoot==null?0:hudRoot.getHeight();
+        int mapHeight=navigationMain?NavigationHeaderLayout.mapHeight(requestedMapHeight,rootHeight,navigationHeaderHeight()+dp(4),navigationControls,dp(4)):requestedMapHeight;
         int panelHeight = navigationMain ? mapHeight
                 : LinearLayout.LayoutParams.WRAP_CONTENT;
         if (this.navigationPanel.getOrientation() != (LinearLayout.HORIZONTAL))
@@ -5117,7 +5138,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if (this.navigationClock != null) {
             this.navigationClock.setVisibility(navigationMain ? View.VISIBLE : View.GONE);
             FrameLayout.LayoutParams clock = (FrameLayout.LayoutParams)this.navigationClock.getLayoutParams();
-            clock.topMargin = dp(navigationMain ? 20 : 0);
+            clock.topMargin = dp(navigationMain ? 4 : 0);
+            clock.height=android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+            clock.gravity=android.view.Gravity.TOP|android.view.Gravity.RIGHT;
             this.navigationClock.setLayoutParams(clock);
             if (navigationMain) this.navigationClock.bringToFront();
         }
@@ -5131,7 +5154,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 this.buttonPanel.bringToFront();
             }
         }
-        this.navigationHud.setTextSize(overviewLayout ? 10.0f : largeMap ? 13.5f : 11.0f);
+        if(navigationMain&&!mapNavigationActive)this.navigationHud.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,10f);
+        else this.navigationHud.setTextSize(overviewLayout ? 10.0f : largeMap ? 13.5f : 11.0f);
         this.navigationHud.setGravity(android.view.Gravity.TOP);
         this.navigationHud.setMaxLines(overviewLayout ? 4 : navigationMain ? 8 : 6);
         if ("transit".equals(this.navigationMap.travelMode) && this.navigationLanes != null) {
@@ -5694,9 +5718,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if(fullBodyImage!=null)fullBodyImage.reactToButton(now,contact,close);
     }
 
+    private final java.util.Set<Button> styledHudLabels=java.util.Collections.newSetFromMap(new java.util.WeakHashMap<Button,Boolean>());
     private void focusLabel(final Button button, final String str) {
-        HudButtonStyle.apply(button);
-        button.setText(str);
+        if(styledHudLabels.add(button))HudButtonStyle.apply(button);
+        if(!android.text.TextUtils.equals(button.getText(),str))button.setText(str);
     }
 
     /* JADX INFO: Access modifiers changed from: private */
@@ -13534,7 +13559,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 pollGeneratedVideo();
                 syncWorkspace();syncRecentImageReference();
                 final JSONObject radioState = new JSONObject(fetchPhoneEndpointJson("radio_state"));
-                JSONObject mediaContext=radioState.optJSONObject("mediaContext");if(mediaContext!=null)getPreferences().edit().putString("media_context_kind",mediaContext.optString("kind","NONE")).putLong("media_context_time",mediaContext.optLong("time")).apply();
+                JSONObject mediaContext=radioState.optJSONObject("mediaContext");if(mediaContext!=null){String kind=mediaContext.optString("kind","NONE");long time=mediaContext.optLong("time");SharedPreferences prefs=getPreferences();if(!kind.equals(prefs.getString("media_context_kind","NONE"))||time!=prefs.getLong("media_context_time",0L))prefs.edit().putString("media_context_kind",kind).putLong("media_context_time",time).apply();}
                 if(startupTopicBlocked){
                     if(radioState.optBoolean("enabled")){
                         try{postTopicForm("radio_control","enabled=false&mode=scheduled&minutes=10");}
@@ -13559,7 +13584,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 pollRadioPipeline(radioState);
                 String pendingTracked=getPreferences().getString(KEY_TRACKED_WEB,"");
                 if(!pendingTracked.isEmpty()){resumeTrackedWebRequest(pendingTracked);return;}
-                final String strTrim3 = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("command")).optString("command", "").trim();
+                final String strTrim3 = new JSONObject(MainActivity.this.fetchPhoneEndpointJson("command?notice_ack=1")).optString("command", "").trim();
                 if(strTrim3.startsWith(TrackedWebRequest.PREFIX)){
                     JSONObject packet=TrackedWebRequest.parse(strTrim3);
                     if(geminiRequestActive||isGeminiCoolingDown()||!pendingPhoneCommand.isEmpty())return;
@@ -13673,9 +13698,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         && !notificationId.isEmpty() && CodexNotificationPolicy.fresh(issued,System.currentTimeMillis())
                         && CodexNotificationPolicy.safe(message)
                         && !notificationId.equals(getPreferences().getString("last_codex_event_id",""));
-                    if(!valid){fetchPhoneEndpointJson("ack_command");return;}
+                    String ack=notificationId.matches("[a-f0-9]{64}")?"ack_command?notice_id="+notificationId:"ack_command";
+                    if(!valid){fetchPhoneEndpointJson(ack);return;}
                     boolean delivered=dispatchCodexNotification(notificationId,message,notification.optString("kind"),issued);
-                    fetchPhoneEndpointJson(delivered?"ack_command":"defer_command");
+                    if(delivered)fetchPhoneEndpointJson(ack);
                     return;
                 }
                 if (strTrim3.length() != 0) {
@@ -13711,11 +13737,25 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     /* JADX INFO: Access modifiers changed from: private */
     private final java.util.concurrent.atomic.AtomicBoolean commandNoticeInFlight=new java.util.concurrent.atomic.AtomicBoolean();
+    private int commandNoticeFailures;
     private void awaitPhoneCommandNotice(){
-        if(!commandNoticeInFlight.compareAndSet(false,true))return;
-        new Thread(()->{boolean queued=false;try{queued=new JSONObject(fetchPhoneEndpointJson("command_notice")).optBoolean("queued");}catch(Exception ignored){}finally{commandNoticeInFlight.set(false);}
+        if(!activityForeground||!commandNoticeInFlight.compareAndSet(false,true))return;
+        new Thread(()->{
+            boolean queued=false,success=false;
+            try{queued=new JSONObject(fetchPhoneEndpointJson("command_notice")).optBoolean("queued");success=true;}
+            catch(Exception ignored){}
+            commandNoticeFailures=success?0:Math.min(5,commandNoticeFailures+1);
             final boolean ready=queued;
-            handler.postDelayed(()->{if(activityForeground&&!isFinishing()&&!isDestroyed()){if(ready)pollPhoneCommand();awaitPhoneCommandNotice();}},queued?250L:50L);
+            final long delay=CommandNoticePacing.delayMs(success,queued,commandNoticeFailures);
+            // Keep ownership until the scheduled continuation runs. Releasing it in
+            // the worker lets the fallback poller spawn additional permanent loops.
+            handler.postDelayed(()->{
+                commandNoticeInFlight.set(false);
+                if(activityForeground&&!isFinishing()&&!isDestroyed()){
+                    if(ready)pollPhoneCommand();
+                    awaitPhoneCommandNotice();
+                }
+            },delay);
         },"PhoneCommandNotice").start();
     }
     private boolean phoneCommandPollInFlight;

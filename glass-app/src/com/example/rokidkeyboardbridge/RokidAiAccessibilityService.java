@@ -42,7 +42,7 @@ public final class RokidAiAccessibilityService extends AccessibilityService {
         Intent intent = new Intent(ACTION_ROKID_AI_TEXT);
         intent.setPackage(getPackageName());
         intent.putExtra(EXTRA_TEXT, value);
-        sendBroadcast(intent);
+        sendBroadcast(intent,RokidAiInternalEvents.PERMISSION);
     }
 
     private static void append(StringBuilder out, CharSequence value) {
