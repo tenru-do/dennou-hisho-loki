@@ -3011,7 +3011,7 @@ public final class MainActivity extends Activity {
     private void handleClient(Socket socket) {
         StabilityMetrics.networkAttempt();
         try {
-            socket.setSoTimeout(20000);
+            socket.setSoTimeout(5000);
             BufferedReader reader = new BoundedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.ISO_8859_1));
             String request = reader.readLine();
@@ -3044,7 +3044,8 @@ public final class MainActivity extends Activity {
             boolean ambientSourceState = request != null && request.startsWith("POST /ambient_source_state");
             boolean pcPair = request != null && request.startsWith("GET /pc_pair ");
             boolean pair = pcPair || (request != null && request.startsWith("GET /pair "));
-            RequestPayload payload = readRequestPayload(reader, stt ? MAX_STT_BODY_CHARS : request != null && request.startsWith("POST /radio_observation ") ? 3 * 1024 * 1024 : MAX_REQUEST_BODY_CHARS);
+            RequestPayload payload = readRequestPayload(reader, stt ? MAX_STT_BODY_CHARS : request != null && request.startsWith("POST /radio_observation ") ? 3 * 1024 * 1024 : MAX_REQUEST_BODY_CHARS,request,socket);
+            if(payload==null)return;
             String bodyText = payload.body;
             if (LokiWebConsole.handle(this, socket, request, bodyText, payload.webToken, payload.origin, payload.host)) return;
             if (pair) {
@@ -3389,9 +3390,9 @@ public final class MainActivity extends Activity {
                     : news ? buildNewsJson(parseStringQuery(request, "q", "")).toString()
                     : morning ? MorningBriefingManager.readStoredForPlayback(this).toString()
                     : postCommand ? buildPostCommandResult(bodyText).toString()
-                    : command ? buildCommandJson().toString()
+                    : command ? buildCommandJson("1".equals(parseStringQuery(request,"notice_ack",""))).toString()
                     : deferCommand ? buildDeferCommandJson().toString()
-                    : ackCommand ? buildAckCommandJson().toString()
+                    : ackCommand ? buildAckCommandJson(parseStringQuery(request,"notice_id","")).toString()
                     : control ? buildControlJson().toString()
                     : postHealth ? buildPostHealthResult(bodyText).toString()
                     : health ? buildHealthJson().toString()
@@ -4204,8 +4205,11 @@ public final class MainActivity extends Activity {
 
     private RequestPayload readRequestPayload(BufferedReader reader) throws Exception { return readRequestPayload(reader,MAX_REQUEST_BODY_CHARS); }
 
-    private RequestPayload readRequestPayload(BufferedReader reader,int maximumBodyChars) throws Exception {
+    private RequestPayload readRequestPayload(BufferedReader reader,int maximumBodyChars) throws Exception {return readRequestPayload(reader,maximumBodyChars,null,null);}
+
+    private RequestPayload readRequestPayload(BufferedReader reader,int maximumBodyChars,String request,Socket socket) throws Exception {
         int contentLength = 0;
+        boolean lengthSeen=false;
         String token = "";
         String pairCode="", webToken="", origin="", host="";
         int headerChars=0;
@@ -4214,10 +4218,12 @@ public final class MainActivity extends Activity {
             headerChars+=line.length();if(headerChars>16384)throw new java.io.IOException("headers too large");
             String lower = line.toLowerCase(Locale.US);
             if (lower.startsWith("content-length:")) {
-                try {
-                    contentLength = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
-                } catch (Exception ignored) {
-                }
+                String value=line.substring(line.indexOf(':')+1).trim();
+                if(lengthSeen||!value.matches("[0-9]+"))throw new java.io.IOException("ambiguous content length");
+                lengthSeen=true;
+                try{contentLength=Integer.parseInt(value);}catch(NumberFormatException invalid){throw new java.io.IOException("invalid content length");}
+            } else if(lower.startsWith("transfer-encoding:")){
+                throw new java.io.IOException("transfer encoding unsupported");
             } else if (lower.startsWith("x-loki-web-token:")) {
                 webToken=line.substring(line.indexOf(':')+1).trim();
             } else if (lower.startsWith("origin:")) {
@@ -4229,6 +4235,19 @@ public final class MainActivity extends Activity {
             } else if (lower.startsWith("x-roki-token:")) {
                 token = line.substring(line.indexOf(':') + 1).trim();
             }
+        }
+        if(contentLength>maximumBodyChars)throw new IllegalArgumentException("request body too large");
+        if(request!=null&&socket!=null){
+            String[] parts=request.split(" ");String target=parts.length>1?parts[1]:"";
+            boolean web=target.equals("/web")||target.startsWith("/web/");
+            boolean enrollment=request.startsWith("POST /web/api/connect ")||request.startsWith("POST /web/api/pair ");
+            boolean pair=request.startsWith("GET /pair ")||request.startsWith("GET /pc_pair ");
+            boolean publicAsset=web&&request.startsWith("GET ")&&!target.startsWith("/web/api/");
+            boolean authorized=web?LokiWebConsole.credentialValid(this,webToken):constantTimeEquals(getPreferences().getString(KEY_BRIDGE_TOKEN,""),token);
+            if(web&&!origin.isEmpty()&&!origin.equals("https://"+host)){writeJsonResponse(socket,403,"{\"ok\":false,\"error\":\"cross_origin\"}");return null;}
+            if(!authorized&&!enrollment&&!pair&&!publicAsset){writeJsonResponse(socket,401,"{\"ok\":false,\"error\":\"unauthorized\"}");return null;}
+            if(!authorized&&contentLength>(enrollment||pair?8192:0))throw new java.io.IOException("unauthenticated body too large");
+            socket.setSoTimeout(authorized?20000:5000);
         }
         if (contentLength <= 0) {
             RequestPayload result=new RequestPayload("", token);result.pairCode=pairCode;result.webToken=webToken;result.origin=origin;result.host=host;return result;
@@ -4284,13 +4303,14 @@ public final class MainActivity extends Activity {
         return diff == 0 && left.length >= 16;
     }
 
-    private JSONObject buildCommandJson() throws Exception {
+    private JSONObject buildCommandJson() throws Exception {return buildCommandJson(false);}
+    private JSONObject buildCommandJson(boolean noticeAck) throws Exception {
         synchronized(MainActivity.class){long now=android.os.SystemClock.elapsedRealtime();ReconnectReview.contact(this,now,queuedWebOrder(this));glassContactElapsed=now;}
         JSONObject root = new JSONObject();
         String command;
         synchronized (MainActivity.class) {
             ArrayList<String> queue = readPendingCommandsLocked(getPreferences());
-            int dispatch=ReconnectReview.dispatchIndex(this,queue);
+            int dispatch=ReconnectReview.dispatchIndex(this,queue,noticeAck);
             command = dispatch<0 ? "" : queue.get(dispatch);
             // Also migrates the former one-slot preference into the FIFO format.
             persistPendingCommandsLocked(getPreferences(), queue);
@@ -4470,7 +4490,16 @@ public final class MainActivity extends Activity {
         }
         return new JSONObject().put("ok", true).put("deferred", deferred);
     }
-    private JSONObject buildAckCommandJson() throws Exception {
+    private JSONObject buildAckCommandJson() throws Exception {return buildAckCommandJson("");}
+    private JSONObject buildAckCommandJson(String noticeId) throws Exception {
+        if(!noticeId.isEmpty()){
+            synchronized(MainActivity.class){
+                ArrayList<String> queue=readPendingCommandsLocked(getPreferences());
+                boolean removed=CodexNoticeQueue.removeMatching(queue,noticeId);
+                if(removed)persistPendingCommandsLocked(getPreferences(),queue);
+                return new JSONObject().put("ok",true).put("ack",removed).put("remaining",queue.size());
+            }
+        }
         JSONObject root = new JSONObject();
         synchronized (MainActivity.class) {
             ArrayList<String> queue = readPendingCommandsLocked(getPreferences());

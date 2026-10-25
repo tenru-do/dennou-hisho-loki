@@ -1,0 +1,78 @@
+{
+  "glassVersion": 651,
+  "phoneVersion": 290,
+  "scope": "development APK classes and separate permission-free test UID; additional installed-device security probes; not a stable-release certification",
+  "apkSha256": {
+    "glass": "2715e80b3ab860d519412ccdec90d2b10bb0fb4a84238322306a7ac2d1f1b624",
+    "phone": "920c4312325aa20f0bcad8ae2c4a922cebc6d0333269b270b73663df36c51954"
+  },
+  "nativeChecksPassed": 4484,
+  "securityIngressChecksIncluded": 35,
+  "navigationMatrixPassed": 67,
+  "navigationMatrixFailed": 0,
+  "androidUiPassed": 153,
+  "androidUiFailed": 0,
+  "webSuitesPassed": 24,
+  "observationParserChecksPassed": 5,
+  "headerAndroidAssertions": 96,
+  "idleStatusSimulation": {
+    "seconds": 60,
+    "beforeSends": 15,
+    "afterSends": 8,
+    "batteryMeasurement": false
+  },
+  "localTlsVaultPairingSuitePassed": true,
+  "liveAuthenticationChecks": [
+    {
+      "case": "bridge no credential",
+      "http": 401,
+      "expected": 401,
+      "declaredBodyBytes": 1000000,
+      "bodyBytesSent": 0,
+      "elapsedMs": 16
+    },
+    {
+      "case": "bridge wrong credential",
+      "http": 401,
+      "expected": 401,
+      "declaredBodyBytes": 1000000,
+      "bodyBytesSent": 0,
+      "elapsedMs": 15
+    },
+    {
+      "case": "browser no credential",
+      "http": 401,
+      "expected": 401,
+      "declaredBodyBytes": 1000000,
+      "bodyBytesSent": 0,
+      "elapsedMs": 0
+    },
+    {
+      "case": "cross-origin browser",
+      "http": 403,
+      "expected": 403,
+      "declaredBodyBytes": 1000000,
+      "bodyBytesSent": 0,
+      "elapsedMs": 0
+    },
+    {
+      "case": "valid bridge body",
+      "http": 200,
+      "bodyBytesSent": 2
+    },
+    {
+      "case": "public Web UI security headers",
+      "http": 200
+    }
+  ],
+  "signatureBroadcastDeniedOnAndroid32": true,
+  "dataPreservationBeforeLaunch": true,
+  "additionalExternalProviderRequests": 0,
+  "pending": [
+    "physical VOICE/audibility and live media-app controls",
+    "real movement/navigation and connectivity transitions",
+    "controlled battery/latency comparison",
+    "fixed-version 12-hour continuous observation",
+    "tablet security update (not connected)"
+  ]
+}

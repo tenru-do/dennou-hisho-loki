@@ -2,6 +2,23 @@ package com.example.rokidgeminisecretary;
 import android.content.*;import org.json.*;import java.io.*;import java.util.*;
 public final class ReconnectChecks {
  static int n;static void ok(boolean b){n++;if(!b)throw new AssertionError("reconnect check "+n);}interface Work{void run()throws Exception;}static void rejects(Work w)throws Exception{boolean rejected=false;try{w.run();}catch(IOException|IllegalArgumentException e){rejected=true;}ok(rejected);}
+ static void notices(Context c)throws Exception{
+  String key="1".repeat(64),id="a".repeat(64),other="b".repeat(64);
+  ReconnectReview.prefs(c).edit().putString("held",new JSONArray().put(key).toString()).commit();
+  String held=TrackedWebRequest.wire(key,"synthetic held question"),legacy="__LOKI_ALERT__:synthetic";
+  JSONObject event=new JSONObject().put("id",id).put("kind","completed").put("issuedAt",System.currentTimeMillis()).put("message","synthetic notification");
+  String notice=CodexNoticeQueue.PREFIX+event.toString();java.util.ArrayList<String> q=new java.util.ArrayList<>();q.add(held);q.add(legacy);q.add(notice);
+  ok(ReconnectReview.dispatchIndex(c,q)==-1);ok(ReconnectReview.dispatchIndex(c,q,true)==2);ok(q.size()==3&&q.get(0).equals(held));
+  ok(!CodexNoticeQueue.removeMatching(q,other));ok(q.size()==3);ok(!CodexNoticeQueue.removeMatching(q,"bad"));ok(!CodexNoticeQueue.removeMatching(q,""));
+  ok(CodexNoticeQueue.removeMatching(q,id));ok(q.size()==2&&q.get(0).equals(held)&&q.get(1).equals(legacy));ok(ReconnectReview.held(c,key));ok(!CodexNoticeQueue.removeMatching(q,id));
+  q.add(CodexNoticeQueue.PREFIX+new JSONObject(event.toString()).put("issuedAt",1));ok(ReconnectReview.dispatchIndex(c,q,true)==2);ok(CodexNoticeQueue.removeMatching(q,id));ok(q.get(0).equals(held));
+  q.add(CodexNoticeQueue.PREFIX+new JSONObject(event.toString()).put("id","bad"));ok(ReconnectReview.dispatchIndex(c,q,true)==-1);q.remove(2);
+  q.add(CodexNoticeQueue.PREFIX+new JSONObject(event.toString()).put("kind","action"));ok(ReconnectReview.dispatchIndex(c,q,true)==-1);q.remove(2);
+  q.add(CodexNoticeQueue.PREFIX+"broken");ok(ReconnectReview.dispatchIndex(c,q,true)==-1);q.remove(2);
+  q.add(CodexNoticeQueue.PREFIX+new JSONObject(event.toString()).put("kind","question"));ok(ReconnectReview.dispatchIndex(c,q,true)==2);ok(CodexNoticeQueue.removeMatching(q,id));
+  q.add(CodexNoticeQueue.PREFIX+new JSONObject(event.toString()).put("kind","status"));ok(ReconnectReview.dispatchIndex(c,q,true)==2);ok(CodexNoticeQueue.removeMatching(q,id));
+  q.clear();q.add(legacy);q.add(notice);ok(ReconnectReview.dispatchIndex(c,q)==0);ok(ReconnectReview.dispatchIndex(c,q,true)==0);ok(!CodexNoticeQueue.removeMatching(q,key));ok(q.get(0).equals(legacy));
+ }
  public static int run(Context c)throws Exception{n=0;String key="1".repeat(64),other="2".repeat(64),id="a".repeat(64);JSONObject row=new JSONObject().put("id",id).put("kind","Gemini").put("message","synthetic saved answer").put("requestId",key).put("time",10);
  JSONObject first=ImportedAnswers.accept(c,row);ok(first.getBoolean("ok"));ok(!first.optBoolean("duplicate"));ok(ImportedAnswers.accept(c,row).getBoolean("duplicate"));ok(ImportedAnswers.accept(c,new JSONObject(row.toString()).put("time",20)).getBoolean("duplicate"));ok(ImportedAnswers.received(c,key));ok(!ImportedAnswers.received(c,other));ok(!new String(ConversationWorkspace.file(c,"answer-imports").readFully(),"UTF-8").contains("synthetic saved answer"));rejects(()->ImportedAnswers.accept(c,new JSONObject(row.toString()).put("message","different")));rejects(()->ImportedAnswers.accept(c,new JSONObject(row.toString()).put("id","not-id")));rejects(()->ImportedAnswers.accept(c,new JSONObject(row.toString()).put("kind","command")));rejects(()->ImportedAnswers.accept(c,new JSONObject(row.toString()).put("message","x".repeat(64001))));
  ok(ImportedAnswers.merge(c,new ArrayList<>()).size()==1);HashSet<String> keys=new HashSet<>();keys.add(key);ok(ImportedAnswers.hide(c,keys,new HashSet<>())==1);ok(ImportedAnswers.merge(c,new ArrayList<>()).isEmpty());ok(ImportedAnswers.accept(c,row).getBoolean("duplicate"));ok(ImportedAnswers.merge(c,new ArrayList<>()).isEmpty());ok(!ImportedAnswers.received(c,key));
@@ -24,5 +41,6 @@ public final class ReconnectChecks {
  ReconnectReview.contact(c,200,new JSONArray());ok(new JSONArray(ReconnectReview.prefs(c).getString("approved","[]")).length()==0);
  // An old held question does not leak via legacy acknowledgement; legacy head is still FIFO.
  ReconnectReview.prefs(c).edit().putString("held",new JSONArray().put(key).toString()).commit();queue.clear();queue.add(TrackedWebRequest.wire(key,"held"));queue.add("legacy-control");ok(ReconnectReview.dispatchIndex(c,queue)==-1);queue.add(TrackedWebRequest.wire(other,"new"));ok(ReconnectReview.dispatchIndex(c,queue)==2);queue.clear();queue.add("legacy-control");queue.add(TrackedWebRequest.wire(other,"new"));ok(ReconnectReview.dispatchIndex(c,queue)==0);
+ notices(c);
  ReconnectReview.prefs(c).edit().clear().commit();ReconnectReview.last=-1;ReconnectReview.ever=false;c.getSharedPreferences("phone_secretary",0).edit().clear().commit();c.getSharedPreferences("loki_web_console",0).edit().clear().commit();return n+com.example.rokidkeyboardbridge.AnswerOutboxChecks.run(c);}
 }

@@ -9,7 +9,7 @@ Rokidグラスを、Bluetoothキーボード・音声・スマートフォンか
 
 ## セキュリティ対策版のソース
 
-最新の検証中ソースはグラスv646・スマホv288です。TOPのBT30を選択画面なしの30秒送りへ変更し、ナビの予定選択・閉じる位置を整理、顔・全身のボタン操作リアクションを追加しました。今回の変更と検証範囲は [v646/v288](docs/releases/glass-v646.md) を参照してください。v640/v288までに、会話の文脈継続、スマホUIの整理、共有ナビの復旧と経路選択、予定からの目的地選択、KEEP写真のコピー経路、読み上げ操作、再生元Android端末の30秒送り・戻しを更新しました。変更と未確認範囲は [v640/v288 リリース候補](docs/releases/glass-v640.md)、音楽操作は [使い方](docs/source-media-control.md) を参照してください。正式版としての全手動検証と連続12時間観測は完了していません。
+最新の検証中ソースはグラスv651・スマホv290です。認証前の本文読み込みとAndroid 12L以前の内部通知の保護を修正し、Codex通知の保留処理、待機中の通信・画面更新、ナビのGPS文字切れを改善しました。[変更と検証範囲](docs/releases/glass-v651.md)、[セキュリティ診断・対処](docs/security/2026-10-25-review.md)、[検証記録](docs/releases/glass-v651-checks.json)を参照してください。公開APKは下記のv646/v288のままで、この追加対策は含みません。TOPのBT30・ナビメニュー・操作リアクションの変更は [v646/v288](docs/releases/glass-v646.md) に記載しています。v640/v288までに、会話の文脈継続、スマホUIの整理、共有ナビの復旧と経路選択、予定からの目的地選択、KEEP写真のコピー経路、読み上げ操作、再生元Android端末の30秒送り・戻しを更新しました。変更と未確認範囲は [v640/v288 リリース候補](docs/releases/glass-v640.md)、音楽操作は [使い方](docs/source-media-control.md) を参照してください。正式版としての全手動検証と連続12時間観測は完了していません。
 
 公開済みのアルファ版APKはグラスv646・スマホv288です。[ダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v646)と[配布APKの検証記録](docs/releases/glass-v646-distribution.json)を参照してください。Audio Relayはv20です。前回配布の内容は [v607/v254](docs/releases/glass-v607.md)、確認範囲は [公開前の検査](docs/releases/glass-v607-security.md) を参照してください。
 
