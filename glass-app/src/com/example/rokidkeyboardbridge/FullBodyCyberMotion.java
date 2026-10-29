@@ -17,7 +17,7 @@ final class FullBodyCyberMotion {
  }
  static float scale(int pose,int bw,int bh,int width,int height){
   int g=groupForPose(pose),first=FIRST+g*FRAMES;float raw=FullBodySceneScalePolicy.reference(width,height)/FullBodySceneScalePolicy.CYBER[g];
-  for(int i=first;i<first+FRAMES;i++)raw=Math.min(raw,Math.min((width-6f)/(FullBodyAnchorPolicy.MAX[i]-FullBodyAnchorPolicy.MIN[i]),height/FullBodyRealisticFeatures.ALL[i][1]));
+  // Do not shrink wide poses; retain calibrated eye distance and crop.
   return raw*FullBodyRealisticFeatures.ALL[pose][0]/bw;
  }
 }

@@ -1,0 +1,14 @@
+{
+  "glassVersion": 688,
+  "phoneVersion": 297,
+  "glassSha256": "f57368e39e59d76ef89df622aac450f5f00c4fc886494e771d5b076e40d9657d",
+  "phoneSha256": "aef0074c0eea415eb720fe7aef9841fd7ec2d532bb229fb079cde14642615dc2",
+  "phoneIsolatedFullAssertions": 6403,
+  "glassIsolatedAssertions": 84,
+  "phoneNewsAndReconnectAssertions": 8,
+  "webReconnectChecks": 7,
+  "externalCalls": 0,
+  "actualMediaApplicationsControlled": false,
+  "glassInstallVerified": true,
+  "phoneInstallVerified": true
+}

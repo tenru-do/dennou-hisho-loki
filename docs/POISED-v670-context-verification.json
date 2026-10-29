@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-27",
+  "verification": "isolated Android complete request fixture; not a new provider test",
+  "nativeAssertionsPassed": 1162,
+  "sourceNormalizedSha256": {
+    "AvatarPostureContext": "245d94dab66396a448df192daed0e69449395079f1bacf864eb37699b71bc52b",
+    "PoisedMotionPolicy": "5b9273860be81f9d1b8678e508e4ac7b43209b30aeff6b6f27ae363b74c59eec",
+    "EmbodiedScenePolicy": "f1e4d7b6e84f553ec9f8fcd4fd9706baadc15e9b30779ca0e74b28e01f19eaef"
+  },
+  "externalAPICalls": 0,
+  "syntheticOnly": true,
+  "fixtures": [
+    "EVERYDAY_GESTURE_2",
+    "RELAXED_POSE_0"
+  ],
+  "sourceApkVersion": 669,
+  "productionSourceOverrides": [
+    "AvatarPostureContext",
+    "EmbodiedScenePolicy",
+    "PoisedMotionPolicy"
+  ],
+  "candidateApkRenderingVerification": "pending final build",
+  "finalCandidateVerification": {
+    "version": 670,
+    "sha256": "0371145a6834aab5e57ddd011bb556691e09aabd00cba8b983edd8fdc402c123",
+    "nativeAssertionsPassed": 1389,
+    "evidence": "outputs/poised-v670-final-native-test.json"
+  }
+}

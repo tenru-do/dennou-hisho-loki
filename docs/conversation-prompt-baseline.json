@@ -65,9 +65,10 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
-      "sha256": "7479a4e0f6dccd540c400b0394f5a42eba5f1782457473a5924ffbc7b227d4a1",
+      "sha256": "365967762d76ccbab7e6bbae413451f59ede27c8b3e5ed10a3aeca017909e892",
       "start": "    private String buildGeminiPromptCompact(String str, boolean includeHistory)",
-      "end": "    private JSONObject fetchOptionalImportedMemory("
+      "end": "    private JSONObject fetchOptionalImportedMemory(",
+      "validation": "docs/virtual-contact-v659.md; isolated Android contact/VOICE/state-persistence checks, production prompt/envelope captures with synthetic scene state; user-authorized two Gemini requests HTTP200/STOP, retained hand and released hand verified; no user dialogue/settings/photos or retries."
     },
     {
       "app": "glass",
@@ -86,9 +87,10 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
-      "sha256": "bb5a1615f04d70df1400dbb70651e31eedc91fe8ab78a55f04b0af51b79db001",
+      "sha256": "358e035f7eaac510af2520fbad3c8eb570e419c5824ce9faccc9b3aa2dcec730",
       "start": "    private void appendGeminiRuntimeContext(JSONObject request, boolean includeReferenceMemory)",
-      "end": "    private String postGeminiJson("
+      "end": "    private String postGeminiJson(",
+      "validation": "2026-10-29 v693 hourly-health preflight: 422 isolated Android assertions; actual MainActivity compact/buildConversationRequest plus proactive payload reviewed; 60-minute persisted rate limit, cancel/no-retry, quoted nudge handoff, off/stale/unrelated exclusion. External provider calls 0; no live response claimed. docs/HEALTH-GEMINI-v693.md"
     },
     {
       "app": "glass",
@@ -101,8 +103,8 @@
     {
       "app": "phone",
       "path": "phone-app/src/com/example/rokidgeminisecretary/RadioModeManager.java",
-      "sha256": "357ef864c75325546543af340603108632918e732da18d4b77c24128d2124aab",
-      "validation": "2026-10-19 production generate, 3 authorized live requests; docs/validation/v571-topic-provider.json"
+      "sha256": "1c9d26d0a6c026f93013de9dce2eeb0bccf19fe5a0d3ea7836de2daefd31817f",
+      "validation": "2026-10-27: 3 explicitly authorized synthetic Gemini requests (2+1); actual responses replayed through Android delivery policies; docs/TOPIC-v667-provider-verification.json. No real user data. First plain fixture lacked mode and was rejected; corrected 385-character reply accepted after delivery tolerance fix."
     },
     {
       "app": "glass",
@@ -112,7 +114,8 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationHandoffCard.java",
-      "sha256": "29683c9a6052ecf42934002c2578bca12fb1c443823f90a7d359e5444bf34988"
+      "sha256": "6b8ec95ab2f03c6808a405b92f687f53d134474ece1e3c012983a2b79d6d7fe8",
+      "validation": "docs/rapport-history-v657.md; isolated Android 763 checks, production buildGeminiPromptCompact/buildConversationRequest with synthetic local and 120-day compressed archive records; user-authorized Gemini two requests HTTP200/STOP with expected references; no user conversation/settings/photos; no retries."
     },
     {
       "app": "glass",
@@ -133,6 +136,78 @@
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationCorrections.java",
       "sha256": "74161c85dc44d43adec66e3fdb45dd45d98feb4752383bf0160e5390554820fc"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ConversationLogContext.java",
+      "sha256": "382d81e1493f5230abbceba7c5dce870687fa8efa69f639a04e5d625b0712ef5",
+      "validation": "docs/rapport-history-v657.md; same synthetic provider/device evidence"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/VirtualContactPolicy.java",
+      "sha256": "be96f7b4c027da939a773756d42460e4750a89c351de975fc1d8968052f729f9",
+      "validation": "docs/virtual-contact-v659.md; same reviewed complete-payload/provider and isolated-device evidence; final local phrase/state regression checks"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/VirtualContactSession.java",
+      "sha256": "a8cb1ac9b6c7134c3ca49109ce0a6525506ffb1cc41b02294c4e916be6325154",
+      "validation": "2026-10-27 new authorized isolated Android device check: current source compiled into test.dex with installed v667 MainActivity; 1149 assertions passed; actual buildGeminiPromptCompact/buildConversationRequest fixtures verify LYING and SEATED context; tools/VirtualContactDeviceChecks.java. New user-authorized synthetic Gemini checks 2/2 HTTP200 STOP: lying and seated posture responses matched; no physical-capability refusal; docs/AVATAR-POSTURE-v668-provider.json. No user history, photos, or personal settings sent."
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/AvatarPostureContext.java",
+      "sha256": "e6d08af71a7919c9108b8edb8ea6a73fe3cbcf4cfbd98cab830d8409888a5dc0",
+      "validation": "2026-10-27 v672: 1218 fresh isolated source/device checks, including provider-budget-zero local reply and actual view request/speech/end flow. Authorized Gemini tests: direct success, repair failure, additional repair failure; not a provider repair success. See docs/REST-DISPLAY-v672.md."
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/PoisedMotionPolicy.java",
+      "sha256": "7154e9f4594507246574c50fc3e066b4c6837d273a3a0956f98af69515981bd9",
+      "validation": "2026-10-27 v672: 1218 fresh isolated source/device checks, including provider-budget-zero local reply and actual view request/speech/end flow. Authorized Gemini tests: direct success, repair failure, additional repair failure; not a provider repair success. See docs/REST-DISPLAY-v672.md."
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/ShyFidgetMotion.java",
+      "sha256": "af2b0f8088595693d73d515d6e17d6651da143980b7b0eeeb8d07988612fb9dd",
+      "validation": "2026-10-27 current complete synthetic request fixture verified on isolated Android; final APK1461 checks and1675 pure request/state/geometry assertions. docs/SHY-FIDGET-v671.md. Device-only verification; no new provider calls."
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/RestPoseIntent.java",
+      "sha256": "69fc73fe6cb9c7f0033cb565645c6b91658171ff141ef0cda8f8bafd47052f9a",
+      "validation": "2026-10-27: fresh isolated device check 1218; provider-free display replies, negative and third-party guards. docs/REST-DISPLAY-v672.md"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/VisualRepairIntent.java",
+      "sha256": "14a6ba72730e9d8a9a828e0037643146124c51eadd8e2f8823532d8f4b9c6cba",
+      "validation": "2026-10-27 v673 fresh isolated source/device checks 1549; exact display-control matching, no external API. docs/CHARACTER-CONTINUITY-v673.md"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/RestAnimationIntent.java",
+      "sha256": "7ae6d1dbe5195d44e8d6be65189a0228c73f417a716410d01255959c153052be",
+      "validation": "2026-10-27 v677 fresh isolated Android source checks 1783; new local facial controls tested through MainActivity with provider budget zero. Provider payload unchanged. docs/REST-CONVERSATION-v677.md"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/HealthConversationContext.java",
+      "sha256": "02cca8a30249f61431a1097438ee6cb8ff1e73492ad731a389b53f61b1d9b9e5",
+      "validation": "2026-10-29: reviewed synthetic complete payload; fresh isolated Android device check 446 assertions including SDK measurement freshness, missing timestamp rejection and encrypted cache; outputs/sdk-v695-preflight. No external API calls. Historical live evidence is not SDK integration proof."
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/HealthProactiveGemini.java",
+      "sha256": "c34457cb4d20b11d4fb9af03631778a36d88ce2f7bbbed7187f4eb452bfa2790",
+      "validation": "Same authorized 422-assertion Android preflight; exact proactive payload and mock HTTP 200/429/cancel paths reviewed; no live response claimed. Installed v693 Task.run: one user-authorized synthetic provider call accepted (HTTP200/STOP, 1726ms); key used only inside target app; no real health data/history; one-hour reservation persisted. docs/reviews/health-v693/provider-live.json"
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/EnergySampleTime.java",
+      "sha256": "8e281e73c2502f10d289d99a1454b9b4574e29a971bc9aefff224e88c7696bb6",
+      "validation": "2026-10-29: reviewed synthetic complete payload; fresh isolated Android device check 446 assertions including SDK measurement freshness, missing timestamp rejection and encrypted cache; outputs/sdk-v695-preflight. No external API calls. Historical live evidence is not SDK integration proof."
     }
   ],
   "extensions": [

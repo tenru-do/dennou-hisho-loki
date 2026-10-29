@@ -1083,6 +1083,8 @@ public final class MainActivity extends Activity {
         navigationDestinationInput.setText(
                 getPreferences().getString(KEY_MAP_ROUTE_DESTINATION, ""));
         navigationDestinationInput.setSelectAllOnFocus(true);
+        navigationDestinationInput.addTextChangedListener(new TextWatcher(){String before="";public void beforeTextChanged(CharSequence t,int start,int count,int after){before=t.toString();}public void onTextChanged(CharSequence t,int start,int beforeCount,int count){if(!destinationRestoring&&!before.equals(t.toString())){long editAt=android.os.SystemClock.elapsedRealtime();if(destinationUndoAfter==null||editAt-destinationEditAt>1500)destinationUndoBefore=before;destinationUndoAfter=t.toString();destinationEditAt=editAt;}}public void afterTextChanged(Editable e){}});
+
         LinearLayout destinationRow = new LinearLayout(this);
         destinationRow.setOrientation(LinearLayout.HORIZONTAL);
         destinationRow.addView(navigationDestinationInput,
@@ -1098,6 +1100,8 @@ public final class MainActivity extends Activity {
         destinationRow.addView(clearDestination, new LinearLayout.LayoutParams(
                 (int)(48 * getResources().getDisplayMetrics().density), LinearLayout.LayoutParams.WRAP_CONTENT));
         navigation.addView(destinationRow);
+        Button undoDestination=new Button(this);undoDestination.setText("目的地入力を戻す");undoDestination.setOnClickListener(v->updateStatus("目的地入力",undoDestinationDraft()));navigation.addView(undoDestination);
+
         Button entrance=new Button(this);entrance.setText("駅の出口・施設の入口を選ぶ");entrance.setOnClickListener(v->{final String before=navigationDestinationInput.getText().toString();NavigationEntranceDialog.show(this,before,(label,address)->{if(!before.equals(navigationDestinationInput.getText().toString())){updateStatus("目的地を保持しました","検索中に目的地が変わりました。入口を選び直してください");return;}GoogleNavigationClient.rememberDestination(label,address);stagedNavigationRoute=null;stagedNavigationDestination="";navigationDestinationInput.setTag(null);navigationDestinationInput.setText(label);selectedEntryName=label;selectedEntryDestination=label;updateStatus("入口・出口を設定","選んだ地点が目的地です。MAPナビ開始で経路を確認してください。建物内の経路は案内しません。");});});navigation.addView(entrance);
         LinearLayout presetRow = new LinearLayout(this);
         for (String kind : new String[]{"home", "work"}) {
@@ -1372,9 +1376,10 @@ public final class MainActivity extends Activity {
         LinearLayout mediaRecords=PhoneWorkspaceLayout.panel(this);PhoneWorkspaceLayout.add(mediaRecords,photos);PhoneWorkspaceLayout.add(mediaRecords,meetingHealth);generatedImagePanel=new GeneratedImagePanel(this);PhoneWorkspaceLayout.add(mediaRecords,generatedImagePanel.view());generatedVideoPanel=generatedImagePanel.videoPanel;addPhoneFoldSection(recordsPage,"写真・録音・生成した画像",mediaRecords);
 
         LinearLayout settingsPage=PhoneWorkspaceLayout.panel(this);PhoneWorkspaceLayout.heading(this,settingsPage,"設定","接続や動作を調整します。会話・ナビからいつでも戻れます。");
+        Button healthAdvice=new Button(this);healthAdvice.setText("歩数・HEALBEと運動の声かけ");healthAdvice.setOnClickListener(v->HealbeAdviceSettings.show(this));PhoneWorkspaceLayout.add(settingsPage,healthAdvice);
         LinearLayout connectionSettings=PhoneWorkspaceLayout.panel(this);tethering.setText("スマホのテザリング設定");PhoneWorkspaceLayout.add(settingsPage,tethering);TextView tetherHelp=new TextView(this);tetherHelp.setText("スマホでテザリングをオンにし、グラスのSET → Wi-Fiから接続先を選びます。");tetherHelp.setTextSize(12);tetherHelp.setPadding(4,0,4,10);PhoneWorkspaceLayout.add(settingsPage,tetherHelp);PhoneWorkspaceLayout.add(connectionSettings,webConsole);Button audioState=new Button(this);audioState.setText("音声・Bluetoothの状態");audioState.setOnClickListener(v->AudioRouteStatusDialog.show(this));PhoneWorkspaceLayout.add(connectionSettings,audioState);Button mediaControl=new Button(this);mediaControl.setText("この端末の音楽・ラジオ：30秒送り／戻し");mediaControl.setOnClickListener(v->LocalMediaDialog.show(this));PhoneWorkspaceLayout.add(connectionSettings,mediaControl);PhoneWorkspaceLayout.add(connectionSettings,pronunciation);PhoneWorkspaceLayout.add(connectionSettings,quiet);addPhoneFoldSection(settingsPage,"接続・音声・読み上げ",connectionSettings);
         LinearLayout topicPanel=PhoneWorkspaceLayout.panel(this);PhoneWorkspaceLayout.add(topicPanel,radioSwitch);PhoneWorkspaceLayout.add(topicPanel,radioMode);PhoneWorkspaceLayout.add(topicPanel,radioFrequency);PhoneWorkspaceLayout.add(topicPanel,radioHelp);addPhoneFoldSection(settingsPage,"自動で話す（TOPIC）",topicPanel);
-        LinearLayout upkeep=PhoneWorkspaceLayout.panel(this);Button stability=new Button(this);stability.setText("安定稼働・復旧の確認");stability.setOnClickListener(v->StabilityOverview.show(this));PhoneWorkspaceLayout.add(upkeep,stability);for(View v:new View[]{updates,departure,tuning,maintenance,quickMaintenance,reliability,operations,workspace})PhoneWorkspaceLayout.add(upkeep,v);addPhoneFoldSection(settingsPage,"更新・バックアップ・動作確認",upkeep);
+        LinearLayout upkeep=PhoneWorkspaceLayout.panel(this);Button adopted=new Button(this);adopted.setText("使える機能・復旧・続きを開く");adopted.setOnClickListener(v->AdoptedControls.show(this));PhoneWorkspaceLayout.add(upkeep,adopted);Button stability=new Button(this);stability.setText("安定稼働・復旧の確認");stability.setOnClickListener(v->StabilityOverview.show(this));PhoneWorkspaceLayout.add(upkeep,stability);for(View v:new View[]{updates,departure,tuning,maintenance,quickMaintenance,reliability,operations,workspace})PhoneWorkspaceLayout.add(upkeep,v);addPhoneFoldSection(settingsPage,"更新・バックアップ・動作確認",upkeep);
         PhoneWorkspaceLayout.detach(toolsPanel);phoneAdvancedContent=toolsPanel;addPhoneFoldSection(settingsPage,"詳細設定（API・接続操作）",toolsPanel);
         if(daily.getChildCount()>0)addPhoneFoldSection(settingsPage,"その他の管理機能",daily);
         PhoneWorkspaceLayout.add(settingsPage,details);
@@ -1980,6 +1985,9 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private String destinationUndoBefore,destinationUndoAfter;private boolean destinationRestoring;private long destinationEditAt;
+    String undoDestinationDraft(){if(navigationDestinationInput==null||destinationUndoAfter==null)return "戻せる入力はありません";if(!destinationUndoAfter.equals(navigationDestinationInput.getText().toString()))return "目的地が変わっています。上書きしません";destinationRestoring=true;try{navigationDestinationInput.setText(destinationUndoBefore);destinationUndoAfter=null;stagedNavigationRoute=null;stagedNavigationDestination="";return "入力だけを戻しました。案内中の経路は変更しません";}finally{destinationRestoring=false;}}
+    JSONObject cachedRouteForHandoff()throws Exception{SharedPreferences p=getPreferences();return new JSONObject().put("destination",p.getString(KEY_MAP_ROUTE_DESTINATION,"")).put("mode",p.getString(KEY_MAP_ROUTE_MODE,"")).put("at",p.getLong(KEY_MAP_ROUTE_TIME,0)).put("distance",p.getFloat(KEY_MAP_ROUTE_DISTANCE,-1)).put("duration",p.getFloat(KEY_MAP_ROUTE_DURATION,-1)).put("points",p.getString(KEY_MAP_ROUTE_POINTS,""));}
     JSONObject navigationHealth()throws Exception{
         SharedPreferences p=getPreferences();Location location=getBestAvailableLocation();long now=System.currentTimeMillis(),routeAt=p.getLong(KEY_MAP_ROUTE_TIME,0L);String selected=p.getString(KEY_MAP_ROUTE_DESTINATION,""),requested=confirmedSharedDestination;
         JSONObject health=NavigationHealthPolicy.snapshot(now,routeAt,location==null?0:location.getTime(),navigationRouteTimedOut()?"google_route_timeout":p.getString(KEY_MAP_ROUTE_ERROR,""),navigationRouteFetchInFlight&&!navigationRouteTimedOut(),selected,requested,p.getString(KEY_MAP_ROUTE_POINTS,""));
@@ -2954,7 +2962,7 @@ public final class MainActivity extends Activity {
                         @Override
                         public void run() {
                             updateStatus("起動中",
-                                    "グラスからTLS接続できます。\nhttps://" + ip + ":8766/today");
+                                    ip.isEmpty()?"共有先のWi-Fiアドレスがありません。Wi-Fi接続を確認してください。":"グラスからTLS接続できます。\nhttps://" + ip + ":8766/today");
                         }
                     });
                     while (running) {
@@ -3072,6 +3080,8 @@ public final class MainActivity extends Activity {
                 return;
             }
             if(request.startsWith("GET /stt_prepare ")){speechWarmup.prepare(this);writeJsonResponse(socket,200,"{\"ok\":true}");return;}
+            if(request.startsWith("GET /health_gemini ")){writeJsonResponse(socket,200,HealthGeminiSettings.read(this).toString());return;}
+            if(request.startsWith("POST /health_gemini ")){try{writeJsonResponse(socket,200,HealthGeminiSettings.save(this,new JSONObject(bodyText)).toString());}catch(Exception invalid){writeJsonResponse(socket,400,"{\"error\":\"invalid_health_gemini_config\"}");}return;}
             if(request.startsWith("POST /conversation_receipt ")) {
                 JSONObject data=new JSONObject(formValue(bodyText,"request"));
                 try{writeJsonResponse(socket,200,LokiWebConsole.trackedReceipt(this,data).toString());}
@@ -3131,6 +3141,8 @@ public final class MainActivity extends Activity {
                         .put("permission",CalendarWriter.permitted(this)).put("calendars",CalendarWriter.calendars(this)).toString());return;
             }
             if(request.startsWith("POST /meeting_state ")) {writeJsonResponse(socket,200,MeetingControl.update(this,new JSONObject(formValue(bodyText,"state"))).toString());return;}
+            if(request.startsWith("GET /adopted_state ")){writeJsonResponse(socket,200,AdoptedControls.state(this).toString());return;}
+            if(request.startsWith("POST /handoff_resume ")){JSONObject value=new JSONObject(formValue(bodyText,"request"));if(!"resume".equals(value.optString("action")))throw new java.io.IOException("引き継ぎ操作を確認してください");writeJsonResponse(socket,200,AdoptedControls.action(this,value).toString());return;}
             if(request.startsWith("GET /media_sessions ")){writeJsonResponse(socket,200,LocalMediaControl.list(this).toString());return;}
             if(request.startsWith("POST /media_seek ")){writeJsonResponse(socket,200,LocalMediaControl.execute(this,new JSONObject(formValue(bodyText,"request"))).toString());return;}
             if(request.startsWith("GET /photo_import ")){writeJsonResponse(socket,200,PhotoImportRequests.peek(this,System.currentTimeMillis()).toString());return;}
@@ -6764,6 +6776,8 @@ public final class MainActivity extends Activity {
         root.put("time", time);
         root.put("source", getPreferences().getLong("health_connect_time", 0L) == savedTime
                 ? "Health Connect" : "Step Counter / bridge");
+        root.put("energy", HealbeSdkReader.preferred(this,HealbeEnergyStore.snapshot(this)));
+        root.put("geminiMode",HealthGeminiSettings.mode(this));
         return root;
     }
 
@@ -7188,24 +7202,7 @@ public final class MainActivity extends Activity {
         return cal.getTimeInMillis();
     }
 
-    private String getWifiIp() {
-        try {
-            for (NetworkInterface networkInterface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                for (java.net.InetAddress address : Collections.list(networkInterface.getInetAddresses())) {
-                    if (!address.isLoopbackAddress() && address instanceof Inet4Address) {
-                        String ip = address.getHostAddress();
-                        if (ip != null
-                                && !ip.startsWith("127.")
-                                && !ip.startsWith("169.254.")) {
-                            return ip;
-                        }
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return "スマホのWi-Fi IP";
-    }
+    private String getWifiIp() { return LocalShareNetwork.address(this); }
 
     private void updateStatus(String title, String message) {
         status.setText(title);

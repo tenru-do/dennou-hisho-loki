@@ -1,0 +1,98 @@
+{
+  "kind": "seated-to-standing-fixed-scale",
+  "imageWidth": 1536,
+  "imageHeight": 1024,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        512,
+        460
+      ],
+      "headBounds": [
+        229,
+        38,
+        66,
+        79
+      ]
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        512,
+        0,
+        1024,
+        460
+      ],
+      "headBounds": [
+        229,
+        43,
+        66,
+        80
+      ]
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        1024,
+        0,
+        1536,
+        460
+      ],
+      "headBounds": [
+        230,
+        21,
+        64,
+        80
+      ]
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        0,
+        460,
+        512,
+        1024
+      ],
+      "headBounds": [
+        247,
+        7,
+        65,
+        82
+      ]
+    },
+    {
+      "index": 4,
+      "cropLTRB": [
+        512,
+        460,
+        1024,
+        1024
+      ],
+      "headBounds": [
+        227,
+        7,
+        63,
+        80
+      ]
+    },
+    {
+      "index": 5,
+      "cropLTRB": [
+        1024,
+        460,
+        1536,
+        1024
+      ],
+      "headBounds": [
+        219,
+        7,
+        64,
+        80
+      ]
+    }
+  ],
+  "manualNotes": "Approximate manually inspected head/hair bounds. Seated and bent figures must not be normalized to standing height. Compare same person head size, jaw, hands, knees and heels. Row separator at y460 (empty band455..466), not y512. Native seam checks must reject fragments. Single opaque keyframe avoids double-body crossfade ghosting."
+}

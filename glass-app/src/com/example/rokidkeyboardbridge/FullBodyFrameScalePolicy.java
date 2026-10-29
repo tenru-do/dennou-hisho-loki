@@ -9,7 +9,7 @@ final class FullBodyFrameScalePolicy {
   float target=(float)Math.hypot(base[8]-base[2],base[9]-base[3])*FullBodyScalePolicy.scale(reference,(int)base[0],(int)base[1],width,height);
   float[] spans=new float[6];for(int j=0;j<6;j++){float[] f=FullBodyRealisticFeatures.ALL[first+j];spans[j]=(float)Math.hypot(f[8]-f[2],f[9]-f[3]);}
   java.util.Arrays.sort(spans);float scale=target/((spans[2]+spans[3])*.5f);
-  for(int j=0;j<6;j++){float[] f=FullBodyRealisticFeatures.ALL[first+j],b=BOUNDS[first+j];scale=Math.min(scale,Math.min((width-6f)/(b[1]-b[0]),height/f[1]));}
+  // Source family keeps one anatomical scale; viewport clips overflow.
   return scale;
  }
 }

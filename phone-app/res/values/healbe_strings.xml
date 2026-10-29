@@ -1,0 +1,4 @@
+<resources>
+ <string name="healbe_energy_read_label">ロキ：HEALBEのエネルギー収支を読む</string>
+ <string name="healbe_energy_read_description">HEALBEを表示したとき、今日のエネルギーバランスの文字を読み取り、端末内に暗号化保存して運動の提案に使います。他のアプリの画面は読みません。自動タップや画面撮影は行いません。Gemini会話連動オン時のみ新しい歩数・収支・取得時刻をGoogle Geminiへ送ります。HEALBEを閉じた後の数値更新はできません。</string>
+</resources>

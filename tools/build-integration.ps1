@@ -1,10 +1,11 @@
-﻿param([ValidateSet('glass','phone','camera','audio-relay')][string]$App,[switch]$Development,[switch]$Release,[string]$KeyStorePath,[string]$KeyAlias)
+param([ValidateSet('glass','phone','camera','audio-relay')][string]$App,[switch]$Development,[switch]$Release,[string]$KeyStorePath,[string]$KeyAlias)
 $ErrorActionPreference='Stop'
 if($Release){
     if($Development){throw 'Release cannot be combined with Development'}
     if(!$KeyStorePath -or !$KeyAlias -or !(Test-Path -LiteralPath $KeyStorePath) -or !$env:LOKI_RELEASE_STORE_PASSWORD -or !$env:LOKI_RELEASE_KEY_PASSWORD){throw 'Release requires an explicit keystore, alias and LOKI_RELEASE_STORE_PASSWORD/LOKI_RELEASE_KEY_PASSWORD environment variables'}
 }
 $root=Split-Path $PSScriptRoot -Parent
+if($App -eq 'glass'){& "$PSScriptRoot/Assert-CharacterArtwork.ps1"}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/Assert-ConversationPromptBaseline.ps1" -App $App}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/generate-loki-self-profile.ps1"}
 if($App -eq 'glass'){& "$PSScriptRoot/Test-ConversationCompletion.ps1"}
@@ -60,6 +61,8 @@ $exitCode=$LASTEXITCODE
 $ErrorActionPreference='Stop'
 foreach($entry in $output){Write-Output ([string]$entry)}
 if($exitCode -ne 0){throw "Android compilation failed: $exitCode"}
+if($App -eq 'glass'){& "$PSScriptRoot/Test-CharacterContinuity.ps1" -Classes $classes -Output "$build/character-tests"}
+if($App -eq 'phone'){& "$PSScriptRoot/Test-NewsSpeech.ps1" -Classes $classes -Output "$build/news-tests"}
 & "$env:JAVA_HOME/bin/jar.exe" cf "$build/program.jar" -C "$build/classes" .
 Check-Exit
 & "$bt/d8.bat" --lib $android --min-api 28 --output "$build/dex" "$build/program.jar"

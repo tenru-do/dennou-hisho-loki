@@ -1,0 +1,2 @@
+package com.example.rokidkeyboardbridge;
+class ExportConversationVisualCatalog {public static void main(String[] args){System.out.println("pose_id\tseated\tintensity\tsemantic_kinds\tgesture");for(FullBodyPoseCatalog.Pose p:FullBodyPoseCatalog.ALL){StringBuilder kinds=new StringBuilder();for(FullBodyPoseCatalog.Kind k:FullBodyPoseCatalog.Kind.values())if(p.supports(k)){if(kinds.length()>0)kinds.append("/");kinds.append(k.name());}System.out.println(p.id+"\t"+p.seated+"\t"+p.intensity+"\t"+kinds+"\t"+p.gesture);}}}

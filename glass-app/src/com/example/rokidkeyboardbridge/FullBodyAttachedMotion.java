@@ -7,8 +7,8 @@ final class FullBodyAttachedMotion {
  static final float[][] BOUNDS={{91f,427f,34f,677f},{23f,1001f,70f,1436f},{212f,560f,24f,1895f},{23.00000000f,451.00000000f,121.00000000f,933.00000000f}};
  static int group(int scene){return scene>=FIRST_SCENE&&scene<FIRST_SCENE+COUNT?scene-FIRST_SCENE:-1;}
  static int effects(int scene){int g=group(scene);return g==0?5:(g==1||g==3)?1:0;}
- static float scale(int id,int width,int height){float[] f=FEATURES[id],b=BOUNDS[id];float eye=(float)Math.hypot(f[8]-f[2],f[9]-f[3]);return Math.min(FullBodySceneScalePolicy.reference(width,height)/Math.max(1,eye),Math.min((width-14f)/(b[1]-b[0]),(height-12f)/(b[3]-b[2])));}
- static float left(int id,int width,float scale){float[] f=FEATURES[id],b=BOUNDS[id];float center=(f[2]+f[8])*.5f;return Math.max(7-b[0]*scale,Math.min(width-7-b[1]*scale,width*.44f-center*scale));}
- static float top(int id,int height,float scale){return height-6-BOUNDS[id][3]*scale;}
+ static float scale(int id,int width,int height){float[] f=FEATURES[id],b=BOUNDS[id];float eye=(float)Math.hypot(f[8]-f[2],f[9]-f[3]);return FullBodySceneScalePolicy.reference(width,height)/Math.max(1,eye);}
+ static float left(int id,int width,float scale){float[] f=FEATURES[id],b=BOUNDS[id];float center=(f[2]+f[8])*.5f;return width*.44f-center*scale;}
+ static float top(int id,int height,float scale){return CharacterViewport.top(height-6-BOUNDS[id][3]*scale,BOUNDS[id][2],scale,height);}
  static float rock(int id,long elapsed){double t=Math.max(0,elapsed);return(float)(Math.sin(t*Math.PI*2/(id==1?3500:6100))*(id==1?.45:.24));}
 }

@@ -1,0 +1,51 @@
+package com.example.rokidkeyboardbridge;
+import android.content.*;import org.json.*;import java.io.*;import java.lang.reflect.*;import java.nio.charset.StandardCharsets;import java.util.*;
+public final class RapportHistoryChecks {
+ static int n;static void ok(boolean b,String s){n++;if(!b)throw new AssertionError(s);}
+ static JSONObject turn(long at,String u,String a)throws Exception{return new JSONObject().put("time",at).put("user",u).put("assistant",a).put("topic","general");}
+ static Method method(Class<?> c,String name,Class<?>...types)throws Exception{Method m=c.getDeclaredMethod(name,types);m.setAccessible(true);return m;}
+ static void field(Object o,String key,Object v)throws Exception{Field f=o.getClass().getDeclaredField(key);f.setAccessible(true);f.set(o,v);}
+ static void write(File file,String data)throws Exception{try(FileOutputStream out=new FileOutputStream(file)){out.write(data.getBytes(StandardCharsets.UTF_8));}}
+ public static int run(Context c)throws Exception{
+  long now=System.currentTimeMillis();JSONArray history=new JSONArray();for(int i=0;i<30;i++)history.put(turn(now-(30-i)*60000,"合成施設"+i+"の確認","合成回答"+i));
+  JSONArray refs=ConversationLogContext.references(history,"近くは？",now);ok(refs.length()>6,"more than six turns");ok(refs.toString().length()<=10000,"bounded payload");ok(refs.getJSONObject(refs.length()-1).getString("previous_user").contains("29"),"newest retained");new JSONArray(refs.toString());
+  ok(ConversationLogContext.references(history,"新しい話題です",now).length()==0,"reset excluded");ok(!ConversationLogContext.retained(now+1,now),"future excluded");ok(!ConversationLogContext.retained(now-8*86400000L,now),"bounded local cache only");
+  JSONArray old=new JSONArray().put(turn(now-86400000L,"合成公園の池は青雫池","昨日の回答"));ok(ConversationLogContext.references(old,"合成公園の続きを",now).length()==1,"ordinary noun resumes next day");ok(ConversationLogContext.references(old,"東京駅の続きを",now).length()==0,"unrelated old excluded");
+  ok(ConversationLogContext.archiveQuery("合成公園の続きを","[]").contains("合成公園"),"ordinary archive query");ok(ConversationLogContext.archiveQuery("新しい話題。合成公園は？","[]").isEmpty(),"reset no archive");ok(ConversationLogContext.archiveQuery("うん","[]").isEmpty(),"no generic lookup");
+  ContextWrapper fixture=new ContextWrapper(c){};MainActivity activity=new MainActivity();method(ContextWrapper.class,"attachBaseContext",Context.class).invoke(activity,fixture);field(activity,"sharedMemoryManager",new SharedMemoryManager(c,()->"{}"));Field budget=MainActivity.class.getDeclaredField("diagnosticGeminiBudget");budget.setAccessible(true);((java.util.concurrent.atomic.AtomicInteger)budget.get(activity)).set(0);
+  SharedPreferences prefs=c.getSharedPreferences("gemini_settings",0);JSONArray saved=new JSONArray().put(turn(now-25*60000,"合成公園の隣の池は青雫池です","合成データですね。"));prefs.edit().clear().putString("conversation_history",saved.toString()).putLong("last_conversation_at",now-25*60000).commit();
+  String current="近くの池は？ 架空のテスト会話だけを根拠に池の名前を一文で答えてください。検索や外部操作はしないでください。";field(activity,"activeGeminiPrompt",current);
+  String prompt=(String)method(MainActivity.class,"buildGeminiPromptCompact",String.class,boolean.class).invoke(activity,current,true);ok(prompt.contains("青雫池"),"25 minute ordinary conversation included");ok(prompt.contains(ConversationLogContext.INSTRUCTION),"log not explicit memory note");
+  JSONObject payload=new JSONObject().put("contents",new JSONArray().put(new JSONObject().put("role","user").put("parts",new JSONArray().put(new JSONObject().put("text",prompt)))));
+  Method build=method(MainActivity.class,"buildConversationRequest",JSONObject.class,Integer.class,String.class);JSONObject body=(JSONObject)build.invoke(activity,payload,null,null);body.remove("tools");body.remove("toolConfig");write(new File(c.getFilesDir(),"provider-recent.json"),body.toString());
+  String retry=(String)method(MainActivity.class,"minimalConversationRetryContext",String.class).invoke(activity,current);ok(retry.contains("青雫池"),"empty reply retry retains subject");ok(prefs.getString("conversation_history","").equals(saved.toString()),"read and retry never erase log");
+  field(activity,"voiceLoopMode",true);String voice=(String)method(MainActivity.class,"buildGeminiPromptCompact",String.class,boolean.class).invoke(activity,current,true);ok(voice.contains("青雫池")&&voice.contains("voice_conversation_policy"),"VOICE shares history");
+  // Existing phone archive implementation with only synthetic records in an isolated app.
+  Class<?> phone=Class.forName("com.example.rokidgeminisecretary.MainActivity");Object owner=phone.getConstructor().newInstance();method(ContextWrapper.class,"attachBaseContext",Context.class).invoke(owner,fixture);
+  long day=86400000L;String raw=new JSONObject().put("time",now-120*day).put("kind","ユーザー").put("message","合成島で好きな飲み物は星雫茶です。").toString()+"\n"+new JSONObject().put("time",now-120*day+1000).put("kind","Gemini").put("message","合成島の好みとして確認しました。").toString()+"\n"+new JSONObject().put("time",now-89*day).put("kind","ユーザー").put("message","89日前の合成記録").toString()+"\n";
+  File rawFile=new File(c.getFilesDir(),"conversation_memory.jsonl");write(rawFile,raw);method(phone,"compactConversationMemoryLocked").invoke(owner);
+  String retained=new String(java.nio.file.Files.readAllBytes(rawFile.toPath()),StandardCharsets.UTF_8);ok(retained.contains("89日前"),"raw within 90 days retained");ok(!retained.contains("星雫茶"),"old moved to archive");
+  String result=method(phone,"buildConversationMemoryJson",String.class).invoke(owner,"GET /memory?offset=-36500&days=36501&q="+java.net.URLEncoder.encode("合成島","UTF-8")+" HTTP/1.1").toString();JSONObject archive=new JSONObject(result);ok(archive.getInt("count")>0&&result.contains("星雫茶")&&result.contains("長期記憶"),"120 day compressed record searchable");
+  prefs.edit().remove("conversation_history").remove("last_conversation_at").commit();field(activity,"voiceLoopMode",false);String oldCurrent="合成島で好きな飲み物は？ 架空の合成データだけを根拠に一文で答え、検索や外部操作はしないでください。";field(activity,"activeGeminiPrompt",oldCurrent);String q=ConversationLogContext.archiveQuery(oldCurrent,"[]");Field cache=MainActivity.class.getDeclaredField("automaticLogCache");cache.setAccessible(true);((Map<String,String>)cache.get(activity)).put(q,result);field(activity,"automaticLogCacheAt",android.os.SystemClock.elapsedRealtime());
+  String oldPrompt=(String)method(MainActivity.class,"buildGeminiPromptCompact",String.class,boolean.class).invoke(activity,oldCurrent,true);ok(oldPrompt.contains("星雫茶")&&oldPrompt.contains("saved_conversation_log"),"ordinary prompt gets old compressed record without remember command");
+  JSONObject oldPayload=new JSONObject().put("contents",new JSONArray().put(new JSONObject().put("role","user").put("parts",new JSONArray().put(new JSONObject().put("text",oldPrompt)))));JSONObject oldBody=(JSONObject)build.invoke(activity,oldPayload,null,null);oldBody.remove("tools");oldBody.remove("toolConfig");write(new File(c.getFilesDir(),"provider-archive.json"),oldBody.toString());
+  CharacterMotionPreferences.save(c,2);CharacterMotionTuning.set(0);CharacterMotionPreferences.load(c);ok(CharacterMotionTuning.level==2,"motion preference persisted");CharacterMotionPreferences.save(c,1);
+  visuals(c);return n;
+ }
+ static void visuals(Context system)throws Exception{
+  android.content.res.AssetManager assets=android.content.res.AssetManager.class.getConstructor().newInstance();android.content.res.AssetManager.class.getMethod("addAssetPath",String.class).invoke(assets,new File(system.getFilesDir(),"source.apk").getPath());android.content.res.Resources resources=new android.content.res.Resources(assets,system.getResources().getDisplayMetrics(),system.getResources().getConfiguration());Context c=new ContextWrapper(system){public android.content.res.AssetManager getAssets(){return assets;}public android.content.res.Resources getResources(){return resources;}};
+  PortraitExpressionRenderer face=new PortraitExpressionRenderer(c);ok(face.ready(),"rapport face atlas");FullBodyGestureCanvasTest.Host host=new FullBodyGestureCanvasTest.Host(c);FullBodyGestureRenderer body=new FullBodyGestureRenderer(host);body.request(5);ok(host.done.await(15,java.util.concurrent.TimeUnit.SECONDS)&&body.ready(5),"rapport body decode");CharacterRapportPolicy policy=new CharacterRapportPolicy();body.rapport(policy,0);
+  android.graphics.Bitmap montage=android.graphics.Bitmap.createBitmap(1440,920,android.graphics.Bitmap.Config.ARGB_8888);android.graphics.Canvas page=new android.graphics.Canvas(montage);page.drawColor(android.graphics.Color.BLACK);int[] times={0,700,1500,2700,4800,6500};
+  for(int level=0;level<3;level++){
+   CharacterMotionTuning.set(level);face.rapport.preview(10000);policy.preview(10000);Set<Integer> faces=new HashSet<>(),bodies=new HashSet<>();
+   for(int i=0;i<times.length;i++){
+    if(i==3){ok(face.rapport.touch(12200),"face tactile acknowledgement");ok(policy.touch(12200),"body tactile acknowledgement");}
+    android.graphics.Bitmap f=android.graphics.Bitmap.createBitmap(240,320,android.graphics.Bitmap.Config.ARGB_8888),b=android.graphics.Bitmap.createBitmap(240,600,android.graphics.Bitmap.Config.ARGB_8888);android.graphics.Canvas fc=new android.graphics.Canvas(f),bc=new android.graphics.Canvas(b);fc.drawColor(android.graphics.Color.BLACK);bc.drawColor(android.graphics.Color.BLACK);ok(face.draw(fc,240,320,0,0,false,false,10000+times[i]),"rapport face draw");ok(body.draw(bc,240,600,5,1200,10000+times[i]),"rapport body draw");
+    int[] fp=new int[240*320],bp=new int[240*600];f.getPixels(fp,0,240,0,0,240,320);b.getPixels(bp,0,240,0,0,240,600);faces.add(Arrays.hashCode(fp));bodies.add(Arrays.hashCode(bp));boolean clear=true;for(int y=0;y<600;y++)for(int x=0;x<3;x++)if((bp[y*240+x]&0xffffff)!=0||(bp[y*240+239-x]&0xffffff)!=0)clear=false;ok(clear,"rapport body fits viewport");if(level==1){page.drawBitmap(f,i*240,0,null);page.drawBitmap(b,i*240,320,null);}f.recycle();b.recycle();
+   }
+   ok(faces.size()>=4&&bodies.size()>=4,"visible anticipation/wait/response/settle for each setting");
+  }
+  try(FileOutputStream out=new FileOutputStream(new File(system.getFilesDir(),"rapport-preview.png"))){montage.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}montage.recycle();face.release();body.release();CharacterMotionTuning.set(1);
+ }
+
+}

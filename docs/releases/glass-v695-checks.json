@@ -1,0 +1,131 @@
+{
+  "glassVersion": 695,
+  "phoneVersion": 303,
+  "healbeCompanionVersion": 2,
+  "distribution": "alpha",
+  "nativeAssertionsPassed": 446,
+  "signedApkHashes": {
+    "loki-glass-v695-release.apk": "4bf48668f4d6f23138613bead28daf479816968b09c05358131ee3b0843cf4b3",
+    "loki-phone-v303-release.apk": "6190080a989ef52e6d591715e23d5d94011b070d1be108b1d2c883a5fd051641",
+    "loki-healbe-v2-release.apk": "4339a5f5f83937cdf2bb7edb1d6d81e22614b4deeef04cbed3673bbc5710a956"
+  },
+  "browserSuites": [
+    {
+      "suite": "ConversationRobustnessWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ConversationPlusWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ConversationUiWebTest",
+      "exitCode": 0,
+      "rerunAfterTestFixtureOrExpectationUpdate": true
+    },
+    {
+      "suite": "TabletConversationWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "WebTurnProgressTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ConversationToolsWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "EverydayConversationWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ReconnectConversationWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "PhotoFollowUpWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ImageQuestionWebTest",
+      "exitCode": 0,
+      "rerunAfterTestFixtureOrExpectationUpdate": true
+    },
+    {
+      "suite": "PhotoQualityWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "AnswerCorrectionsWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "RecordsWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "CheckpointWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ReleaseReliabilityWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ReliabilityCenterWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "ExperienceCenterWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "MaintenanceCenterWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "AssistantReviewWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "TuningWebTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "MediaAttachmentsBrowserTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "MeetingWebBrowserTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "WebEnterBrowserTest",
+      "exitCode": 0
+    },
+    {
+      "suite": "WebSendBrowserTest",
+      "exitCode": 0
+    }
+  ],
+  "additionalBrowserSuites": [
+    "WebStorageRecoveryTest",
+    "PendingQuestionNonBlockingTest",
+    "Test-WebReconnect"
+  ],
+  "externalProviderTestsReused": false,
+  "healbeVerification": [
+    "previous-day component and balance match within display rounding",
+    "current-day official basal and four-category activity sum match SDK total after explicit reconnect",
+    "process termination followed by job restart and successful fetch"
+  ],
+  "limitations": [
+    "whole-phone reboot not tested",
+    "extended Doze not tested after reconnect fix",
+    "final glasses health text unavailable for PC inspection",
+    "current-day readings provisional and timing-dependent"
+  ],
+  "sourceSecretScanFindings": 0,
+  "deviceIdentifierScanFindings": 0
+}

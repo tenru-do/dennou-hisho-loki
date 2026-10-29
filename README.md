@@ -1,3 +1,7 @@
+## 最新の公開版（アルファ版）
+
+グラス **v695**・スマホ **v303**・任意のHEALBE補助 **v2**。[変更内容・導入方法・検証範囲](docs/releases/glass-v695.md)、[APKダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v695)。
+
 # 電脳秘書ロキ
 
 Rokidグラスを、Bluetoothキーボード・音声・スマートフォンから操作できるGeminiベースの実験的AI秘書にするAndroidアプリ群です。

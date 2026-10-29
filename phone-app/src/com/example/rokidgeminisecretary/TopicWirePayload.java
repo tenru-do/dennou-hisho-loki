@@ -10,16 +10,16 @@ final class TopicWirePayload {
         appendArticles(out,top,2);
         if(top==null || top.length()==0)appendArticles(out,local,2);
         if((top==null||top.length()==0)&&(local==null||local.length()==0))
-            return "ニュースは更新を再試行中です。取得でき次第お届けします。";
+            return repeated?"新しいニュースはありません。既にお伝えした見出しは省きます。":"ニュースは更新を再試行中です。取得でき次第お届けします。";
         return TopicTextPolicy.limit(out.toString(),TopicTextPolicy.NEWS_CHARS);
     }
     private static void appendArticles(StringBuilder out,JSONArray articles,int max) {
         if(articles==null)return;
-        for(int i=0;i<articles.length()&&i<max;i++) {
+        java.util.Set<String> seen=new java.util.HashSet<>(); int emitted=0;
+        for(int i=0;i<articles.length()&&emitted<max;i++) {
             JSONObject a=articles.optJSONObject(i);if(a==null)continue;
-            out.append("\n\n").append(TopicTextPolicy.limit(a.optString("title"),90)).append("。");
-            String description=TopicTextPolicy.limit(a.optString("description"),55);
-            if(!description.isEmpty()&&!description.equals(a.optString("title")))out.append("\n").append(description).append("。");
+            String title=a.optString("title");if(title.trim().isEmpty())continue; if(!seen.add(NewsSpeechText.key(NewsSpeechText.headline(title))))continue; emitted++;
+            out.append("\n\n").append(TopicTextPolicy.limit(title,90)).append("。");
         }
     }
     static JSONObject prepare(Context context,JSONObject source) throws Exception {
@@ -27,11 +27,11 @@ final class TopicWirePayload {
         JSONObject cache=MorningBriefingManager.newsCache(context);
         JSONArray top=source.optJSONArray("topNews"),local=source.optJSONArray("localNews");
         boolean repeated=source.optJSONArray("skippedTopNews")!=null && source.optJSONArray("skippedTopNews").length()>0;
-        if(top==null||top.length()==0) {
+        if(top==null) {
             top=cache.optJSONArray("topNews");
             repeated=source.optJSONArray("skippedTopNews")!=null && source.optJSONArray("skippedTopNews").length()>0;
         }
-        if(local==null||local.length()==0)local=cache.optJSONArray("localNews");
+        if(local==null)local=cache.optJSONArray("localNews");
         if((top==null||top.length()==0)&&(local==null||local.length()==0)
                 && MorningBriefingManager.initialNewsPending(context))
             return new JSONObject().put("ok",false).put("status","preparing");

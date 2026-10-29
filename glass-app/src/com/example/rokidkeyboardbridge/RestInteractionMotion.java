@@ -1,0 +1,6 @@
+package com.example.rokidkeyboardbridge;
+/** Modest shoulders/chest acknowledgements, with fixed head scale, hips, knees and feet. */
+final class RestInteractionMotion {
+ static float envelope(long age){if(age<=0||age>=2200)return 0;float x=(float)Math.sin(Math.PI*age/2200f);return x*x;}
+ static void apply(float[] mesh,int columns,int rows,int width,int height,float headX,float neckY,int kind,int direction,long age,float gain){float e=envelope(age)*Math.max(0,Math.min(1,gain));if(e==0||kind==0)return;float sway=kind==RestConversationReaction.ACK?(ConversationMicroMotion.bump(age,100,850)-.55f*ConversationMicroMotion.bump(age,1150,850)):kind==RestConversationReaction.THINK?(float)Math.sin(Math.PI*Math.min(1,age/1800f)):(float)Math.sin(age/(kind==RestConversationReaction.SURPRISE?180.0:420.0));for(int row=0;row<=rows;row++)for(int col=0;col<=columns;col++){float x=width*col/(float)columns,y=height*row/(float)rows,dx=(x-headX)/85f,dy=(y-(neckY+58))/85f,weight=Math.max(0,1-Math.abs(dx))*Math.max(0,1-Math.abs(dy));int index=(row*(columns+1)+col)*2;float side=kind==RestConversationReaction.TOUCH?(direction<0?-1:1):kind==RestConversationReaction.THINK?-1:1;mesh[index]+=1.6f*e*sway*weight*side;mesh[index+1]+=(kind==RestConversationReaction.SURPRISE?-1.2f:kind==RestConversationReaction.CARE?.5f:1.2f)*e*weight;}}
+}

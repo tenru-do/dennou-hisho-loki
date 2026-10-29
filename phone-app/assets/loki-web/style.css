@@ -34,3 +34,5 @@
 #latestAnswerRegion:empty{display:none}#conversationPreview article p:nth-child(2){max-height:12em;overflow:auto;overscroll-behavior:contain;white-space:pre-wrap}#answerJump{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));right:16px;z-index:25;max-width:80vw;box-shadow:0 2px 12px #0008}#answerJump[hidden]{display:none}#currentTurnStatus{white-space:pre-line}
 
 .reconnect-held{border:2px solid #e6b450;padding:12px;font-weight:700;background:#302710;color:#fff4ca}
+
+.adopted-reader{max-height:55vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.adopted-thumbnail{display:block;max-width:100%;max-height:240px;background:#000}#adoptedControls{margin:12px 0;padding:10px;border:1px solid #426467;border-radius:8px}#adoptedControls canvas{display:block;background:#000;margin:8px 0}

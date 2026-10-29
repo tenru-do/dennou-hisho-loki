@@ -59,16 +59,9 @@ final class FullBodyPoseCatalog {
   }
  }
  static int select(Kind kind,int intensity,int current,int variant){
-  boolean seated=current>=0&&FullBodyMotionPolicy.isSeated(current);
-  int best=1000,count=0;
-  for(Pose p:ALL)if(p.supports(kind)){
-   int score=Math.abs(p.intensity-intensity)*4+(p.seated==seated?0:3);
-   if(score<best){best=score;count=1;}else if(score==best)count++;
-  }
-  if(count==0)return current>=0?current:4;
-  int index=Math.floorMod(variant,count);
-  for(Pose p:ALL)if(p.supports(kind)&&Math.abs(p.intensity-intensity)*4+(p.seated==seated?0:3)==best){if(index--==0)return p.id;}
-  return 4;
+  int best=1000,count=0;for(Pose p:ALL){int score=ConversationImageMetadata.score(p,kind,intensity,current);if(score<0)continue;if(score<best){best=score;count=1;}else if(score==best)count++;}
+  // Missing seated emotion artwork must not stand the character up. Existing same-posture gesture/face layers can carry the emotion.
+  if(count==0)return current>=0&&current<ALL.length?current:4;int index=Math.floorMod(variant,count);for(Pose p:ALL)if(ConversationImageMetadata.score(p,kind,intensity,current)==best&&index--==0)return p.id;return current>=0?current:4;
  }
  static String label(int id){
   String[] names={"通常","傾聴","説明","思案","喜び","自信","怒り","悲しみ","涙","驚き","照れ","心配","拒否","疲労","吐息","息切れ・喘ぎ","安堵","緊張","歩行"};

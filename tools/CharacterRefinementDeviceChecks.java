@@ -1,0 +1,21 @@
+package com.example.rokidkeyboardbridge;
+import android.content.*;import android.content.res.*;import android.graphics.*;import java.io.*;import java.lang.reflect.*;import java.util.*;
+public final class CharacterRefinementDeviceChecks {
+ static int n;static void ok(boolean value,String msg){n++;if(!value)throw new AssertionError(msg);}
+ static Object field(Object value,String name)throws Exception{Field f=value.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(value);}
+ public static int run(Context system,String apk)throws Exception{
+  AssetManager assets=AssetManager.class.getConstructor().newInstance();AssetManager.class.getMethod("addAssetPath",String.class).invoke(assets,apk);Resources res=new Resources(assets,system.getResources().getDisplayMetrics(),system.getResources().getConfiguration());Context c=new ContextWrapper(system){public AssetManager getAssets(){return assets;}public Resources getResources(){return res;}};
+  PortraitExpressionRenderer portrait=new PortraitExpressionRenderer(c);ok(portrait.ready(),"unified face loaded");Bitmap[] retained=portrait.retained();ok(retained[0]==retained[2],"one decoded identity atlas shared, no duplicate memory");
+  Bitmap preview=Bitmap.createBitmap(240*6,320*4,Bitmap.Config.ARGB_8888);Canvas sheet=new Canvas(preview);sheet.drawColor(Color.BLACK);Set<Integer> distinct=new HashSet<>();long now=10000000;
+  for(int i=0;i<24;i++){portrait.preview(i,now);Bitmap b=Bitmap.createBitmap(240,320,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(b);canvas.drawColor(Color.BLACK);ok(portrait.draw(canvas,240,320,0,0,false,false,now+300),"all 24 faces render");Bitmap selected=(Bitmap)field(portrait,"frame");ok(selected.getWidth()==retained[0].getWidth()/4&&selected.getHeight()==retained[0].getHeight()/6,"exact six-row crop");int[] pixels=new int[240*320];b.getPixels(pixels,0,240,0,0,240,320);distinct.add(Arrays.hashCode(pixels));sheet.drawBitmap(b,i%6*240,i/6*320,null);b.recycle();now+=7000;}
+  ok(distinct.size()==24,"24 distinct expression frames");portrait.release();ok(!portrait.ready(),"face memory released once");
+  try(FileOutputStream f=new FileOutputStream(new File(system.getFilesDir(),"identity-v686-native.png"))){preview.compress(Bitmap.CompressFormat.PNG,100,f);}preview.recycle();
+  PostureBridgeRenderer bridge=new PostureBridgeRenderer(new FullBodyGestureCanvasTest.Host(c));bridge.request();long limit=System.currentTimeMillis()+15000;while(field(bridge,"frames")==null&&System.currentTimeMillis()<limit)Thread.sleep(10);ok(field(bridge,"frames")!=null,"posture keyframes decoded");
+  for(Bitmap source:(Bitmap[])field(bridge,"frames")){boolean clear=true;for(int y=0;y<3;y++)for(int x=0;x<source.getWidth();x++)if((source.getPixel(x,y)&255)>12||(source.getPixel(x,source.getHeight()-1-y)&255)>12)clear=false;ok(clear,"head/heels clear source row seam; no neighboring figure fragments");}
+
+  Bitmap sequence=Bitmap.createBitmap(240*12,600*2,Bitmap.Config.ARGB_8888);Canvas out=new Canvas(sequence);out.drawColor(Color.BLACK);
+  for(int reverse=0;reverse<2;reverse++){bridge.start(reverse==1,200000);Set<Integer> images=new HashSet<>();for(int i=0;i<12;i++){Bitmap b=Bitmap.createBitmap(240,600,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(b);canvas.drawColor(Color.BLACK);long at=200000+i*160;ok(bridge.draw(canvas,240,600,at,false),"finite sit/stand bridge");int[] pixels=new int[240*600];b.getPixels(pixels,0,240,0,0,240,600);images.add(Arrays.hashCode(pixels));int count=0,bottom=0;boolean margin=true;for(int y=0;y<600;y++)for(int x=0;x<240;x++)if((pixels[y*240+x]&0xffffff)!=0){count++;bottom=y;if(x<2||x>=238)margin=false;}ok(count>1500&&bottom>=580&&bottom<=599 ,"bridge visible with fixed scale and viewport crop "+reverse+"/"+i+" bottom="+bottom);out.drawBitmap(b,i*240,reverse*600,null);b.recycle();}ok(images.size()>=6,"continuous intermediate frames");ok(!bridge.active(201850),"no endless transition timer");}
+  bridge.start(true,300000);ok(!bridge.draw(out,240,600,300100,true)&&!bridge.active(300101),"navigation/quiet cancels bridge");bridge.release();ok(field(bridge,"frames")==null,"bridge decode lifecycle released");
+  try(FileOutputStream f=new FileOutputStream(new File(system.getFilesDir(),"posture-v686-native.png"))){sequence.compress(Bitmap.CompressFormat.PNG,100,f);}sequence.recycle();return n;
+ }
+}

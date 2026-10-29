@@ -50,6 +50,7 @@ final class SecretaryIntent {
    .put("generationConfig",new JSONObject().put("temperature",0).put("maxOutputTokens",1400).put("responseMimeType","application/json").put("responseSchema",schema));
  }
  static JSONObject validate(JSONObject raw,String current,JSONObject context,boolean proposalAvailable,boolean activeAvailable)throws Exception{
+  if(UserAddressIntent.concerns(current))return none();
   JSONObject out=new JSONObject(raw.toString());String action=out.getString("action");
   if(!Arrays.asList("NONE","DEFER","RESUME","UPDATE","CANCEL","LIST","FOLLOWUP","CONFIRM","DISMISS","REVISE","CLARIFY").contains(action))throw new IllegalArgumentException("Unknown secretary action");
   for(String key:new String[]{"target_id","subject","date_text","conditions","current_evidence","subject_evidence","management_evidence","question"})if(!(out.opt(key) instanceof String)||out.getString(key).length()>800)throw new IllegalArgumentException("Invalid secretary field");

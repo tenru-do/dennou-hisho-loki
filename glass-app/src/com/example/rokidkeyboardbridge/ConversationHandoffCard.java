@@ -9,11 +9,11 @@ final class ConversationHandoffCard {
   JSONObject card=new JSONObject().put("current_request",quote(current,320)).put("kind","quoted_context_not_action");
   JSONArray turns=new JSONArray(),history;
   try{history=new JSONArray(reference==null?"[]":reference);}catch(Exception invalid){history=new JSONArray();}
-  if(!reset(current))for(int i=Math.max(0,history.length()-6);i<history.length();i++){
+  if(!reset(current))for(int i=Math.max(0,history.length()-12);i<history.length();i++){
    JSONObject row=history.optJSONObject(i);if(row==null)continue;
    String user=row.optString("previous_user","");if(user.trim().isEmpty())continue;
    if(reset(user))turns=new JSONArray();
-   turns.put(new JSONObject().put("user_quote",quote(user,320)).put("answer_excerpt_unverified",quote(row.optString("previous_assistant_state_excerpt",""),220)));
+   turns.put(new JSONObject().put("user_quote",quote(user,600)).put("answer_excerpt_unverified",quote(row.optString("previous_assistant_state_excerpt",""),900)));
   }
   card.put("recent_exchanges",turns);
   if(correction(current))for(int i=turns.length()-1;i>=0;i--){String user=turns.getJSONObject(i).getString("user_quote");if(!correction(user)&&user.length()>8){card.put("earlier_request_candidate",user);break;}}

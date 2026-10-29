@@ -23,6 +23,6 @@ final class FullBodyScalePolicy {
   if(FullBodyCyberMotion.groupForPose(pose)>=0)return FullBodyCyberMotion.scale(pose,bitmapWidth,bitmapHeight,width,height);
   if(pose>=293&&pose<=364)return FullBodyFrameScalePolicy.source(pose,width,height)*f[0]/bitmapWidth;
   float normalizedSpan=HEAD_SPAN[pose]*bitmapWidth/f[0];
-  return Math.min(commonSpan(width,height)/normalizedSpan,Math.min(Math.max(1,width-6)/((FullBodyAnchorPolicy.MAX[pose]-FullBodyAnchorPolicy.MIN[pose])*bitmapWidth/f[0]),height/f[1]*f[0]/bitmapWidth));
+  return commonSpan(width,height)/normalizedSpan;
  }
 }

@@ -1,0 +1,132 @@
+{
+  "before": {
+    "cases": [
+      {
+        "case": 0,
+        "expected": 1,
+        "selectedPosture": 1,
+        "matched": true,
+        "localRenderNanos": 240881927
+      },
+      {
+        "case": 1,
+        "expected": 1,
+        "selectedPosture": 1,
+        "matched": true,
+        "localRenderNanos": 157519480
+      },
+      {
+        "case": 2,
+        "expected": 0,
+        "selectedPosture": 0,
+        "matched": true,
+        "localRenderNanos": 228943333
+      },
+      {
+        "case": 3,
+        "expected": 2,
+        "selectedPosture": 2,
+        "matched": true,
+        "localRenderNanos": 240339166
+      },
+      {
+        "case": 4,
+        "expected": 2,
+        "selectedPosture": 2,
+        "matched": true,
+        "localRenderNanos": 194705833
+      },
+      {
+        "case": 5,
+        "expected": 2,
+        "selectedPosture": 2,
+        "matched": true,
+        "localRenderNanos": 271305416
+      },
+      {
+        "case": 6,
+        "expected": 1,
+        "selectedPosture": 1,
+        "matched": true,
+        "localRenderNanos": 185192864
+      },
+      {
+        "case": 7,
+        "expected": 0,
+        "selectedPosture": 0,
+        "matched": true,
+        "localRenderNanos": 217080521
+      }
+    ],
+    "heapStart": 18285096,
+    "heapPeak": 33007944,
+    "externalCalls": 0,
+    "scope": "synthetic local interpretation and settled Canvas; not speech/API/GPS latency"
+  },
+  "after": {
+    "cases": [
+      {
+        "case": 0,
+        "expected": 1,
+        "selectedPosture": 1,
+        "matched": true,
+        "localRenderNanos": 363357552
+      },
+      {
+        "case": 1,
+        "expected": 1,
+        "selectedPosture": 1,
+        "matched": true,
+        "localRenderNanos": 196141250
+      },
+      {
+        "case": 2,
+        "expected": 0,
+        "selectedPosture": 0,
+        "matched": true,
+        "localRenderNanos": 256018750
+      },
+      {
+        "case": 3,
+        "expected": 2,
+        "selectedPosture": 2,
+        "matched": true,
+        "localRenderNanos": 249753854
+      },
+      {
+        "case": 4,
+        "expected": 2,
+        "selectedPosture": 2,
+        "matched": true,
+        "localRenderNanos": 208356042
+      },
+      {
+        "case": 5,
+        "expected": 2,
+        "selectedPosture": 2,
+        "matched": true,
+        "localRenderNanos": 131185052
+      },
+      {
+        "case": 6,
+        "expected": 1,
+        "selectedPosture": 1,
+        "matched": true,
+        "localRenderNanos": 203572812
+      },
+      {
+        "case": 7,
+        "expected": 0,
+        "selectedPosture": 0,
+        "matched": true,
+        "localRenderNanos": 228901667
+      }
+    ],
+    "heapStart": 2031856,
+    "heapPeak": 17923496,
+    "externalCalls": 0,
+    "scope": "synthetic local interpretation and settled Canvas; not speech/API/GPS latency"
+  },
+  "beforeSha256": "63163745c0d62c9e4cfb47e386dc86019e10c7628d153ced0b52a1d50580ed54",
+  "afterSha256": "f57368e39e59d76ef89df622aac450f5f00c4fc886494e771d5b076e40d9657d"
+}

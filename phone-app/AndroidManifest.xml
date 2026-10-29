@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"
     package="com.example.rokidgeminisecretary"
-    android:versionCode="290"
-    android:versionName="0.9.290-bridge-auth-preflight">
+    android:versionCode="303"
+    android:versionName="0.9.303-healbe-sdk-reader">
 
     <queries>
+        <package android:name="com.example.lokihealbe" />
         <package android:name="com.google.android.apps.youtube.music" />
         <package android:name="jp.radiko.Player" />
     </queries>
@@ -30,6 +31,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="com.google.android.gm.permission.READ_CONTENT_PROVIDER" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="com.example.lokihealbe.READ_HEALTH" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <queries>
@@ -86,6 +88,11 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+        </service>
+        <service android:name=".HealbeEnergyAccessibilityService" android:exported="true"
+            android:label="@string/healbe_energy_read_label" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/healbe_energy_accessibility" />
         </service>
     </application>
 </manifest>

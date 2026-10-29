@@ -1,0 +1,9 @@
+package com.example.rokidkeyboardbridge;
+public class PoisedMotionTest {
+ static int n;static void ok(boolean b,String s){n++;if(!b)throw new AssertionError(s);}
+ public static void main(String[] args){String[] moods={"普通の表情に戻して","微笑んで","照れ笑いして","ウインクして","焦った顔にして","泣き顔にして","呼吸の荒くなっている顔にして"};
+ for(int pose=0;pose<4;pose++)for(int face=0;face<7;face++){EmbodiedScenePolicy s=new EmbodiedScenePolicy();s.preview(EmbodiedScenePolicy.RELAXED,pose,1000);s.expression(face);int expected=face>=4?40+pose:face>0?36+pose:pose<2?32:33;ok(s.clip(1100,false)==expected,"pose/expression product "+pose+"/"+face);int posture=s.posture();s.user(moods[face],1200);ok(s.clip(1300,false)==expected&&s.posture()==posture,"face change preserves posture");ok(s.clip(1300,true)==-1,"quiet navigation");ok(s.clip(100000,false)==expected,"relaxed pose persists without timer reversion");s.user("やめて",1400);ok(s.clip(1500,false)==-1,"stop wins");}
+ for(int g=0;g<4;g++){EmbodiedScenePolicy s=new EmbodiedScenePolicy();s.user("座って",1000);s.preview(EmbodiedScenePolicy.POISED,g,1100);ok(s.clip(1200,false,true)==35,"seated gesture stays seated");for(int t=0;t<9000;t+=300)ok(EmbodiedScenePolicy.frame(35,t,g)>=0&&EmbodiedScenePolicy.frame(35,t,g)<4,"bounded gesture frame");}
+ for(String t:new String[]{"脚を開かないで","髪を耳にかけないで","泣き顔とは何？","彼女がウインクしてと言った"})ok(PoisedMotionPolicy.command(t)<0&&PoisedMotionPolicy.relaxed(t,false)<0&&PoisedMotionPolicy.expression(t)<0,"negative/explanation/third party "+t);
+ EmbodiedScenePolicy s=new EmbodiedScenePolicy();s.user("ソファで寝そべって",1000);s.user("襟元に触れて",1100);ok(s.clip(1200,false)==33,"reclining followup does not sit up");s.user("リラックスして座って",1300);ok(s.clip(1400,false)==32&&s.posture()==1,"explicit sit overrides reclining");System.out.println("PASS "+n+" relaxed/gesture/expression checks");}
+}

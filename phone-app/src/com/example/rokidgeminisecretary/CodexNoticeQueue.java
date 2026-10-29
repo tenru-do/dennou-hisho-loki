@@ -5,8 +5,10 @@ import org.json.JSONObject;
 final class CodexNoticeQueue {
     static final String PREFIX="__CODEX_NOTIFY__:";
     static String id(String wire){
-        if(wire==null||!wire.startsWith(PREFIX))return "";
-        try{JSONObject row=new JSONObject(wire.substring(PREFIX.length()));String id=row.optString("id"),kind=row.optString("kind");
+        if(wire==null)return "";
+        String prefix=wire.startsWith(PREFIX)?PREFIX:wire.startsWith("__LOKI_HEALBE_ALERT__:")?"__LOKI_HEALBE_ALERT__:":"";
+        if(prefix.isEmpty())return "";
+        try{JSONObject row=new JSONObject(wire.substring(prefix.length()));String id=row.optString("id"),kind=row.optString("kind");
             return id.matches("[a-f0-9]{64}")&&(kind.equals("completed")||kind.equals("question")||kind.equals("status"))&&row.optLong("issuedAt")>0?id:"";
         }catch(Exception invalid){return "";}
     }

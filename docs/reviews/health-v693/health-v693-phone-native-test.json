@@ -1,0 +1,8 @@
+{
+  "deviceKind": "phone",
+  "nativeAssertionsPassed": 422,
+  "glassSha256": "0399d01ec030704315f6deaba2663b993b1ff710c1f55d6fa2aeef1ad6cdaeeb",
+  "phoneSha256": "3153234e3c59aa85a2f13e9300dce37b15c2c6b324b280ab844c1f220cb6cf4b",
+  "externalAPICalls": 0,
+  "userPreferencesModified": false
+}

@@ -7,7 +7,26 @@ import java.io.InputStream;
 
 /** The reviewed atlas is the single identity used for idle, listening and speech. */
 final class ApprovedFaceRenderer {
+    private final PortraitAttentionMotion attention=new PortraitAttentionMotion();
     private Bitmap atlas;
+    private PortraitExpressionRenderer expressions;
+    private KissPortraitRenderer kisses;
+    void cancelPreviews(){if(expressions!=null)expressions.cancelPreview();if(kisses!=null)kisses.clearPreview();}
+    void clearContactGestures(){if(kisses!=null){kisses.clearPreview();kisses.scene(-1,0);}if(expressions!=null)expressions.clearContactCues();}
+    void virtualContact(VirtualContactPolicy.Frame frame,long now){if(expressions!=null)expressions.virtualContact(frame,now);}
+    void previewKiss(int type,long now){if(kisses!=null)kisses.preview(type,now);}
+    void kissScene(int type,long elapsed){if(kisses!=null)kisses.scene(type,elapsed);}
+    void previewSequence(int cell,long now){expressions.preview(8+Math.max(0,Math.min(15,cell)),now);}
+ void attention(float x,float y,long now){if(expressions!=null)expressions.rapport.life.performance.button(x,y,now);}
+    void rapportUser(String text,long now){if(expressions!=null)expressions.rapport.user(text,now);}
+    void rapportAnswer(String text,FullBodyPoseCatalog.Kind kind,long now){if(expressions!=null)expressions.rapport.answer(text,kind,now);}
+    boolean waitingForReaction(long now){return expressions!=null&&expressions.rapport.waiting(now);}
+    void previewConversationGesture(int kind,long now){if(expressions!=null)expressions.rapport.life.event(kind,now,true);}
+    void previewRapport(long now){if(kisses!=null)kisses.clearPreview();if(expressions!=null)expressions.rapport.preview(now);}
+    boolean needsFastFrames(long now){return (expressions!=null&&(expressions.rapport.active(now)||expressions.rapport.life.moving(now)||expressions.virtualMoving()||expressions.transitioning(now)))||kisses!=null&&kisses.needsFastFrames(now);}
+    boolean hasLifePortraits(){return expressions!=null&&expressions.ready();}
+    void preview(int cell,long now){if(kisses!=null)kisses.clearPreview();if(expressions!=null)expressions.preview(cell,now);}
+    void react(long now,boolean touching,int direction){if(expressions!=null)expressions.react(now,touching,direction);}
     private Bitmap angledAtlas, frontAtlas;
     private boolean frontFacing, previousFacing;
     private final Paint image = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -23,9 +42,12 @@ final class ApprovedFaceRenderer {
     private Bitmap faceFrame;
     private int faceCell=-1;
     private boolean uiPriority;
+    private int lifeMode;
     void setUiPriority(boolean value) { uiPriority=value; }
-    Bitmap[] retainedBitmaps() { return new Bitmap[]{atlas,faceFrame}; }
+    Bitmap[] retainedBitmaps() { Bitmap[] more=expressions==null?new Bitmap[]{null,null}:expressions.retained();Bitmap[] extra=kisses==null?new Bitmap[]{null,null}:kisses.retained();return new Bitmap[]{atlas,faceFrame,more[0],more[1],more.length>2?more[2]:null,more.length>3?more[3]:null,extra[0],extra[1]}; }
     void release() {
+        if(expressions!=null)expressions.release();expressions=null;
+        if(kisses!=null)kisses.release();kisses=null;
         if(faceFrame!=null && faceFrame!=atlas && !faceFrame.isRecycled())faceFrame.recycle();
         if(atlas!=null && !atlas.isRecycled())atlas.recycle();
         atlas=angledAtlas=frontAtlas=faceFrame=null;faceCell=-1;
@@ -52,6 +74,7 @@ final class ApprovedFaceRenderer {
         float closedScale=1f+.18f*(float)Math.sin(now/900.0);
         float leftScale=FullBodyPortraitGeometry.CLOSED[cell][0]?closedScale:blink;
         float rightScale=FullBodyPortraitGeometry.CLOSED[cell][1]?closedScale:blink;
+        float gaze=PortraitLifeMotion.gaze(now,lifeMode,uiPriority)+attention.gaze(now,uiPriority);
         int cols=uiPriority?24:48,rows=uiPriority?30:60,index=0;
         for(int row=0;row<=rows;row++)for(int col=0;col<=cols;col++) {
             float x=col/(float)cols,y=row/(float)rows,dy=0f;
@@ -64,7 +87,9 @@ final class ApprovedFaceRenderer {
                 }
             }
             dy+=warp(x,y,f[4],f[5],smile?.12f:.10f,FullBodyPortraitGeometry.OPEN[cell]?.09f:.06f,mouth);
-            faceMesh[index++]=destination.left+x*destination.width();
+            float eyeWeight=0;
+            if(gaze!=0)for(int eye=0;eye<2;eye++){float ex=(x-f[eye*2])/.085f,ey=(y-f[eye*2+1])/.045f;eyeWeight+=Math.max(0,1-ex*ex-ey*ey);}
+            faceMesh[index++]=destination.left+(x+gaze*eyeWeight)*destination.width();
             faceMesh[index++]=destination.top+(y+dy)*destination.height();
         }
         canvas.drawBitmapMesh(faceFrame,cols,rows,faceMesh,0,null,0,image);
@@ -81,6 +106,8 @@ final class ApprovedFaceRenderer {
         }
     }
     ApprovedFaceRenderer(Context context) {
+        CharacterMotionPreferences.load(context);
+        expressions=new PortraitExpressionRenderer(context);kisses=new KissPortraitRenderer(context);
         try (InputStream stream = context.getAssets().open("loki_face_cool_v559.png")) {
             Bitmap original=BitmapFactory.decodeStream(stream);
             if(original==null)throw new IllegalStateException("Full-body portrait atlas missing");
@@ -181,14 +208,17 @@ final class ApprovedFaceRenderer {
         canvas.drawBitmap(atlas,detailSource,detailDestination,image);canvas.restoreToCount(save);
     }
     void draw(Canvas canvas, int width, int height, int expression, boolean speaking, int mode) {
+        lifeMode=mode;
         frontFacing = mode == 1 || speaking;
         drawAt(canvas, width, height, expression, speaking, SystemClock.uptimeMillis());
     }
     // Explicit time permits native Canvas verification without changing user settings.
     void drawAt(Canvas canvas, int width, int height, int expression, boolean speaking, long now) {
-        if (!ready() || width <= 0 || height <= 0) return;
+        if (!ready() || width <= 0 || height <= 0) return;attention.mode(lifeMode,now);
+        if(kisses!=null&&kisses.draw(canvas,width,height,lifeMode,uiPriority,now))return;
+        if(expressions!=null&&expressions.draw(canvas,width,height,expression,lifeMode,speaking,uiPriority,now))return;
         atlas=frontFacing && frontAtlas!=null ? frontAtlas : angledAtlas;
-        int cell = cellFor(expression);
+        int cell = PortraitLifeMotion.face(cellFor(expression),now,lifeMode,uiPriority);
         if (cell != previous || previousFacing != frontFacing) { previous = cell; previousFacing=frontFacing; changedAt = now; }
         int cw = atlas.getWidth()/8, ch = atlas.getHeight()/5;
         source.set(cell%8*cw, cell/8*ch, (cell%8+1)*cw, (cell/8+1)*ch);
@@ -196,9 +226,10 @@ final class ApprovedFaceRenderer {
         float w = h*cw/ch;
         float x = (width-w)*.5f, y = (height-h)*.45f;
         float breath = (float)Math.sin(now/680.0)*h*.005f;
-        destination.set(x, y+breath, x+w, y+h+breath);
+        float nod=(PortraitLifeMotion.nod(now,lifeMode,uiPriority)+attention.nod(now,uiPriority))*h;
+        destination.set(x, y+breath+nod, x+w, y+h+breath+nod);
         int save=canvas.save();
-        canvas.rotate((float)Math.sin(now/2100.0)*.65f, destination.centerX(), destination.bottom);
+        canvas.rotate((float)Math.sin(now/2100.0)*.65f+PortraitLifeMotion.tilt(now,lifeMode,uiPriority)+attention.tilt(now,uiPriority), destination.centerX(), destination.bottom);
         // Brief dim-to-bright transition shows one aligned face, avoiding doubled features.
         image.setAlpha(Math.round(255f*(.75f+.25f*Math.min(1f,Math.max(0,now-changedAt)/180f))));
         int artworkClip=canvas.save();

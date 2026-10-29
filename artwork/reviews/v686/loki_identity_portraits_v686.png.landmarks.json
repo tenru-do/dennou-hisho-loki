@@ -1,0 +1,368 @@
+{
+  "kind": "portrait-fixed-face",
+  "imageWidth": 1024,
+  "imageHeight": 1536,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        256,
+        256
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        256,
+        0,
+        512,
+        256
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        512,
+        0,
+        768,
+        256
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        768,
+        0,
+        1024,
+        256
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 4,
+      "cropLTRB": [
+        0,
+        256,
+        256,
+        512
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 5,
+      "cropLTRB": [
+        256,
+        256,
+        512,
+        512
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 6,
+      "cropLTRB": [
+        512,
+        256,
+        768,
+        512
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 7,
+      "cropLTRB": [
+        768,
+        256,
+        1024,
+        512
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 8,
+      "cropLTRB": [
+        0,
+        512,
+        256,
+        768
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 9,
+      "cropLTRB": [
+        256,
+        512,
+        512,
+        768
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 10,
+      "cropLTRB": [
+        512,
+        512,
+        768,
+        768
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 11,
+      "cropLTRB": [
+        768,
+        512,
+        1024,
+        768
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 12,
+      "cropLTRB": [
+        0,
+        768,
+        256,
+        1024
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 13,
+      "cropLTRB": [
+        256,
+        768,
+        512,
+        1024
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 14,
+      "cropLTRB": [
+        512,
+        768,
+        768,
+        1024
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 15,
+      "cropLTRB": [
+        768,
+        768,
+        1024,
+        1024
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 16,
+      "cropLTRB": [
+        0,
+        1024,
+        256,
+        1280
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 17,
+      "cropLTRB": [
+        256,
+        1024,
+        512,
+        1280
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 18,
+      "cropLTRB": [
+        512,
+        1024,
+        768,
+        1280
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 19,
+      "cropLTRB": [
+        768,
+        1024,
+        1024,
+        1280
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 20,
+      "cropLTRB": [
+        0,
+        1280,
+        256,
+        1536
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 21,
+      "cropLTRB": [
+        256,
+        1280,
+        512,
+        1536
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 22,
+      "cropLTRB": [
+        512,
+        1280,
+        768,
+        1536
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    },
+    {
+      "index": 23,
+      "cropLTRB": [
+        768,
+        1280,
+        1024,
+        1536
+      ],
+      "headBounds": [
+        40,
+        7,
+        177,
+        197
+      ]
+    }
+  ],
+  "manualNotes": "Approximate manually inspected head/hair bounds. Seated and bent figures must not be normalized to standing height. Compare same person head size, jaw, hands, knees and heels."
+}

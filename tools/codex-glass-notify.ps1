@@ -5,6 +5,7 @@
 )
 . (Join-Path $PSScriptRoot 'secure-bridge.ps1')
 . (Join-Path $PSScriptRoot 'codex-notify-policy.ps1')
+. (Join-Path $PSScriptRoot 'codex-notify-runtime.ps1')
 
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -12,27 +13,25 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $configPath = Join-Path $scriptDir 'token-codex-notify.local.json'
 $logPath = Join-Path $scriptDir 'codex-notify.log'
 $outboxPath = Join-Path $scriptDir 'codex-notify-outbox.local.json'
-$script:notifyOutbox = @()
-if(Test-Path $outboxPath){try{$script:notifyOutbox=@(Get-Content $outboxPath -Raw -Encoding UTF8|ConvertFrom-Json)}catch{}}
-function Save-NotifyOutbox {
-    $temporary=$outboxPath+'.tmp'
-    [IO.File]::WriteAllText($temporary,(ConvertTo-Json -InputObject @($script:notifyOutbox) -Depth 8),[Text.UTF8Encoding]::new($true))
-    Move-Item -LiteralPath $temporary -Destination $outboxPath -Force
-}
+$script:notifyOutbox = @(Read-LokiNotifyState $outboxPath @())
+foreach($row in $script:notifyOutbox){if(!$row.id -or !$row.message -or !$row.issuedAt){throw 'Invalid notification outbox; file preserved'}}
+function Save-NotifyOutbox { Save-LokiNotifyState $outboxPath @($script:notifyOutbox) }
 function Queue-NotifyEnvelope([string]$message){
-    if(!$message){return}
-    try{$data=$message|ConvertFrom-Json;if(@($script:notifyOutbox|Where-Object {$_.id -eq $data.id}).Count){return}
-        $script:notifyOutbox+=@{id=$data.id;issuedAt=$data.issuedAt;message=$message;nextAttempt=0L};Save-NotifyOutbox
-    }catch{}
+ if(!$message){return};$data=$message|ConvertFrom-Json -ErrorAction Stop
+ if(@($script:notifyOutbox|Where-Object {$_.id -eq $data.id}).Count){Save-NotifyOutbox;return}
+ $script:notifyOutbox+=@{id=$data.id;issuedAt=$data.issuedAt;message=$message;nextAttempt=0L};Save-NotifyOutbox
 }
 function Flush-NotifyOutbox {
-    $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$keep=@()
-    foreach($item in $script:notifyOutbox){
-        if($now-[long]$item.issuedAt -gt 300000 -or [long]$item.issuedAt-$now -gt 30000){continue}
-        if([long]$item.nextAttempt -gt $now){$keep+=$item;continue}
-        if(!(Send-GlassNotification ([string]$item.message))){$item.nextAttempt=$now+15000;$keep+=$item}
-    }
-    $script:notifyOutbox=$keep;Save-NotifyOutbox
+ if(!$script:notifyOutbox.Count){return}
+ $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();$keep=@();$changed=$false
+ foreach($item in $script:notifyOutbox){
+  if([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-$now -gt 12000){$keep+=$item;continue}
+  if($now-[long]$item.issuedAt -gt 300000 -or [long]$item.issuedAt-$now -gt 30000){$changed=$true;continue}
+  if([long]$item.nextAttempt -gt $now){$keep+=$item;continue}
+  $sent=$false;try{$sent=Send-GlassNotification ([string]$item.message)}catch{Write-NotifyLog ('send exception '+$_.Exception.GetType().Name)}
+  $changed=$true;if(!$sent){$item.nextAttempt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()+15000;$keep+=$item}
+ }
+ if($changed){$before=$script:notifyOutbox;$script:notifyOutbox=$keep;try{Save-NotifyOutbox}catch{$script:notifyOutbox=$before;throw}}
 }
 $adbCandidates = @(
     $(if ($env:ANDROID_HOME) { Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe' }),
@@ -52,7 +51,9 @@ function Write-NotifyLog([string]$text) {
     Add-Content -Path $logPath -Encoding UTF8 -Value ("{0:o} {1}" -f (Get-Date), $text)
 }
 
+$script:lastDiscoveryAt=0L
 function Find-RokiPhoneHosts {
+ $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();if($now-$script:lastDiscoveryAt -lt 60000){return @()};$script:lastDiscoveryAt=$now
     $prefixes = New-Object 'System.Collections.Generic.HashSet[string]'
     foreach ($nic in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
         if ($nic.OperationalStatus -ne [Net.NetworkInformation.OperationalStatus]::Up) { continue }
@@ -110,11 +111,11 @@ function Send-GlassNotification([string]$message) {
         try {
             $result = Invoke-LokiSecureRest -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 4
             if ($result.ok) {
-                Write-NotifyLog "sent $target $message"
+                Write-NotifyLog 'sent network notification'
                 return $true
             }
         } catch {
-            Write-NotifyLog "failed $target $($_.Exception.Message)"
+            Write-NotifyLog ('network send failed '+$_.Exception.GetType().Name)
         }
     }
     foreach ($discoveredHost in (Find-RokiPhoneHosts)) {
@@ -127,13 +128,13 @@ function Send-GlassNotification([string]$message) {
                 if ([string]$cfg.phoneHost -ne $discoveredHost) {
                     $cfg.phoneHost = $discoveredHost
                     $cfg | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
-                    Write-NotifyLog "updated phone host $discoveredHost"
+                    Write-NotifyLog 'updated phone host'
                 }
-                Write-NotifyLog "sent $target $message"
+                Write-NotifyLog 'sent network notification'
                 return $true
             }
         } catch {
-            Write-NotifyLog "failed $target $($_.Exception.Message)"
+            Write-NotifyLog ('network send failed '+$_.Exception.GetType().Name)
         }
     }
     if ($adb -and (Test-Path $adb)) {
@@ -150,11 +151,11 @@ function Send-GlassNotification([string]$message) {
             try {
                 $result = Invoke-LokiSecureRest -Method Post -Uri $target -Headers $headers -ContentType $contentType -Body $body -TimeoutSec 4
                 if ($result.ok) {
-                    Write-NotifyLog "sent adb:$serial $message"
+                    Write-NotifyLog 'sent USB notification'
                     return $true
                 }
             } catch {
-                Write-NotifyLog "failed adb:$serial $($_.Exception.Message)"
+                Write-NotifyLog ('USB send failed '+$_.Exception.GetType().Name)
             }
         }
     }
@@ -183,80 +184,68 @@ function Get-HookMessage([string[]]$arguments) {
 }
 
 function Watch-CodexApprovals {
-    $createdNew = $false
-    $watcherMutex = New-Object Threading.Mutex($true, 'Local\RokiCodexNotifyWatcher', [ref]$createdNew)
-    if (!$createdNew) { return }
-    $sessionRoot = Join-Path $env:USERPROFILE '.codex\sessions'
-    $offsets = @{}
-    Get-ChildItem $sessionRoot -Recurse -Filter '*.jsonl' | ForEach-Object {
-        $offsets[$_.FullName] = $_.Length
+ $createdNew=$false;$watcherMutex=New-Object Threading.Mutex($true,'Local\RokiCodexNotifyWatcher',[ref]$createdNew)
+ if(!$createdNew){$watcherMutex.Dispose();return}
+ $checkpointPath=Join-Path $scriptDir 'codex-notify-checkpoint.local.json';$healthPath=Join-Path $scriptDir 'codex-notify-health.local.json'
+ $sessionRoot=Join-Path $env:USERPROFILE '.codex\sessions';$offsets=@{}; $anchors=@{};$discarding=@{};$known=@();$scanAt=0L;$lastHealth=0L
+ try{
+  $saved=Read-LokiNotifyState $checkpointPath $null;$firstBoot=$null -eq $saved
+  if($saved -and [int]$saved.version -ne 1){throw 'Unsupported notification checkpoint; file preserved'}
+  if($saved){foreach($entry in @($saved.files)){$offsets[[string]$entry.path]=[long]$entry.offset;$discarding[[string]$entry.path]=[bool]$entry.discarding;$anchors[[string]$entry.path]=[string]$entry.anchor}}
+  Write-NotifyLog 'approval watcher started'
+  while($true){
+   try{
+    $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    if($now-$scanAt -ge 15000){
+     $localConfig=Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+     $roots=@((Split-Path $scriptDir -Parent))+@($localConfig.projectRoots|Where-Object {$_});$eligible=@()
+     foreach($file in @(Get-ChildItem -LiteralPath $sessionRoot -Recurse -Filter '*.jsonl' -ErrorAction Stop)){
+      if(!(Test-LokiProjectSession $file.FullName $roots)){continue};$eligible+=$file.FullName
+      if(!$offsets.ContainsKey($file.FullName)){$offsets[$file.FullName]=if($firstBoot){$file.Length}else{0L};$discarding[$file.FullName]=$false;$anchors[$file.FullName]=""}
+     }
+     $known=$eligible;$scanAt=$now
+     if($firstBoot){$rows=@(foreach($path in $known){@{path=$path;offset=$offsets[$path];discarding=$discarding[$path];anchor=$anchors[$path]}});Save-LokiNotifyState $checkpointPath @{version=1;files=$rows};$firstBoot=$false}
     }
-    Write-NotifyLog 'approval watcher started'
-    while ($true) {
-        Get-ChildItem $sessionRoot -Recurse -Filter '*.jsonl' | ForEach-Object {
-            $path = $_.FullName
-            $roots=@((Split-Path $scriptDir -Parent));try{$localConfig=Get-Content -Raw -Encoding UTF8 $configPath|ConvertFrom-Json;$roots+=@($localConfig.projectRoots|Where-Object {$_})}catch{}
-            if(!(Test-LokiProjectSession $path $roots)){return}
-            if (!$offsets.ContainsKey($path)) { $offsets[$path] = 0L }
-            if ($_.Length -lt $offsets[$path]) { $offsets[$path] = 0L }
-            if ($_.Length -gt $offsets[$path]) {
-                $stream = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
-                $stream.Seek([long]$offsets[$path], 'Begin') | Out-Null
-                $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8)
-                $newText = $reader.ReadToEnd()
-                $offsets[$path] = $stream.Length
-                $reader.Dispose(); $stream.Dispose()
-                $needsAttention = $false
-                $completionMessage = ''
-                $questionMessages = @()
-                foreach ($line in ($newText -split "`r?`n")) {
-                    if ([string]::IsNullOrWhiteSpace($line)) { continue }
-                    try {
-                        $record = $line | ConvertFrom-Json
-                        $questionMessages += @(New-LokiQuestionEnvelopes $record $path)
-                        # Desktop tasks do not always invoke the user-level notify hook.
-                        # Watch the durable task_complete event as a fallback.  The hook
-                        # formats the same text, so the phone's 60-second deduplicator
-                        # suppresses a second delivery when both mechanisms do fire.
-                        if ($record.type -eq 'event_msg' -and $record.payload.type -eq 'task_complete') {
-                            $completionMessage = New-LokiCompletionEnvelope ([string]$record.payload.last_agent_message) $path ([DateTimeOffset]::Parse([string]$record.timestamp))
-                            continue
-                        }
-                        if ($record.type -ne 'response_item' -or $record.payload.type -ne 'custom_tool_call') { continue }
-                        $toolName = [string]$record.payload.name
-                        $toolInput = [string]$record.payload.input
-                        if ($toolName -eq 'request_permissions' -or $toolName -eq 'request_user_input' -or
-                                ($toolName -eq 'exec' -and ($toolInput -match 'tools\.request_permissions\s*\(' -or
-                                $toolInput -match 'tools\.request_user_input\s*\('))) {
-                            $needsAttention = $true
-                            break
-                        }
-                    } catch {}
-                }
-                # Approval/tool activity is not a completed user task; never read it aloud.
-                if ($completionMessage) {
-                    Queue-NotifyEnvelope $completionMessage
-                }
-                foreach($questionMessage in $questionMessages){
-                    Queue-NotifyEnvelope $questionMessage
-                }
-            }
-        }
-        Flush-NotifyOutbox
-        Start-Sleep -Seconds 2
+    foreach($path in $known){
+     try{
+      $chunk=[LokiNotifyRuntime]::Read($path,[long]$offsets[$path],[bool]$discarding[$path],4194304,[string]$anchors[$path])
+      if($chunk.Oversized){Write-NotifyLog 'oversized session record skipped'}
+      foreach($line in $chunk.Text.Split([char]10)){
+       if([string]::IsNullOrWhiteSpace($line)){continue}
+       try{$record=$line|ConvertFrom-Json -ErrorAction Stop}catch{Write-NotifyLog 'malformed complete session record skipped';continue}
+       foreach($question in @(New-LokiQuestionEnvelopes $record $path)){Queue-NotifyEnvelope $question}
+       if($record.type -eq 'event_msg' -and $record.payload.type -eq 'task_complete'){
+        $envelope=New-LokiCompletionEnvelope ([string]$record.payload.last_agent_message) $path ([DateTimeOffset]::Parse([string]$record.timestamp));Queue-NotifyEnvelope $envelope
+       }
+      }
+      if($chunk.Next -ne $offsets[$path] -or $chunk.Discarding -ne $discarding[$path] -or $chunk.Anchor -ne $anchors[$path]){
+       # Durable outbox first, checkpoint second. Restart replays keep the same IDs.
+       $offsets[$path]=$chunk.Next;$discarding[$path]=$chunk.Discarding;$anchors[$path]=$chunk.Anchor
+       $rows=@(foreach($file in $known){@{path=$file;offset=$offsets[$file];discarding=$discarding[$file];anchor=$anchors[$file]}});Save-LokiNotifyState $checkpointPath @{version=1;files=$rows}
+      }
+     }catch{Write-NotifyLog ('session read retry '+$_.Exception.GetType().Name)}
     }
+    if($now-$lastHealth -ge 10000){Write-LokiNotifyHealth $healthPath 'polling' $script:notifyOutbox.Count $known.Count;$lastHealth=$now}
+    Flush-NotifyOutbox
+   }catch{
+    Write-NotifyLog ('watch cycle retry '+$_.Exception.GetType().Name)
+    Write-LokiNotifyHealth $healthPath 'retrying' $script:notifyOutbox.Count $known.Count ($_.Exception.GetType().Name)
+   }
+   Start-Sleep -Seconds 2
+  }
+ }catch{
+  Write-NotifyLog ('watcher stopped '+$_.Exception.GetType().Name)
+  Write-LokiNotifyHealth $healthPath 'faulted' $script:notifyOutbox.Count $known.Count ($_.Exception.GetType().Name)
+  throw
+ }finally{$watcherMutex.ReleaseMutex();$watcherMutex.Dispose()}
 }
 
+
 function Ensure-ApprovalWatcher {
-    if (!(Test-Path $configPath)) { return }
-    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $arguments = @(
-        '-NoProfile',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', ('"' + $PSCommandPath + '"'),
-        '-Watch'
-    )
-    Start-Process -FilePath $powershell -ArgumentList $arguments -WindowStyle Hidden | Out-Null
+ if(!(Test-Path -LiteralPath $configPath)){return}
+ $powershell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $supervisor=Join-Path $PSScriptRoot 'codex-notify-supervisor.ps1'
+ Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$supervisor+'"')) -WindowStyle Hidden|Out-Null
 }
 
 if ($Watch) {
