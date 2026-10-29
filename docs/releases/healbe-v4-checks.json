@@ -1,0 +1,27 @@
+{
+  "glassVersion": 697,
+  "phoneVersion": 303,
+  "healbeCompanionVersion": 4,
+  "distribution": "alpha",
+  "signedApkHashes": {
+    "loki-glass-v697-release.apk": "e55624e750138eafca1c46d26776b470d20db972997ee4c1a662a6159f931325",
+    "loki-phone-v303-release.apk": "6190080a989ef52e6d591715e23d5d94011b070d1be108b1d2c883a5fd051641",
+    "loki-healbe-v4-release.apk": "6f2b5c787219806cdb1afdecdf27c29aa9e53c970caac90ca4e49b678481b248"
+  },
+  "glassAndPhoneUnchangedSinceGlassV697Release": true,
+  "reusedNativeAssertionsForUnchangedGlassAndPhone": 448,
+  "healbeV4Verification": {
+    "deviceReconnectThenWholeSyncCompletion": true,
+    "manualRefetchChangedActualBalance": true,
+    "naturalPeriodicRetrievalChangedActualBalance": true,
+    "verifiedBy": "lastValueChangeAt advancing, not lastSuccessAt alone",
+    "foregroundServiceObserved": true
+  },
+  "limitations": [
+    "not an exact five-minute guarantee",
+    "extended Doze and whole-phone reboot not tested",
+    "current-day readings are provisional",
+    "release-signed companion package inspected; runtime proof obtained using development-signed build from same source"
+  ],
+  "privateHealthValuesIncluded": false
+}

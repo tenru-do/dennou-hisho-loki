@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
  namespace 'com.example.lokihealbe'
  compileSdk 35
- defaultConfig { applicationId 'com.example.lokihealbe'; testInstrumentationRunner 'com.example.lokihealbe.SyncAudit'; minSdk 28; targetSdk 35; versionCode 3; versionName '0.1.1-five-minute-sync' }
+ defaultConfig { applicationId 'com.example.lokihealbe'; testInstrumentationRunner 'com.example.lokihealbe.SyncAudit'; minSdk 28; targetSdk 35; versionCode 4; versionName '0.1.2-fresh-device-summary' }
  compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  packaging { resources { excludes += ['META-INF/DEPENDENCIES']; merges += ['META-INF/LICENSE*','META-INF/NOTICE*'] } }
 }
