@@ -1,6 +1,6 @@
 ## 最新の公開版（アルファ版）
 
-グラス **v697**・スマホ **v303**（変更なし）・任意のHEALBE補助 **v3**。[変更内容・導入方法・検証範囲](docs/releases/glass-v697.md)、[APKダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v697)。
+グラス **v697**・スマホ **v303**（変更なし）・任意のHEALBE補助 **v4**。[変更内容・導入方法・検証範囲](docs/releases/healbe-v4.md)、[APKダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/healbe-v4)。
 
 # 電脳秘書ロキ
 
@@ -31,7 +31,7 @@ Android APKの全機能移植ではありません。予定・メール・録音
 
 ## APKのダウンロード
 
-最新の配布版は [グラスv697・スマホv303・HEALBE補助v3のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v697) です。署名付きAPK3件・SHA256チェックサム・検証記録を掲載しています。[変更と検証範囲](docs/releases/glass-v697.md)をご確認ください。
+最新の配布版は [グラスv697・スマホv303・HEALBE補助v4のアルファ版](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/healbe-v4) です。署名付きAPK3件・SHA256チェックサム・検証記録を掲載しています。[変更と検証範囲](docs/releases/healbe-v4.md)をご確認ください。
 
 配布用APKは専用署名です。開発署名版には上書きできません。署名変更のためのアンインストールは会話・設定や復号鍵を失う場合があるため、既存利用者は現在のアプリを維持してください。検査範囲と署名は各Releaseの記録を確認してください。
 
