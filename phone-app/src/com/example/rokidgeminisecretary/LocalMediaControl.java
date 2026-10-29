@@ -9,6 +9,7 @@ import java.util.*;
 
 /** Controls only an explicitly selected session on THIS Android device. No AVRCP fallback. */
 final class LocalMediaControl {
+    static String device(Context c){return c.getResources().getConfiguration().smallestScreenWidthDp>=600?"タブレット":"スマホ";}
     interface Session {
         String app(); String identity(); PlaybackState state(); long duration();
         void seek(long position);
@@ -32,7 +33,7 @@ final class LocalMediaControl {
                     public void seek(long position){controller.getTransportControls().seekTo(position);}
                 });
             }
-            return listSessions(sessions,SystemClock.elapsedRealtime());
+            return listSessions(sessions,SystemClock.elapsedRealtime()).put("device",device(context));
         } catch(SecurityException denied){return result(false,"permission","再生元のロキで通知へのアクセスを許可してください。").put("sessions",new JSONArray());}
     }
     static synchronized JSONObject listSessions(List<Session> sessions,long now)throws Exception {
@@ -85,6 +86,7 @@ final class LocalMediaControl {
         if(receipts.length()>=64)return result(false,"busy","操作が多すぎます。しばらく待ってください。");
         Entry entry=entries.get(sessionId);long now=SystemClock.elapsedRealtime();
         if(entry==null||now-entry.issued>TTL||!entry.identity.equals(entry.session.identity()))return result(false,"changed","再生内容が変わりました。再生アプリを選び直してください。");
+        context.getSharedPreferences("media_control_receipts",0).edit().putString("lastTarget",device(context)+" / "+entry.session.app()).apply();
         Session session=entry.session;PlaybackState before=session.state();long duration=session.duration();now=SystemClock.elapsedRealtime();
         if(!seekable(before,duration,now))return result(false,"unsupported","この再生状態では30秒操作に対応していません。アプリの再生画面で確認してください。");
         long start=position(before,now,duration),destination=target(start,delta,duration);

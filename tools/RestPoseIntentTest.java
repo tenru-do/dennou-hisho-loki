@@ -1,0 +1,10 @@
+package com.example.rokidkeyboardbridge;
+public class RestPoseIntentTest {
+ static int n;static void ok(boolean b,String s){n++;if(!b)throw new AssertionError(s);}
+ public static void main(String[] args){for(String t:new String[]{"ねそべって","ロキ、ねそべって","寝そべってみて","ねころがって","横になって"}){ok(RestPoseIntent.kind(t)==RestPoseIntent.LIE,"lying spelling "+t);EmbodiedScenePolicy p=new EmbodiedScenePolicy();p.user(t,1000);ok(p.clip(1100,false)==28,"actual lying scene "+t);ok(AvatarPostureContext.pose(t).equals("LYING"),"matching prompt");}
+ for(String t:new String[]{"ねそべらないな","ねそべってないよ","寝そべらないんだけど","横になってないね"}){ok(RestPoseIntent.kind(t)==RestPoseIntent.REPAIR_LIE,"repair "+t);EmbodiedScenePolicy p=new EmbodiedScenePolicy();p.user("座って",1000);p.user(t,1100);ok(p.clip(1200,false)==28,"repair reapplies lying");ok(AvatarPostureContext.block(t).contains("DISPLAY_REPAIR"),"prompt says repair not ban");}
+ for(String t:new String[]{"ねそべらないで","寝そべってほしくない","横にならないで"}){ok(RestPoseIntent.kind(t)==RestPoseIntent.PROHIBIT_LIE,"real prohibition "+t);EmbodiedScenePolicy p=new EmbodiedScenePolicy();p.user("ねそべって",1000);p.user(t,1100);ok(p.clip(1200,false)==-1&&p.posture()==1,"ban actually cancels lying");}
+ for(String t:new String[]{"彼女がねそべらないなと言った","寝そべるとは何？","寝そべる方法を教えて","引用した寝そべってという文章"})ok(RestPoseIntent.kind(t)==0,"not a local request "+t);
+ EmbodiedScenePolicy p=new EmbodiedScenePolicy();p.user("ロキ、くつろいで",1000);ok(p.clip(1100,false)==32,"relax request changes image not mere thanks");p.answer("ありがとうございます。",FullBodyPoseCatalog.Kind.JOY,1200);ok(p.clip(1300,false)==36,"ack keeps selected seat");p.user("ねそべって",1400);ok(p.clip(1500,false)==28,"next request overrides seat");p.answer("少し失礼してねそべります。",FullBodyPoseCatalog.Kind.NEUTRAL,1600);ok(p.clip(1700,false)==28,"response cannot re-seat");p.user("ねそべらないな",1800);p.answer("ねそべらずにこのままにします。",FullBodyPoseCatalog.Kind.REFUSE,1900);ok(p.clip(2000,false)==28&&p.allowed(FullBodyPoseCatalog.Kind.REFUSE),"bad legacy response cannot undo explicit repaired display");
+ System.out.println("PASS "+n+" rest/lying/repair/prohibition checks");}
+}

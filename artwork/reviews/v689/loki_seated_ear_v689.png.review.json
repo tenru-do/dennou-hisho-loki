@@ -1,0 +1,18 @@
+{
+  "asset": "loki_seated_ear_v689.png",
+  "assetSha256": "d1a61e02199a34288bb108f9554861c02aa93e4fe1776eb8a8a9b4fc3f61d893",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "contactSheet": {
+    "path": "artwork/reviews/v689/loki_seated_ear_v689.png.contact.png",
+    "sha256": "27c67dae5b4d80493cfc159796e569d2528cd51666a9fb9d7222a4c04142b88e"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v689/loki_seated_ear_v689.png.landmarks.json",
+    "sha256": "721c34f95129bbbb6ace98c81562636c499b8bb7c81a1dc104603f509aa17cd8"
+  }
+}

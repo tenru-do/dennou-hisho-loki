@@ -8,5 +8,5 @@ final class FullBodyRearHoldPolicy{
  static int from(long time){return (int)(Math.max(0,time)%PERIOD*6/PERIOD);}
  static int to(long time){return (from(time)+1)%6;}
  static float blend(long time){float f=(Math.max(0,time)%PERIOD*6f/PERIOD)%1;return f*f*(3-2*f);}
- static float bodyHeight(int width,int height){float[] b=FullBodyApprovedScalePolicy.BOUNDS[1];float h=FullBodyApprovedScalePolicy.height(3,width,height,1)*(b[3]-b[2]);for(float[] f:BOUNDS)h=Math.min(h,Math.max(1,width-2)*(f[3]-f[2])/(f[1]-f[0]));return h;}
+ static float bodyHeight(int width,int height){float[] b=FullBodyApprovedScalePolicy.BOUNDS[1];float h=FullBodyApprovedScalePolicy.height(3,width,height,1)*(b[3]-b[2]);return h;}
 }

@@ -1,0 +1,5 @@
+package com.example.rokidkeyboardbridge;
+public class CalendarDispatchBoundaryTest {
+ public static int n;static void ok(boolean v,String m){n++;if(!v)throw new AssertionError(m);}
+ public static void main(String[] args){for(String q:new String[]{"カレンダーに登録して","親の予約票を添付した。カレンダー「家族予定」に登録して","添付した予定表をカレンダーに追加して","予定をカレンダーへ入れて","この画像の予約をカレンダーに登録してください"})ok(SecretaryDispatchBoundary.calendar(q),"direct calendar operation bypasses inbox");for(String q:new String[]{"カレンダーに登録してある","カレンダーに登録しないで","カレンダーの予定を教えて","あとでカレンダーに登録して","家族に相談してから登録して","この前の件をカレンダーに登録して","カレンダーに登録してと言ったという例文","今日は寒いね","登録先は家族予定カレンダーで","保留案件を見せて","はい"})ok(!SecretaryDispatchBoundary.calendar(q),"preserve reports/negation/inbox/proposal/chat: "+q);ok(SecretaryDispatchBoundary.attachment("予約票を添付した。カレンダーに登録して"),"new image request clears stale inbox reference");ok(!SecretaryDispatchBoundary.attachment("カレンダーに登録して"),"short calendar followup does not erase a selected card");System.out.println("PASS "+n+" calendar/inbox dispatch checks");}
+}

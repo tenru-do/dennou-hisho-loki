@@ -16,6 +16,8 @@ final class FullBodyLivingPosePolicy {
   float elbow=(float)Math.sin((t-430)*2*Math.PI/5300);
   float shift=(float)Math.sin(t*2*Math.PI/9700);
   float begin=Math.max(.08f,face+.065f);
+  float gesture=PortraitLifeMotion.pulse(elapsed,24000,7000,2600);
+  float direction=(elapsed/24000%2==0)?1:-1;
   float gain=kind==2?1.55f:kind==1?1.7f:kind==3?1.5f:1;
   for(int row=0;row<=FullBodyBreathPolicy.ROWS;row++){
    float y=row/(float)FullBodyBreathPolicy.ROWS;
@@ -28,6 +30,8 @@ final class FullBodyLivingPosePolicy {
     float x=col/(float)FullBodyBreathPolicy.COLUMNS;
     float side=(x-.5f)*2,outer=side*side;
     int a=(row*(FullBodyBreathPolicy.COLUMNS+1)+col)*2;
+    v[a]+=w*.012f*neck*gesture*direction;
+    v[a+1]+=h*.006f*neck*gesture;
     v[a]+=w*gain*(.010f*neck*shoulder+.010f*arm*side*elbow+.007f*body*shift);
     v[a+1]+=h*gain*(-.0035f*neck*inhale+.0045f*neck*outer*shoulder+.0025f*arm*side*elbow);
     if(kind==3){v[a]+=w*.022f*(x-.5f)*chest*expansion;v[a+1]-=h*.006f*chest*expansion;}

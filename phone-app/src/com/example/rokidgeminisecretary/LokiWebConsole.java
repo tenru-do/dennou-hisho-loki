@@ -71,17 +71,21 @@ final class LokiWebConsole {
         code="";invitation="";return true;
     }
     static void show(MainActivity owner, String ip) {
+        if(!LocalShareAddressPolicy.valid(ip)){new AlertDialog.Builder(owner).setTitle("Wi-Fi接続を確認してください").setMessage("共有用のWi-Fiアドレスがありません。スマホとタブレットを同じWi-Fiへ接続してから開き直してください。携帯回線のアドレスでは共有しません。").setPositiveButton("閉じる",null).show();return;}
         String link=invitationLink(ip), base="https://"+ip+":8766/web/";
+        final AlertDialog[] currentDialog=new AlertDialog[1];java.util.List<LocalShareNetwork.Entry> localOptions=LocalShareNetwork.addresses(owner);
         android.widget.LinearLayout content=new android.widget.LinearLayout(owner);content.setOrientation(1);int pad=(int)(16*owner.getResources().getDisplayMetrics().density);content.setPadding(pad,pad,pad,pad);
-        android.widget.TextView description=new android.widget.TextView(owner);description.setText("タブレット：このQRをカメラで読み取ってください。\nPC：接続リンクを共有するか、登録済みのリンクを開いてください。\nURL・コードの手入力は不要です。最後にこのスマホで許可します。\n同じWi-Fiで使います。招待リンクは2分・1回限りです。");content.addView(description);
+        android.widget.TextView description=new android.widget.TextView(owner);description.setText("タブレット：このQRをカメラで読み取ってください。\nPC：接続リンクを共有するか、登録済みのリンクを開いてください。\nURL・コードの手入力は不要です。最後にこのスマホで許可します。\n同じWi-Fi、またはこのスマホのWi-Fiテザリングに接続して使います。回線を切り替えたら「接続先を更新」を押してください。招待リンクは2分・1回限りです。");content.addView(description);
         Bitmap bitmap=LokiConnectionQr.image(link);android.widget.ImageView qr=new android.widget.ImageView(owner);qr.setImageBitmap(bitmap);qr.setContentDescription("ロキWeb接続用QRコード");int size=(int)(280*owner.getResources().getDisplayMetrics().density);android.widget.LinearLayout.LayoutParams qrLayout=new android.widget.LinearLayout.LayoutParams(size,size);qrLayout.gravity=android.view.Gravity.CENTER_HORIZONTAL;content.addView(qr,qrLayout);
         android.widget.TextView url=new android.widget.TextView(owner);url.setText(base);url.setTextIsSelectable(true);content.addView(url);
+        for(LocalShareNetwork.Entry option:localOptions){if(option.address.equals(ip)){android.widget.TextView kind=new android.widget.TextView(owner);kind.setText("表示中の接続先："+option.label);content.addView(kind);}else{android.widget.Button choose=new android.widget.Button(owner);choose.setText(option.label+"の接続先に切替（"+option.address+"）");choose.setOnClickListener(v->{if(currentDialog[0]!=null)currentDialog[0].dismiss();show(owner,option.address);});content.addView(choose);}}
+        android.widget.Button refresh=new android.widget.Button(owner);refresh.setText("接続先を更新（Wi-Fi／テザリング切替後）");refresh.setOnClickListener(v->{if(currentDialog[0]!=null)currentDialog[0].dismiss();show(owner,LocalShareNetwork.address(owner));});content.addView(refresh);
         android.widget.Button share=new android.widget.Button(owner);share.setText("接続リンクを共有");share.setOnClickListener(v->{Intent send=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,link);owner.startActivity(Intent.createChooser(send,"PC・タブレットへ接続リンクを送る"));});content.addView(share);
         android.widget.Button copy=new android.widget.Button(owner);copy.setText("接続リンクをコピー");copy.setOnClickListener(v->{((ClipboardManager)owner.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Loki connection",link));android.widget.Toast.makeText(owner,"接続リンクをコピーしました",0).show();});content.addView(copy);
         android.widget.TextView details=new android.widget.TextView(owner);String fingerprint;try{fingerprint=BridgeTlsServer.fingerprint();}catch(Exception e){fingerprint="取得できません";}details.setText("初回はこのスマホの証明書を確認してください。\nSHA256: "+fingerprint+"\n登録した端末は30日間再接続できます。共有PCでは端末登録をオフにしてください。");content.addView(details);
         android.widget.Button manage=new android.widget.Button(owner);manage.setText("接続端末を個別に確認・権限変更");manage.setOnClickListener(v->new ReliabilityDialog(owner).sessions());content.addView(manage);
         android.widget.ScrollView scroll=new android.widget.ScrollView(owner);scroll.addView(content);
-        new AlertDialog.Builder(owner).setTitle("QR・リンクでPC／タブレットを接続").setView(scroll)
+        currentDialog[0]=new AlertDialog.Builder(owner).setTitle("QR・リンクでPC／タブレットを接続").setView(scroll)
             .setNeutralButton("全Web端末の認証を解除",(d,w)->new AlertDialog.Builder(owner).setMessage("PC・タブレットの接続をすべて解除しますか？").setPositiveButton("解除",(a,b)->{revokeAll(owner);android.widget.Toast.makeText(owner,"Web端末の認証を解除しました",0).show();}).setNegativeButton("取消",null).show())
             .setNegativeButton("閉じる",null).show();
     }
@@ -128,12 +132,13 @@ final class LokiWebConsole {
         if(request==null)return false;
         String[] parts=request.split(" ");if(parts.length<2)return false;
         String method=parts[0], target=parts[1];if(!target.equals("/web")&&!target.startsWith("/web/"))return false;
+        String circuit="";boolean admitted=false,technicalFailure=false;
         try {
             URI uri=new URI(target);String path=uri.getPath();
             if(method.equals("GET")&&path.equals("/web/icon.png")) {
                 respond(socket,200,"image/png",asset(owner,"icon.png"));return true;
             }
-            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/conversation-tools.js")||path.equals("/web/conversation-reliability.js")||path.equals("/web/conversation-plus.js")||path.equals("/web/conversation-ui.js")||path.equals("/web/answer-corrections.js")||path.equals("/web/reliability.js")||path.equals("/web/local-records.js")||path.equals("/web/style.css"))) {
+            if(method.equals("GET")&&(path.equals("/web")||path.equals("/web/")||path.equals("/web/adopted-improvements.js")||path.equals("/web/app.js")||path.equals("/web/media-attachments.js")||path.equals("/web/conversation-tools.js")||path.equals("/web/conversation-reliability.js")||path.equals("/web/conversation-plus.js")||path.equals("/web/conversation-ui.js")||path.equals("/web/answer-corrections.js")||path.equals("/web/reliability.js")||path.equals("/web/local-records.js")||path.equals("/web/style.css"))) {
                 String asset=path.equals("/web")||path.equals("/web/")?"index.html":path.substring("/web/".length());
                 respond(socket,200,asset.endsWith(".js")?"text/javascript; charset=utf-8":asset.endsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8",asset(owner,asset));return true;
             }
@@ -154,6 +159,7 @@ final class LokiWebConsole {
             }
             JSONObject session=authenticate(owner,token);if(session==null){json(socket,401,new JSONObject().put("error","スマホで接続コードを発行し、接続してください"));return true;}
             if(method.equals("POST")&&session.optString("scope","full").equals("read")&&!path.equals("/web/api/logout")&&!path.equals("/web/api/answer-correction-view")){json(socket,403,new JSONObject().put("error","この接続端末は閲覧のみです。権限変更はスマホで行ってください"));return true;}
+            circuit=path;FeatureResilience.check(circuit,android.os.SystemClock.elapsedRealtime());admitted=true;
             if(method.equals("POST")&&path.equals("/web/api/secretary-inbox-action")){json(socket,200,SecretaryInbox.action(owner,new JSONObject(body)));return true;}
             if(method.equals("POST")&&path.equals("/web/api/media-drop-status")) {
                 JSONObject input=new JSONObject(body),record=new JSONObject().put("time",System.currentTimeMillis());
@@ -253,6 +259,9 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/transfer-network")){TransferNetwork.save(owner,new JSONObject(body).getString("mode"));json(socket,200,TransferNetwork.state(owner));return true;}
             if(method.equals("GET")&&path.equals("/web/api/workspace")){json(socket,200,ConversationWorkspace.snapshot(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/workspace-command")){synchronized(LokiWebConsole.class){json(socket,200,ConversationWorkspace.submit(owner,new JSONObject(body)));}return true;}
+            if(method.equals("GET")&&path.equals("/web/api/adopted-state")){json(socket,200,AdoptedControls.state(owner));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/adopted-action")){json(socket,200,AdoptedControls.action(owner,new JSONObject(body)));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/visual-asset")){String name=query.get("name");if(name==null||!name.matches("loki_(portrait_life_v653|portrait_sequence_v663|contact_states_v659|notebook_sequence_v663)[.]png"))throw new java.io.FileNotFoundException();try(InputStream in=owner.getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>16000000)throw new IOException("画像サイズを確認してください");out.write(bytes,0,n);}respond(socket,200,"image/png",out.toByteArray());}return true;}
             if(method.equals("GET")&&path.equals("/web/api/navigation-health")){json(socket,200,owner.navigationHealth());return true;}
             if(method.equals("POST")&&path.equals("/web/api/navigation-retry")){owner.runOnUiThread(owner::retryNavigationForUser);json(socket,200,new JSONObject().put("queued",true));return true;}
             if(method.equals("POST")&&path.equals("/web/api/meeting-verify")){json(socket,200,MeetingAudioStore.verify(owner,new JSONObject(body).getString("id")));return true;}
@@ -309,7 +318,8 @@ final class LokiWebConsole {
         }catch(FileNotFoundException e){json(socket,404,new JSONObject().put("error","写真が見つかりません。一覧を更新してください"));}
         catch(IOException e){json(socket,409,new JSONObject().put("error",e.getMessage()==null?"保存先または接続を確認してください":e.getMessage()));}
         catch(IllegalArgumentException|JSONException e){json(socket,400,new JSONObject().put("error","入力を確認してください"));}
-        catch(Exception e){android.util.Log.w("LokiWebConsole","Browser request failed: "+e.getClass().getSimpleName());json(socket,500,new JSONObject().put("error","処理できませんでした。スマホの状態を確認してください"));}
+        catch(Exception e){technicalFailure=true;if(admitted)FeatureResilience.failed(circuit,e,android.os.SystemClock.elapsedRealtime());android.util.Log.w("LokiWebConsole","Browser request failed: "+e.getClass().getSimpleName());json(socket,500,new JSONObject().put("error","処理できませんでした。スマホの状態を確認してください"));}
+        finally{if(admitted&&!technicalFailure)FeatureResilience.success(circuit);}
         return true;
     }
     private static void json(Socket socket,int status,JSONObject body)throws IOException{respond(socket,status,"application/json; charset=utf-8",body.toString().getBytes(StandardCharsets.UTF_8));}

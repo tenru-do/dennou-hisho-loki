@@ -1,0 +1,18 @@
+{
+  "asset": "loki_seated_gestures_v687.png",
+  "assetSha256": "4dce65c14c330a58de3ca8fdaf2007537cda0348cc68cb0053c507dccfc1c1f3",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 4,
+  "rows": 6,
+  "reviewedFrames": 24,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "contactSheet": {
+    "path": "artwork/reviews/v687/loki_seated_gestures_v687.png.contact.png",
+    "sha256": "a9bf5e0a5ca52d5146fe679fe3b1e2df28fe3e43d9d1a9ec32ef668f79f570ba"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v687/loki_seated_gestures_v687.png.landmarks.json",
+    "sha256": "0aac293233a40c4bdf91eb1a5498951d9dbef0060f058a4e44b1f0fb1d547839"
+  }
+}

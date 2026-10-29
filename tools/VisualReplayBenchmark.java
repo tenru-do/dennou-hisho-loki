@@ -1,0 +1,13 @@
+package com.example.rokidkeyboardbridge;
+import android.content.*;import android.content.res.*;import android.graphics.*;import java.util.zip.*;import java.lang.reflect.*;import org.json.*;
+/** Same synthetic corpus for two APKs. Local interpretation/Canvas only, not end-to-end latency. */
+public final class VisualReplayBenchmark {
+ static Field field(String s)throws Exception{Field f=FullBodyMascotView.class.getDeclaredField(s);f.setAccessible(true);return f;}
+ public static String run(Context context,String apk)throws Exception{
+  CharacterRenderBudget.reset();AssetManager a=AssetManager.class.getConstructor().newInstance();AssetManager.class.getMethod("addAssetPath",String.class).invoke(a,apk);Resources r=new Resources(a,context.getResources().getDisplayMetrics(),context.getResources().getConfiguration());Context c=new ContextWrapper(context){public AssetManager getAssets(){return a;}public Resources getResources(){return r;}};
+  FullBodyMascotView view=new FullBodyMascotView(c);view.layout(0,0,240,600);RestArtworkDeviceChecks.warm(view,c);EmbodiedScenePolicy state=(EmbodiedScenePolicy)field("embodied").get(view);Method requested=FullBodyMascotView.class.getDeclaredMethod("requestedPose");requested.setAccessible(true);
+  String[] corpus={"腰掛けて","手を振って","立って","ねそべって","寝たまま手を振って","ありがとう","座って","立って"};int[] expected={1,1,0,2,2,2,1,0};JSONArray results=new JSONArray();Runtime runtime=Runtime.getRuntime();long memory=runtime.totalMemory()-runtime.freeMemory(),peak=memory;
+  try(ZipFile zip=new ZipFile(apk)){for(int i=0;i<corpus.length;i++){long start=System.nanoTime();view.setUserContext(corpus[i]);int selected=(Integer)requested.invoke(view);if(selected<0||selected>=FullBodyPoseCatalog.ALL.length)selected=4;Bitmap b=FullBodyRealisticAssets.decode(zip,selected,1);field("bitmap").set(view,b);field("loaded").setInt(view,selected);Bitmap frame=Bitmap.createBitmap(240,600,Bitmap.Config.ARGB_8888);view.onDraw(new Canvas(frame));field("blendStarted").setLong(view,android.os.SystemClock.uptimeMillis()-10000);frame.eraseColor(Color.BLACK);view.onDraw(new Canvas(frame));long elapsed=System.nanoTime()-start;int actual=state.correctedRest()?2:state.posture()>=0?state.posture():FullBodyMotionPolicy.isSeated(selected)?1:0;results.put(new JSONObject().put("case",i).put("expected",expected[i]).put("selectedPosture",actual).put("matched",actual==expected[i]).put("localRenderNanos",elapsed));peak=Math.max(peak,runtime.totalMemory()-runtime.freeMemory());frame.recycle();}}
+  view.releaseInspection();return new JSONObject().put("cases",results).put("heapStart",memory).put("heapPeak",peak).put("externalCalls",0).put("scope","synthetic local interpretation and settled Canvas; not speech/API/GPS latency").toString();
+ }
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "key": "greeting_standing",
+    "source": "loki_body_greeting_standing_v666.png",
+    "destination": "loki_body_greeting_standing_v667.png",
+    "generated": "exec-7b0a2faf-d143-4013-b98b-0d5549892466.png"
+  },
+  {
+    "key": "greeting_seated",
+    "source": "loki_body_greeting_seated_v665.png",
+    "destination": "loki_body_greeting_seated_v667.png",
+    "generated": "exec-f2373e8a-07f8-4e81-93ab-a00b141380db.png"
+  },
+  {
+    "key": "ear",
+    "source": "loki_body_ear_v666.png",
+    "destination": "loki_body_ear_v667.png",
+    "generated": "exec-83f68893-50b0-4dc1-9dce-dd286c69cf5f.png"
+  },
+  {
+    "key": "affection",
+    "source": "loki_body_affection_v666.png",
+    "destination": "loki_body_affection_v667.png",
+    "generated": "exec-e5addbf5-0ab5-47d4-b7d9-30dc64390446.png"
+  },
+  {
+    "key": "affection_seated",
+    "source": "loki_body_affection_seated_v666.png",
+    "destination": "loki_body_affection_seated_v667.png",
+    "generated": "exec-b27f4b24-a9cd-4ac8-9da1-95e3d16ceb15.png"
+  },
+  {
+    "key": "invite",
+    "source": "loki_body_invite_v666.png",
+    "destination": "loki_body_invite_v667.png",
+    "generated": "exec-d63580b1-0e03-43b6-9821-9b411f64ddcb.png"
+  },
+  {
+    "key": "contact",
+    "source": "loki_contact_states_v666.png",
+    "destination": "loki_contact_states_v667.png",
+    "generated": "exec-0643e101-4a6d-4d36-8a0b-b41734db685d.png"
+  },
+  {
+    "key": "notebook",
+    "source": "loki_notebook_sequence_v666.png",
+    "destination": "loki_notebook_sequence_v667.png",
+    "generated": "exec-75e0fa28-42a9-4aaa-b3a1-c87dea47aa16.png"
+  },
+  {
+    "key": "actions",
+    "source": "loki_body_actions_v665.png",
+    "destination": "loki_body_actions_v667.png",
+    "generated": "exec-ab4115df-8e60-4675-9a40-5f69736b4981.png"
+  },
+  {
+    "key": "overhead",
+    "source": "loki_body_overhead_v665.png",
+    "destination": "loki_body_overhead_v667.png",
+    "generated": "exec-f5899443-ff37-4502-8e53-c8ef2b867145.png"
+  },
+  {
+    "key": "seated_kiss",
+    "source": "loki_body_seated_kiss_v665.png",
+    "destination": "loki_body_seated_kiss_v667.png",
+    "generated": "exec-74062bcf-0143-430f-b8f5-40da118288dc.png"
+  }
+]

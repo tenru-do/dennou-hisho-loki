@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "note": "Existing assets pinned to detect unreviewed changes, not a certification of every historical image. New images require landmark + visual comparison. No auto-approve tool.",
+  "assets": [
+    {
+      "name": "loki_body_actions_v667.png",
+      "sha256": "52f76daec27bdb7f49f514b01e08f8f7d47b3ee7bc9915103dee84d77f817e21"
+    },
+    {
+      "name": "loki_body_affection_seated_v669.png",
+      "sha256": "946aba87aafac8e347158267c535836baba54357ac66fb4336b240abc05e7e3c"
+    },
+    {
+      "name": "loki_body_affection_v669.png",
+      "sha256": "a56197ce86ca0440723c35b9e0cc5cb18b9606a8e21c77f6a54fce0a0944da87"
+    },
+    {
+      "name": "loki_body_ear_v672.png",
+      "sha256": "9b9e9edea3d67aad6d3f6cf7cb66b4d91c77e2cfd308ea90889d2eb6f5e551b0"
+    },
+    {
+      "name": "loki_body_greeting_seated_v667.png",
+      "sha256": "f986cfd3528871b95b2564e7e4a4986ae2d4916c4a6eb8d77c0ff788b5447157"
+    },
+    {
+      "name": "loki_body_greeting_standing_v667.png",
+      "sha256": "d7f1029c222d7ec0dad78b97dbfc19aabfe8c67a2c2f1797138d4378313f3939"
+    },
+    {
+      "name": "loki_body_greeting_v654.png",
+      "sha256": "b8c5bf4ac5f2886bb338c627ddf89bf5b3609fc4cac7f6e0ee8f0daa37fe05b5"
+    },
+    {
+      "name": "loki_body_invite_v667.png",
+      "sha256": "f6bbcb34ad4289a6361abfd5db31f8c7f10580266727a0391b050fd2670f29d9"
+    },
+    {
+      "name": "loki_body_leg_change_v669.png",
+      "sha256": "f04cb6bfa89bd1e18064b56274a1bc98571bc1b0936db9b964699642b7749858"
+    },
+    {
+      "name": "loki_body_overhead_v667.png",
+      "sha256": "d508afd2a7ef36b93f1ca7f9c1cc8a413afc3bd5cab20c0005450a13a99ef974"
+    },
+    {
+      "name": "loki_body_seated_kiss_v667.png",
+      "sha256": "88da9cefbf678af8517df9dc898beab694bc35b5bc0add83bc834e088c16030a"
+    },
+    {
+      "name": "loki_contact_states_v669.png",
+      "sha256": "406c036fa3f8803822267dd08db47a4faa28114bf4f48799f45170272663e6c2"
+    },
+    {
+      "name": "loki_notebook_sequence_v667.png",
+      "sha256": "0f603c47055d36ee0dc8bd711ae80540dfbd708029fa9f1058a2c189c5a65f30"
+    },
+    {
+      "name": "loki_poised_gestures_v670.png",
+      "sha256": "eae231f7a1718ce34e80451008417e0b8df091cd4862971f5efb99c5cfd2f03d"
+    },
+    {
+      "name": "loki_relaxed_emotions_v670.png",
+      "sha256": "6355d3c5d1b799aefd15ce6b6ccf1effa198b5b3e8d795a99a5f0fa63d2588ba"
+    },
+    {
+      "name": "loki_relaxed_expressions_v670.png",
+      "sha256": "edacf3cc17f2b54ed6fcc2858af5b392c56d2ab30df38297363d522d8e916918"
+    },
+    {
+      "name": "loki_relaxed_poses_v670.png",
+      "sha256": "3bf46dbb9f44c7dad6daab8b6ab06b5143e8ae90a9f0b90d1281ccd0d01e8afa"
+    },
+    {
+      "name": "loki_rest_master_v675.png",
+      "sha256": "89615c6121b3b9f9e04831b6b9c7a9beb81769fb1c8b85a66c2fbc0385fe1864",
+      "review": "v675: corrected v2 source, measured master/motion/wave samples, all-frame native preview, nonuniform gutters audited. artwork/v675 and docs/REST-ANIMATION-v675.md"
+    },
+    {
+      "name": "loki_rest_motion_v675.png",
+      "sha256": "b6b075a51aac0f22597985c047f6a68ceb44d0c0fbcaf115451f3ac29da6ca78",
+      "review": "v675: corrected v2 source, measured master/motion/wave samples, all-frame native preview, nonuniform gutters audited. artwork/v675 and docs/REST-ANIMATION-v675.md"
+    },
+    {
+      "name": "loki_rest_faces_v675.png",
+      "sha256": "93f4b940acfee1178a61919b4a7ec16ffd2e7c7fcdb97da57ae15911cd934d2d",
+      "review": "v675: corrected v2 source, measured master/motion/wave samples, all-frame native preview, nonuniform gutters audited. artwork/v675 and docs/REST-ANIMATION-v675.md"
+    },
+    {
+      "name": "loki_rest_wave_v675.png",
+      "sha256": "a12897d11974fb3c9cb8f86cb577fb9e365eab6fe03e342e048378d143639556",
+      "review": "v675: corrected v2 source, measured master/motion/wave samples, all-frame native preview, nonuniform gutters audited. artwork/v675 and docs/REST-ANIMATION-v675.md"
+    },
+    {
+      "name": "loki_rest_knee_v676.png",
+      "sha256": "e7e98c04db713413add7481881b4854c5cbb539a3be0d952af323e706a567e1d",
+      "review": "v676: original master proportions, four knee and cloth-drape keys, split lines excluded in runtime crop, native 6-expression/torso-fidget preview. artwork/v676/knee-landmarks.json; docs/KNEE-REST-v676.md"
+    },
+    {
+      "name": "loki_rest_conversation_faces_v677.png",
+      "sha256": "05ca09e65c3fa839c939f3dfefd4a4550f2a73b5c394de7b478d72032ff345d7"
+    },
+    {
+      "name": "loki_comfort_hug_v678.png",
+      "sha256": "0d0ca7d26732b60617636728c5ef639336974f8cf83ec9ee82217e7ccc94ee90",
+      "review": "v678 original-reference and neutral-body/inner-face review; pose projection metric flags retained in outputs/comfort-v678, not claimed as standing-ratio pass"
+    },
+    {
+      "name": "loki_comfort_read_v678.png",
+      "sha256": "425c25a0fa7e3519046e934b1e9e5740bb59d2ccf0afc41f313a342705420164",
+      "review": "v678 original-reference and neutral-body/inner-face review; pose projection metric flags retained in outputs/comfort-v678, not claimed as standing-ratio pass"
+    },
+    {
+      "name": "loki_comfort_side_v678.png",
+      "sha256": "145be6fdcb8dc3d7f4f46fa71a93bfcd71284a01fb318dc392f28aa8ab9caf37",
+      "review": "v678 original-reference and neutral-body/inner-face review; pose projection metric flags retained in outputs/comfort-v678, not claimed as standing-ratio pass"
+    },
+    {
+      "name": "loki_comfort_stretch_v678.png",
+      "sha256": "277e9a7745018bb8e2bd2cd277ddc8b49b4a660fd51c56b8c311ee87064f7ead",
+      "review": "v678 original-reference and neutral-body/inner-face review; pose projection metric flags retained in outputs/comfort-v678, not claimed as standing-ratio pass"
+    },
+    {
+      "name": "loki_offduty_pillow_v683.png",
+      "sha256": "5d66e481efe6a0e40ba1b447cf137ae14b76c5e2f6403f0e29967cb4127a34c7",
+      "review": "v683 FINAL portrait directly-overhead composition requested by user. Mature face and long slim anatomy checked against original and master lying reference; bare feet explicitly requested. Four expressions reuse neutral body. Source generations and landmarks retained; no standing-ratio certification for rest poses. Horizontal trial is not used."
+    },
+    {
+      "name": "loki_offduty_arms_v683.png",
+      "sha256": "864ee58cb26fb2c918cc59f0b2b25f4746bac95ee76e1a3bb5472313b45ed33f",
+      "review": "v683 FINAL portrait directly-overhead composition requested by user. Mature face and long slim anatomy checked against original and master lying reference; bare feet explicitly requested. Four expressions reuse neutral body. Source generations and landmarks retained; no standing-ratio certification for rest poses. Horizontal trial is not used."
+    },
+    {
+      "name": "loki_offduty_chin_v683.png",
+      "sha256": "b36076e913b6f6be27a77e855fb0c99f97073df5c0c263ce2a68d19459b18628",
+      "review": "v683 FINAL portrait directly-overhead composition requested by user. Mature face and long slim anatomy checked against original and master lying reference; bare feet explicitly requested. Four expressions reuse neutral body. Source generations and landmarks retained; no standing-ratio certification for rest poses. Horizontal trial is not used."
+    },
+    {
+      "name": "loki_offduty_dream_v683.png",
+      "sha256": "c3df9e0b71c7aa9836f993710d4ea9291c9fd65a43d16d23c54617a79d7ee86e",
+      "review": "v683 FINAL portrait directly-overhead composition requested by user. Mature face and long slim anatomy checked against original and master lying reference; bare feet explicitly requested. Four expressions reuse neutral body. Source generations and landmarks retained; no standing-ratio certification for rest poses. Horizontal trial is not used."
+    },
+    {
+      "name": "loki_rest_relaxed_legs_v684.png",
+      "sha256": "b2a3e6bcf7da18cc594b62f127b556bb270c4ee1a51aa80713435bec064e6565",
+      "review": "v684 user requested small relaxed leg gap. Original mature identity and overhead portrait rest framing retained. Feet uncrossed, coverage/length retained; whole atlas and source proportions visually inspected; four expressions reuse neutral body. artwork/v684/relaxed-legs-landmarks.json; final native rendering reviewed: all four expressions retain lower-body pixels; no face-patch alpha edge; 6249 isolated Android checks passed."
+    },
+    {
+      "name": "loki_standing_gestures_v685.png",
+      "sha256": "cf80a1cce3ca92b7f19e419a0b03ec0fbfaf4f769acecad1a0a96bd71af358df",
+      "review": "v685 manual full atlas comparison and neutral-frame landmarks; standing-only clips, seated unchanged"
+    },
+    {
+      "name": "loki_standing_accessory_v685.png",
+      "sha256": "f63b65bac52da5ec6866328717ad7211931b95d7ae85cfc76d5b1f6d16dae9df",
+      "review": "v685 manual full atlas comparison and neutral-frame landmarks; standing-only clips, seated unchanged"
+    },
+    {
+      "name": "loki_identity_portraits_v686.png",
+      "sha256": "72630bc8bfac9bcac0a812ad448f1d0899d61294f29a7eed6f1a041cf4d222c1",
+      "evidence": "artwork/reviews/v686/loki_identity_portraits_v686.png.review.json",
+      "evidenceSha256": "e1b48cd3ed8d8af85219c4d2e9dcf7de56f3a111c2f099ab1ff7a538743563ea"
+    },
+    {
+      "name": "loki_posture_bridge_v686.png",
+      "sha256": "4b1caf3a1852eb109108ca4bafdf787035eaedcb8e9eb667bb069bbdb5b2db67",
+      "evidence": "artwork/reviews/v686/loki_posture_bridge_v686.png.review.json",
+      "evidenceSha256": "27cef7a29affd4a39d832346dbb1f10d0e1a0b864468e35031cfae9b2324f018"
+    },
+    {
+      "name": "loki_seated_gestures_v687.png",
+      "sha256": "4dce65c14c330a58de3ca8fdaf2007537cda0348cc68cb0053c507dccfc1c1f3",
+      "evidence": "artwork/reviews/v687/loki_seated_gestures_v687.png.review.json",
+      "evidenceSha256": "45890472881d0e92170d389f88e2f3c18357ef80e6e79fcfe773cbccbd655d64"
+    },
+    {
+      "name": "loki_seated_ear_v689.png",
+      "sha256": "d1a61e02199a34288bb108f9554861c02aa93e4fe1776eb8a8a9b4fc3f61d893",
+      "evidence": "artwork/reviews/v689/loki_seated_ear_v689.png.review.json",
+      "evidenceSha256": "2883bbdd6d65bc71939ab632f72997c0333dcfd3653540d2d8bd0b781f896521"
+    },
+    {
+      "name": "loki_seated_beckon_v689.png",
+      "sha256": "d934a65b905e17724c9ab297a6c3dd25c6c7d1e4df109f55833567d327e261c3",
+      "evidence": "artwork/reviews/v689/loki_seated_beckon_v689.png.review.json",
+      "evidenceSha256": "dc280a0358a50bef14a1da074105d8b49df6f0cf909e1279a1c520144aaf3f65"
+    }
+  ]
+}

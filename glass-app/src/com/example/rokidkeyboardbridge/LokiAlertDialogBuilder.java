@@ -6,6 +6,7 @@ import android.content.DialogInterface;
 final class LokiAlertDialogBuilder extends AlertDialog.Builder {
     LokiAlertDialogBuilder(Context c){super(c);}
     LokiAlertDialogBuilder(Context c,int theme){super(c,theme);}
+    @Override public AlertDialog create(){AlertDialog dialog=super.create();NavigationDialogWake.install(dialog,getContext());return dialog;}
     private DialogInterface.OnClickListener wrap(CharSequence label,DialogInterface.OnClickListener action){
         return (dialog,which)->{LokiActionButton.react(getContext(),label);if(action!=null)action.onClick(dialog,which);};
     }

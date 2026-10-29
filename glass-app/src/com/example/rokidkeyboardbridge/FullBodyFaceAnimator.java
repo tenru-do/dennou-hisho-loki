@@ -7,6 +7,8 @@ final class FullBodyFaceAnimator {
  private final RectF rect=new RectF();
  private final Path clip=new Path(),line=new Path();
  private final Matrix skinMatrix=new Matrix();
+ private float gaze,gazeY,mouthEnvelope=1;
+ void attention(float next,float vertical,float speech){gazeY=Math.max(-1,Math.min(1,vertical));gaze=Math.max(-1,Math.min(1,next));mouthEnvelope=Math.max(0,Math.min(1,speech));}
  private boolean stableSmile,originalSeatedMouth;
  private Bitmap mouthPatch,mouthPatchSource;private int mouthPatchLeft,mouthPatchTop;
  private final float[] mouthVertices=new float[9*7*2];
@@ -34,9 +36,9 @@ final class FullBodyFaceAnimator {
  private void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking,boolean preserveSmile){
   if(f==null||source==null||source.isRecycled())return;
   canvas.save();canvas.scale(source.getWidth()/f[0],source.getHeight()/f[1]);
-  float closed=blinking?blink(elapsed):0;
-  if(closed>0){if(f[4]>0)eyeMotion(canvas,source,f,2,closed);if(f[10]>0&&Math.abs(f[8]-f[2])>f[4]*.4f)eyeMotion(canvas,source,f,8,closed);}
-  float open=speaking?mouth(elapsed,true):preserveSmile?.12f*(.5f+.5f*(float)Math.sin(elapsed/950.0)):0;if(stableSmile)open*=.65f;if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
+  float closed=blinking?blink(elapsed)*CharacterMotionTuning.eyes():0;
+  if(closed>0||Math.abs(gaze)>.001f||Math.abs(gazeY)>.001f){if(f[4]>0)eyeMotion(canvas,source,f,2,closed);if(f[10]>0&&Math.abs(f[8]-f[2])>f[4]*.4f)eyeMotion(canvas,source,f,8,closed);}
+  float open=speaking?mouth(elapsed,true)*mouthEnvelope*CharacterMotionTuning.face():preserveSmile?.12f*(.5f+.5f*(float)Math.sin(elapsed/950.0)):0;if(stableSmile)open*=.65f;if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
   canvas.restore();
  }
  // Retain the original lashes, iris, lip corners and shading rather than drawing generic eyes.
@@ -56,7 +58,7 @@ final class FullBodyFaceAnimator {
   if(skinSource!=source){skinSource=source;skinShader=new BitmapShader(source,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);}
   skinMatrix.setScale(f[0]/source.getWidth(),f[1]/source.getHeight());skinMatrix.postTranslate(0,-w*.34f);skinShader.setLocalMatrix(skinMatrix);
   c.save();c.rotate(angle,x,y);p.setStyle(Paint.Style.FILL);p.setColor(Color.WHITE);p.setShader(skinShader);rect.set(x-w*.58f,y-h,x+w*.58f,y+h);c.drawOval(rect,p);p.setShader(null);c.restore();
-  if(closed<.85f)patch(c,source,f,x,y,w*.58f,h,angle,Math.max(.05f,1-closed));
+  if(closed<.85f){c.save();c.translate(gaze*w*.05f,gazeY*w*.04f);patch(c,source,f,x,y,w*.58f,h,angle,Math.max(.05f,1-closed));c.restore();}
   if(closed>.5f){c.save();c.rotate(angle,x,y);p.setColor(Color.BLACK);p.setStyle(Paint.Style.STROKE);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeWidth(Math.max(.65f,w*.055f));line.reset();line.moveTo(x-w*.49f,y);line.quadTo(x,y+w*.09f*closed,x+w*.49f,y);c.drawPath(line,p);c.restore();}
  }
  // For restored seated smiles, move the existing lower lip only. Never paint a generic aperture over the upper lip.

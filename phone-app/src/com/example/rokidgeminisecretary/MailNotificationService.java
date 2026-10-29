@@ -123,6 +123,8 @@ public final class MailNotificationService extends NotificationListenerService {
         }
         if (isHealthPackage(status.getPackageName()) || looksLikeHealth(title, body, subText)) {
             collectHealth(status.getPostTime(), status.getPackageName(), title, body, subText);
+            HealbeHydrationAlert.forward(this,status.getPostTime(),status.getPackageName(),title,body);
+            if("com.healbe.healbegobe".equals(status.getPackageName()))HealbeEnergyStore.observe(this,title+"\n"+body,"HEALBE_NOTIFICATION",status.getPostTime());
             return;
         }
         if (!isMailPackage(status.getPackageName())) {

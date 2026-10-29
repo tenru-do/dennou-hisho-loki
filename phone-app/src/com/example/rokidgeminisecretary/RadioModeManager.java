@@ -42,6 +42,15 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
     private final RadioPrefetchQueue<JSONObject> pipeline = new RadioPrefetchQueue<JSONObject>();
     private volatile long pipelineSeenAt;
     private long lastMemoryRefresh;
+    private synchronized void health(String phase,String reason){
+        if(phase.equals(prefs.getString("radio_health_phase",""))&&reason.equals(prefs.getString("radio_health_reason","")))return;
+        SharedPreferences.Editor edit=prefs.edit().putString("radio_health_phase",phase).putString("radio_health_reason",reason).putLong("radio_health_at",System.currentTimeMillis());
+        long at=System.currentTimeMillis();
+        if("QUEUED".equals(phase))edit.putLong("radio_last_produced_at",at);
+        if("ERROR".equals(phase))edit.putString("radio_last_error_reason",reason).putLong("radio_last_error_at",at);
+        try{JSONArray old=new JSONArray(prefs.getString("radio_health_events","[]")),events=new JSONArray();for(int i=Math.max(0,old.length()-63);i<old.length();i++)events.put(old.getJSONObject(i));events.put(new JSONObject().put("phase",phase).put("reason",reason).put("at",at));edit.putString("radio_health_events",events.toString());}catch(Exception ignored){}
+        edit.apply();
+    }
     private final Runnable tick = new Runnable() {
         public void run() {
             if (closed || !prefs.getBoolean(ENABLED, false)) return;
@@ -53,6 +62,12 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
             if (continuous && workTicket < 0) { schedule(); return; }
             final String chain = pipeline.chain();
             final boolean duringPlayback = continuous && pipeline.speaking();
+            final Runnable timeout=()->{
+                if(!continuous||closed||token!=generation||!pipeline.currentWork(workTicket))return;
+                generation++;abortGeneration();pipeline.clear();retryAfter=System.currentTimeMillis()+30000L;
+                health("ERROR","WORK_TIMEOUT");schedule();
+            };
+            if(continuous)handler.postDelayed(timeout,150000L);
             worker.execute(new Runnable() {
                 public void run() {
                     String observationId="", analysisError="TOPIC cancelled";
@@ -63,18 +78,18 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                         long stateAt = prefs.getLong("glass_state_sent_at", 0);
                         if (continuous ? System.currentTimeMillis() - pipelineSeenAt > 15000L
                                 : System.currentTimeMillis() - stateAt > 120000L
-                                || !"READY".equals(prefs.getString("glass_runtime_state", ""))) return;
+                                || !"READY".equals(prefs.getString("glass_runtime_state", ""))) {health("WAITING","BRIDGE_STALE");return;}
                         String key = GeminiCredentialStore.read(context);
                         if (key.isEmpty()) throw new IllegalStateException("Gemini credential unavailable");
-                        if (System.currentTimeMillis() < retryAfter) return;
+                        if (System.currentTimeMillis() < retryAfter) {health("WAITING","COOLDOWN");return;}
                         JSONObject observation = null;
                         if (TopicMode.audio(mode) || TopicMode.camera(mode)) {
                             String id = java.util.UUID.randomUUID().toString();
-                            observationId=id;RadioObservationStore.begin(id, revision);
+                            observationId=id;health("CAPTURING","NONE");RadioObservationStore.begin(id, revision);
                             JSONObject capture = new JSONObject().put("requestId", id).put("revision", revision)
-                                    .put("mode", mode).put("expiresAt", System.currentTimeMillis() + 20000L);
+                                    .put("mode", mode).put("supportsBlockedReceipt",true).put("expiresAt", System.currentTimeMillis() + 20000L);
                             if (continuous) capture.put("chainId", chain).put("prefetch", duringPlayback);
-                            if (!MainActivity.queueBridgeCommand(context, "__LOKI_RADIO_CAPTURE__:" + capture, false)) return;
+                            if (!MainActivity.queueBridgeCommand(context, "__LOKI_RADIO_CAPTURE__:" + capture, false)) {health("WAITING","QUEUE_BUSY");return;}
                             long until = android.os.SystemClock.elapsedRealtime() + 25000L;
                             while (!closed && token == generation && android.os.SystemClock.elapsedRealtime() < until) {
                                 observation = RadioObservationStore.take(id);
@@ -83,6 +98,10 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                             }
                             if (closed || token != generation) return;
                             if (observation == null) throw new java.util.concurrent.TimeoutException("TOPIC observation timeout");
+                            if(!observation.optString("blockedReason").isEmpty()){
+                                String reason=observation.optString("blockedReason");if(!reason.matches("BACKGROUND|MENU|NAVIGATION|CONVERSATION|CAPTURING|BUSY"))reason="BUSY";
+                                health("WAITING",reason);analysisError="";retryAfter=System.currentTimeMillis()+5000L;return;
+                            }
                             if (observation.optString("audio").isEmpty() && observation.optString("image").isEmpty()) {
                                 if(!observation.optString("imageSkipped").isEmpty()){
                                     analysisError="";retryAfter=System.currentTimeMillis()+30000L;
@@ -92,6 +111,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                             }
                         }
                         JSONObject generated = null;
+                        health("GENERATING","NONE");
                         String promptContext = contextPrompt();
                         for (int attempt = 0; attempt < 2; attempt++) {
                             if (closed || token != generation) return;
@@ -134,16 +154,19 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                             prefs.edit().putString("radio_topic_history_v1", topicHistory.toString())
                                     .putInt("radio_topic_turn", prefs.getInt("radio_topic_turn", 0) + 1).apply();
                         }
+                        health(queued?"QUEUED":"WAITING",queued?"NONE":"QUEUE_BUSY");
                         analysisError=queued?"":"TOPIC delivery cancelled";
                         Log.i("LokiRadio", queued ? "topic queued; prefetch=" + duringPlayback : "topic skipped: queue occupied or cancelled");
                     } catch (Exception error) {
                         // Never log credentials, context, or API response bodies.
+                        if(token==generation)health("ERROR",error instanceof java.util.concurrent.TimeoutException?"CAPTURE_TIMEOUT":"ANALYSIS");
                         analysisError="TOPIC analysis failed: "+error.getClass().getSimpleName();
                         if(error instanceof java.io.IOException && ("invalid topic length".equals(error.getMessage()) || "claim too long".equals(error.getMessage()) || "incomplete topic".equals(error.getMessage()))) analysisError += " ("+error.getMessage()+" )";
                         DailyContextSync.LOG.failed("TOPIC", error);
                         publishFallback(token, revision, mode, continuous, workTicket, chain);
                         if (token == generation) retryAfter = System.currentTimeMillis() + 30000L;
                     } finally {
+                        handler.removeCallbacks(timeout);
                         if(!observationId.isEmpty())RadioObservationStore.finishAnalysis(observationId,analysisError);
                         if (continuous) pipeline.finishGeneration(workTicket);
                         RadioObservationStore.clear();
@@ -180,6 +203,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                     +" payloadBytes="+TopicTextPolicy.bytes(topic.toString()));
             boolean queued = continuous ? pipeline.offer(workTicket, id, topic)
                     : MainActivity.queueBridgeCommand(context, "__LOKI_RADIO__:" + topic, false);
+            if(queued)health("QUEUED","FALLBACK");
             Log.i("[ContextSync]", "TOPIC generation SUCCESS fallback=true queued=" + queued);
             return queued;
         }, false, DailyContextSync.LOG);
@@ -199,7 +223,13 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
         SharedPreferences p = context.getSharedPreferences("phone_secretary", Context.MODE_PRIVATE);
         return new JSONObject().put("enabled", p.getBoolean(ENABLED, false))
                 .put("revision", p.getLong(REVISION, 0)).put("minutes", minutes(p.getInt(MINUTES, 10)))
-                .put("mode", TopicMode.normalize(p.getString(MODE, "scheduled")));
+                .put("mode", TopicMode.normalize(p.getString(MODE, "scheduled")))
+                .put("healthPhase",p.getString("radio_health_phase",""))
+                .put("healthReason",p.getString("radio_health_reason",""))
+                .put("healthAt",p.getLong("radio_health_at",0))
+                .put("lastProducedAt",p.getLong("radio_last_produced_at",0))
+                .put("lastErrorReason",p.getString("radio_last_error_reason",""))
+                .put("lastErrorAt",p.getLong("radio_last_error_at",0));
     }
     private void schedule() {
         handler.removeCallbacks(tick);
@@ -298,15 +328,10 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                 currentLocation = best;
                 if (best.hasSpeed()) movement = best.getSpeed() >= 3.5f ? "乗車中の可能性（速度による推定）"
                         : best.getSpeed() >= 0.5f ? "徒歩中の可能性（速度による推定）" : "静止中の可能性";
-                if (Geocoder.isPresent()) {
-                    List<Address> addresses = new Geocoder(context, Locale.JAPAN)
-                            .getFromLocation(best.getLatitude(), best.getLongitude(), 1);
-                    if (addresses != null && !addresses.isEmpty()) {
-                        Address address = addresses.get(0);
-                        place = (address.getLocality() == null ? "" : address.getLocality())
-                                + (address.getSubLocality() == null ? "" : address.getSubLocality())
-                                + (address.getFeatureName() == null ? "" : " " + address.getFeatureName());
-                    }
+                long regionAt=prefs.getLong("weather_time",0);
+                if(regionAt>0&&System.currentTimeMillis()-regionAt<1800000L){
+                    String region=prefs.getString("weather_location","");
+                    if(!region.isEmpty())place="直近の天気取得地域（現在地とは限らない）："+region;
                 }
             }
         } catch (Exception unavailable) { DailyContextSync.LOG.failed("LOCATION", unavailable); }
@@ -396,7 +421,7 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
         for (boolean covered : alreadyCovered) if (covered) repeatedFacts++;
         return TopicNoveltyPolicy.repeatedFacts(repeatedFacts, alreadyCovered.length, sameTopic);
     }
-    private JSONObject generate(String key, String data, JSONObject observation) throws Exception {
+    JSONObject buildRequest(String data, JSONObject observation) throws Exception {
         JSONArray inputParts = new JSONArray().put(new JSONObject().put("text", data));
         if(observation!=null&&"keep_saved_photo".equals(observation.optString("imageSource")))
             inputParts.put(new JSONObject().put("text","この画像はKEEPで直近に撮影・保存された写真の縮小版です。ライブ映像ではありません。撮影日時（Unixミリ秒）："+observation.optLong("imageCapturedAt")+"。現在も同じ状況が続いているとは断定しないでください。"));
@@ -429,6 +454,10 @@ final class RadioModeManager implements SharedPreferences.OnSharedPreferenceChan
                 .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", inputParts)))
                 .put("generationConfig", new JSONObject().put("maxOutputTokens", 2200).put("temperature", 0.4)
                         .put("responseMimeType", "application/json").put("responseSchema", schema));
+        return request;
+    }
+    private JSONObject generate(String key,String data,JSONObject observation)throws Exception{
+        JSONObject request=buildRequest(data,observation);
         HttpURLConnection connection = (HttpURLConnection) new URL(
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent").openConnection();
         active = connection;

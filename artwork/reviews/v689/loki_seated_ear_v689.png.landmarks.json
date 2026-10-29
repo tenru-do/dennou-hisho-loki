@@ -1,0 +1,68 @@
+{
+  "kind": "corrected-seated-ear-four-frames",
+  "imageWidth": 1254,
+  "imageHeight": 1254,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        627,
+        627
+      ],
+      "headBounds": [
+        250,
+        10,
+        140,
+        145
+      ]
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        627,
+        0,
+        1254,
+        627
+      ],
+      "headBounds": [
+        250,
+        10,
+        140,
+        145
+      ]
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        0,
+        627,
+        627,
+        1254
+      ],
+      "headBounds": [
+        250,
+        10,
+        140,
+        145
+      ]
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        627,
+        627,
+        1254,
+        1254
+      ],
+      "headBounds": [
+        250,
+        10,
+        140,
+        145
+      ]
+    }
+  ],
+  "reviewNotes": "Manual adult identity/body review against approved 2026-10-27 base and slender seated bridge. Smaller shoulders/torso, natural hands, long legs; two-by-two boundaries inspected; no production pixel edits."
+}

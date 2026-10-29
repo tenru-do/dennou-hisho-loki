@@ -1,0 +1,24 @@
+{
+  "sourceSha256": "774ad31bdb66e4c7d2cb38a2031e841b5ac36967973cb2d2da3cef113f127ee0",
+  "authorizedRequestsConsumed": 3,
+  "externalRetries": 0,
+  "syntheticOnly": true,
+  "nativeReplayAssertionsTotal": 1147,
+  "replayAcceptance": [
+    true,
+    false,
+    true
+  ],
+  "observedCharacters": 197,
+  "correctedPlainCharacters": 385,
+  "deliveryRangePlain": [
+    350,
+    750
+  ],
+  "generationTargetPlain": [
+    400,
+    600
+  ],
+  "initialPlainFixtureMissingMode": true,
+  "apiResponseTimesAreNotVoiceEndToEnd": true
+}

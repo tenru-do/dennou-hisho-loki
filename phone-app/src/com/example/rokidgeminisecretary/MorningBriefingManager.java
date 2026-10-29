@@ -347,11 +347,6 @@ final class MorningBriefingManager {
             JSONArray skippedTopNews = deduped.optJSONArray("skippedTopNews");
             JSONArray skippedLocalNews = deduped.optJSONArray("skippedLocalNews");
             JSONArray skippedLocalEvents = deduped.optJSONArray("skippedLocalEvents");
-            if(topNews.length()==0 && rawTopNews.length()>0) {
-                // TOPIC explicitly requested: show the latest collected headlines, labelled as a recap.
-                topNews=rawTopNews;
-                Log.i("LokiTopicData","TOPIC/news status=recap rawCount="+rawTopNews.length());
-            }
             JSONArray horoscope = date.toString().equals(
                     prefs.getString(KEY_HOROSCOPE_ANNOUNCED_DATE, ""))
                     ? new JSONArray() : buildHoroscope(date, prefs);
@@ -690,7 +685,7 @@ final class MorningBriefingManager {
     private static JSONObject bindNewsArticle(NewsRssFallback.Article article) throws Exception {
         return new JSONObject().put("title", shortText(article.title, 110))
                 .put("source", shortText(article.source, 40)).put("published", article.published)
-                .put("link", article.link).put("description", shortText(article.description, 500));
+                .put("link", article.link).put("description", shortText(NewsSpeechText.detail(article.title, article.description, article.source), 500));
     }
     private static JSONArray filterUpcomingEvents(JSONArray source, LocalDate today,
                                                    int daysAhead, int max) throws Exception {
@@ -837,6 +832,7 @@ final class MorningBriefingManager {
             if (normalized.length() < 5) continue;
             JSONObject matched = findSimilarSeenItem(seen, kind, normalized);
             boolean announce = matched == null;
+            if(!announce&&"news".equals(kind)&&NewsSpeechText.update(matched.optString("normalized"),normalized)){announce=true;item=new JSONObject(item.toString()).put("title","続報、"+item.optString("title"));}
             if (!announce && weekendWindow
                     && !weekendKey.equals(matched.optString("weekendKey", ""))) {
                 announce = true;
@@ -1211,9 +1207,6 @@ final class MorningBriefingManager {
             JSONObject article = articles.optJSONObject(i);
             if (article == null) continue;
             out.append(i + 1).append("、").append(article.optString("title", ""));
-            String description = article.optString("description", "");
-            if (!description.isEmpty() && !description.equals(article.optString("title", "")))
-                out.append("。").append(shortText(description, 180));
             out.append("。\n");
         }
     }

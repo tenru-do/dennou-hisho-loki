@@ -1,9 +1,19 @@
 'use strict';
+// Browser storage can be unavailable in restricted/private contexts. Keep controls usable.
+const browserTokenStore=(()=>{let limited=false,ready=false;
+ const status=()=>document.getElementById('webBootStatus');
+ const show=()=>{const el=status();if(!el)return;el.hidden=ready&&!limited;if(limited)el.textContent='ブラウザーの保存領域を利用できないため、この画面を閉じると再接続が必要になる場合があります。現在の画面では操作を続けられます。';};
+ const access=(name,action)=>{try{return action(window[name]);}catch{limited=true;show();return null;}};
+ return {read(){return access('sessionStorage',s=>s.getItem('lokiWebToken'))||access('localStorage',s=>s.getItem('lokiWebToken'))||'';},clear(){for(const name of ['localStorage','sessionStorage'])access(name,s=>s.removeItem('lokiWebToken'));},save(value,persistent){this.clear();const name=persistent?'localStorage':'sessionStorage';let saved=access(name,s=>{s.setItem('lokiWebToken',value);return true;});if(!saved&&persistent)saved=access('sessionStorage',s=>{s.setItem('lokiWebToken',value);return true;});show();return !!saved;},ready(){ready=true;show();}};
+})();
+function showWebBootFailure(){const el=document.getElementById('webBootStatus');if(el){el.hidden=false;el.textContent='画面の処理で問題が起きました。入力内容を控えてからページを開き直してください。自動再送はしていません。';}}
+window.addEventListener('error',event=>{if(event.error)showWebBootFailure();});
+window.addEventListener('unhandledrejection',event=>{if(event.reason?.name!=='AbortError')showWebBootFailure();});
 const $=id=>document.getElementById(id);
 const PHOTO_PAGE_SIZE=200;
 let meetingSignature='', meetingCurrent=null, meetingBlob='', meetingPlayGeneration=0;
 let activeTab='photos', meetingControlBusy=false, meetingUploadController=null, meetingUploadId='', meetingImportSignature='';
-let token=localStorage.getItem('lokiWebToken')||sessionStorage.getItem('lokiWebToken')||'', offset=0, items=[], total=0, selected=new Set(), generation=0, blobs=[], viewing=-1, largeBlob='', zoom=1, busy=false, historySignature='', sendId='';
+let token=browserTokenStore.read(), offset=0, items=[], total=0, selected=new Set(), generation=0, blobs=[], viewing=-1, largeBlob='', zoom=1, busy=false, historySignature='', sendId='';
 let generatedParent='', generatedSignature='',generatedUrls=[];
 let generatedEpoch=0;
 let recoveryNeedsConfirm=false;
@@ -11,11 +21,15 @@ let composerDraftRevision=0, generationParentRevision=0, recoveryRestoreGenerati
 function setComposerMessage(value){$('message').value=value;composerDraftRevision++;window.lokiConversationUi?.draftChanged();}
 function composerSnapshot(){return JSON.stringify([token,$('message').value,composerDraftRevision,chatImageGeneration,generatedParent,generationParentRevision,imageReferenceDraft?.key||'',imageReferenceDraft?.prefix||'']);}
 const note=text=>{$('notice').textContent=text;};
+function webConnectionState(text){const el=$('webLiveState');if(el&&el.textContent!==text)el.textContent=text;}
+window.addEventListener('offline',()=>webConnectionState('タブレットの通信が切れています。自動再送はしていません。'));
+window.addEventListener('online',()=>webConnectionState('通信が戻りました。スマホとの接続は次の取得で確認します。'));
 async function api(path,data,signal){
- const response=await fetch('/web/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Loki-Web-Token':token,...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data),cache:'no-store',signal});
- if(response.status===401){token='';sessionStorage.removeItem('lokiWebToken');localStorage.removeItem('lokiWebToken');showAuth();throw Error('接続の期限が切れました。スマホでコードを発行してください');}
+ const requestToken=token;const response=await fetch('/web/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Loki-Web-Token':requestToken,...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data),cache:'no-store',signal}).catch(error=>{if(token===requestToken)webConnectionState('スマホとの通信を確認できません。共有画面で接続先を確認してください。');throw error;});
+ if(token!==requestToken)throw Error('接続が切り替わったため、前の接続の結果を破棄しました');
+ if(response.status===401){const draft=path==='logout'?'':$('message')?.value||'',uncertain=!!$('send')?.disabled;token='';browserTokenStore.clear();showAuth();webConnectionState('スマホでの再接続が必要です。');if(draft){setComposerMessage(draft);recoveryNeedsConfirm=uncertain;}throw Error('接続の期限が切れました。'+(draft?'未送信の文は残しています。':'')+'スマホの共有画面から接続し直してください');}
  if(!response.ok){let j;try{j=await response.json();}catch{}throw Error(j?.error||'処理できませんでした（'+response.status+'）');}
- return /^(image|video)\//.test(response.headers.get('Content-Type'))?response.blob():response.json();
+ const result=await (/^(image|video)\//.test(response.headers.get('Content-Type'))?response.blob():response.json());if(token!==requestToken)throw Error('接続が切り替わったため、前の接続の結果を破棄しました');webConnectionState('最終接続確認 '+new Date().toLocaleTimeString('ja-JP',{hour12:false}));return result;
 }
 function on(id,action){$(id).addEventListener('click',()=>Promise.resolve().then(action).catch(e=>note(e.message)));}
 let inboxItems=[];
@@ -143,11 +157,11 @@ if(location.hash)history.replaceState(null,'',location.pathname+location.search)
 $('device').value=/iPad|Tablet|Android/i.test(navigator.userAgent)?'タブレット':/Windows/i.test(navigator.userAgent)?'Windows PC':'ブラウザ';
 async function connectBrowser(ticket=''){
  const button=$('pairForm').querySelector('button');button.disabled=true;note('スマホでこの端末の接続を許可してください…');
- try{const remember=$('remember').checked,result=await api('connect',{invitation:ticket,name:$('device').value,remember});const registered=result.remember===undefined?remember:result.remember;token=result.token;localStorage.removeItem('lokiWebToken');sessionStorage.removeItem('lokiWebToken');(registered?localStorage:sessionStorage).setItem('lokiWebToken',token);showAuth();await loadPhotos();note(registered?'接続しました。この端末は登録済みです':'接続しました。このタブだけで利用します');}
+ try{const remember=$('remember').checked,result=await api('connect',{invitation:ticket,name:$('device').value,remember});const registered=result.remember===undefined?remember:result.remember;token=result.token;browserTokenStore.save(token,registered);showAuth();await loadPhotos();note(registered?'接続しました。この端末は登録済みです':'接続しました。このタブだけで利用します');}
  catch(err){note(err.message);}finally{button.disabled=false;}
 }
 $('pairForm').addEventListener('submit',e=>{e.preventDefault();connectBrowser();});
-on('logout',async()=>{await api('logout',{});token='';sessionStorage.removeItem('lokiWebToken');localStorage.removeItem('lokiWebToken');showAuth();note('接続を解除しました');});
+on('logout',async()=>{await api('logout',{});token='';browserTokenStore.clear();showAuth();note('接続を解除しました');});
 on('refresh',loadPhotos);on('import',async()=>{if(!confirm('グラスのKEEP撮影を停止し、原本をグラスに残してスマホへコピーします。AIへ画像は送りません。続けますか？'))return;await api('import',{});note('原本を残す取り込みを依頼しました。まだ保存完了ではありません。一覧を更新して確認してください。');});
 for(const suffix of ['', 'Bottom']){
 on('selectPage'+suffix,()=>{selected=new Set(items.map(x=>x.id));updateSelected();});on('clearSelection'+suffix,()=>{selected.clear();updateSelected();});on('deleteSelected'+suffix,()=>deleteIds([...selected]));
@@ -288,7 +302,7 @@ $('chatForm').addEventListener('submit',async e=>{
  finally{clearTimeout(timer);$('send').disabled=false;$('chatImage').disabled=false;}
 });
 setInterval(()=>{const pending=currentWebTurn&&['CREATED','QUEUED','RECEIVED','RUNNING'].includes(currentWebTurn.state),now=Date.now();if(!document.hidden&&now-lastHistoryPollAt>=(pending?1000:5000)){lastHistoryPollAt=now;loadHistory().catch(e=>note(e.message));}},1000);
-showAuth();if(token)loadPhotos().catch(e=>{note(e.message);if(!token)connectBrowser(invitation);});else connectBrowser(invitation);
+showAuth();if(token)loadPhotos().catch(e=>{note(e.message);if(!token)connectBrowser(invitation);});else connectBrowser(invitation);browserTokenStore.ready();
 
 
 async function meetingPlay(item,part,offsetMs=0){const expectedToken=token, expectedGeneration=++meetingPlayGeneration;
@@ -420,3 +434,6 @@ async function restoreRecoveryPayload(payload,followUp=false){
  recoveryNeedsConfirm=!followUp;$('message').focus();note(followUp?'写真への追加質問を準備しました。まだ送信していません。':'送信控えを復元しました。まだ送信していません。履歴・送信状況を確認してください');return true;
 }
 if($('recoveryRefresh'))$('recoveryRefresh').onclick=async()=>{const session=token;try{const result=await api('recovery');if(session!==token)return;const list=$('recoveryList');list.replaceChildren();for(const row of result.items||[]){const card=document.createElement('article'),p=document.createElement('p');p.textContent=new Date(row.at).toLocaleString()+' ／ '+row.message+(row.imageCount?'（添付'+row.imageCount+'件）':'');card.append(p);const use=document.createElement('button');use.type='button';use.textContent='内容・添付を入力へ戻す（送信なし）';use.onclick=async()=>{try{const item=await api('recovery?id='+encodeURIComponent(row.id));if(session!==token)return;await restoreRecoveryPayload(item.payload);}catch(e){note(e.message);}};card.append(use);list.append(card);}if(!result.items?.length)list.textContent='保存された送信控えはありません';}catch(e){note(e.message);}};
+
+// Connection hints never transfer credentials to a different origin or replay POSTs.
+(()=>{const panel=document.getElementById('networkRecovery'),retry=document.getElementById('networkRetry');if(!panel||!retry)return;const original=window.fetch;window.fetch=async function(...args){try{const result=await original.apply(this,args);if(result.ok)panel.hidden=true;return result;}catch(error){if(error.name!=='AbortError')panel.hidden=false;throw error;}};window.addEventListener('offline',()=>panel.hidden=false);window.addEventListener('online',()=>panel.hidden=false);retry.onclick=async()=>{retry.disabled=true;try{const result=await original(location.pathname,{method:'GET',cache:'no-store'});panel.hidden=result.ok;}catch{panel.hidden=false;}finally{retry.disabled=false;}};})();

@@ -26,6 +26,7 @@ final class ContinuousVoiceInput {
         consumer.start();producer.start();
     }
     boolean speaking(){return source.speaking();}
+    boolean recognizing(){return decoding;}
     boolean finishing(){return finishing;}
     boolean hasUnfinishedAudio(){synchronized(queue){return decoding||!queue.isEmpty()||source.speaking();}}
     void finish(){finishing=true;source.stop();synchronized(queue){queue.notifyAll();}}
@@ -40,7 +41,7 @@ final class ContinuousVoiceInput {
                     }
                 }
                 if(finishing||invalid())break;
-                listener.state("音声入力中・認識待ちも追加受付");
+                if(!decoding)listener.state("音声入力中・認識待ちも追加受付");
                 byte[] pcm=source.capture(()->finishing||invalid());
                 if(invalid())break;
                 if(pcm==null||pcm.length==0)continue;

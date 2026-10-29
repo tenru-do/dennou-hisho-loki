@@ -1,0 +1,11 @@
+{
+  "deviceKind": "phone",
+  "sourceOverrides": false,
+  "glassVersion": 688,
+  "phoneSha256": "aef0074c0eea415eb720fe7aef9841fd7ec2d532bb229fb079cde14642615dc2",
+  "glassSha256": "f57368e39e59d76ef89df622aac450f5f00c4fc886494e771d5b076e40d9657d",
+  "nativeAssertionsPassed": 6403,
+  "actualMediaApplicationsControlled": false,
+  "externalAPICalls": 0,
+  "userPreferencesModified": false
+}

@@ -1,0 +1,4 @@
+{
+ "standing":{"image":"artwork/reference/loki-user-approved-base-20261027.png","frame":{"crop":[0,0,1024,1536],"head":[431,24,174,190],"shoulders":[[363,264],[632,264]],"hip":[510,611],"ankle":[504,1350],"top":24,"bottom":1458}},
+ "seated":{"image":"glass-app/assets/loki_body_ear_v672.png","frame":{"crop":[0,512,384,512],"head":[207,9,67,78],"shoulders":[[181,119],[288,119]],"hip":[248,239],"ankle":[211,442],"top":9,"bottom":487}}
+}

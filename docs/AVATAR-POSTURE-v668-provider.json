@@ -1,0 +1,36 @@
+{
+  "glassVersion": 668,
+  "authorizedMaximum": 2,
+  "attempted": 2,
+  "syntheticOnly": true,
+  "privateConversationSent": false,
+  "personalSettingsSent": false,
+  "photosSent": false,
+  "credentialsWrittenOrPrinted": false,
+  "requests": [
+    {
+      "case": 0,
+      "http": 200,
+      "finishStop": true,
+      "sceneStateMatched": true,
+      "unnecessaryPhysicalDisclaimer": false,
+      "replyCharacters": 27,
+      "elapsedMs": 875,
+      "automaticRetries": 0,
+      "errorType": null,
+      "payloadSha256": "1248d4a088610d377fb052288712998683c1f89cb640b837320ad12dc6ebf9a9"
+    },
+    {
+      "case": 1,
+      "http": 200,
+      "finishStop": true,
+      "sceneStateMatched": true,
+      "unnecessaryPhysicalDisclaimer": false,
+      "replyCharacters": 18,
+      "elapsedMs": 766,
+      "automaticRetries": 0,
+      "errorType": null,
+      "payloadSha256": "689eb071b4688b8b38f10b853d9959ee0f4fe1ad4bd06da90fc79e37f8afcfcd"
+    }
+  ]
+}

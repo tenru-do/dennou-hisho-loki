@@ -1,0 +1,19 @@
+{
+  "asset": "loki_identity_portraits_v686.png",
+  "assetSha256": "72630bc8bfac9bcac0a812ad448f1d0899d61294f29a7eed6f1a041cf4d222c1",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 4,
+  "rows": 6,
+  "reviewedFrames": 24,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "reviewer": "codex visual comparison",
+  "contactSheet": {
+    "path": "artwork/reviews/v686/loki_identity_portraits_v686.png.contact.png",
+    "sha256": "6b710c9a5bf8a3da415eaa26fcfb90c1f630171e10b551c0cc5cd40b373d091d"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v686/loki_identity_portraits_v686.png.landmarks.json",
+    "sha256": "2603b8fe4729a0b93dfb3751ffd48b36e9c6ffe1248f35685ca1c5a24c5a9cc4"
+  }
+}

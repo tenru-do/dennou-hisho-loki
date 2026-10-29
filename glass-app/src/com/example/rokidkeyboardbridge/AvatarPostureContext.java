@@ -1,0 +1,10 @@
+package com.example.rokidkeyboardbridge;
+/** Supported on-screen posture requests only; no real-world bodily capability claims. */
+final class AvatarPostureContext {
+ static String pose(String text){String t=EmbodiedScenePolicy.clean(text);int rest=RestPoseIntent.kind(t);if(rest==RestPoseIntent.PROHIBIT_LIE)return "CANCEL_LYING";if(RestPoseIntent.wantsLie(rest)&&!t.contains("上から"))return "LYING";if(rest==RestPoseIntent.RELAX)return "RELAXED_POSE_0";if(EmbodiedScenePolicy.excluded(t)||t.contains("ないで")||t.contains("しない")||t.contains("と言った")||t.contains("と言って"))return "";
+ if(ShyFidgetMotion.request(t))return "SHY_FIDGET";int face=PoisedMotionPolicy.expression(t);if(face>=0)return "FACE_EXPRESSION_"+face;int everyday=PoisedMotionPolicy.command(t);if(everyday>=0)return "EVERYDAY_GESTURE_"+everyday;int relaxed=PoisedMotionPolicy.relaxed(t,false);if(relaxed>=0)return "RELAXED_POSE_"+relaxed;
+ if(EmbodiedScenePolicy.legCommand(t))return "SEATED_LEG_CHANGE";
+ int p=EmbodiedScenePolicy.postureCommand(t);if(p>=0)return p==1?"SEATED":"STANDING";
+ if(EmbodiedScenePolicy.has(t,"寝そべって","寝転がって","寝転んで","寝ころんで","横になって","横たわって","仰向けになって","うつ伏せになって"))return "LYING";return "";}
+ static String block(String text){String p=pose(text);if(p.isEmpty())return "";return "\n<avatar_posture_request>\n画面内のロキの姿勢を変える依頼であり、現実の肉体や外部装置への命令ではない。表示用アバターには座位・立位・横たわる姿勢・座位の脚の組み替え動作が用意されている。SEATED_LEG_CHANGEは座ったまま一度脚をほどいて反対側へ組み替える動作であり、立ち上がらない。EVERYDAY_GESTUREは視線・髪を耳にかける・肩越しの振り向き、RELAXED_POSEは座位またはソファでくつろぐ表示と襟元に手を添える仕草である。衣服の丈を変えたり露出を増やしたりする指定ではない。SHY_FIDGETは照れや緊張で肩・上体・手元を小さく動かす短い仕草であり、現在の座位や寝姿、衣装は変えない。FACE_EXPRESSIONは落ち着いた表情・微笑み・照れ笑い・ウインク・焦り・涙・運動後の息切れの表情変更であり、表情指示だけで姿勢・衣装・丈を変えない。CANCEL_LYINGは明示的な禁止なので寝姿への切り替えを止める。今回の姿勢指示へ短く自然に応じる。『電脳上の存在だから』『肉体がないので物理的にできない』という断りでこの表示操作を拒まない。現実の移動や接触を行ったとは主張しない。不要な呼びかけや長い説明を加えない。requested_pose="+p+(RestPoseIntent.kind(text)==RestPoseIntent.REPAIR_LIE?"\nrequest_interpretation=DISPLAY_REPAIR。『ねそべらないな』『ねそべってないよ』は指示した姿勢が表示されていないという不具合の指摘であり、禁止や取り消しではない。寝姿への切り替えをやり直す意図として応じ、『寝そべらずに維持する』と逆に解釈しない。":"")+"\n</avatar_posture_request>\n";}
+}

@@ -1,0 +1,68 @@
+{
+  "kind": "corrected-seated-right-beckon",
+  "imageWidth": 1254,
+  "imageHeight": 1254,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        627,
+        627
+      ],
+      "headBounds": [
+        250,
+        10,
+        150,
+        145
+      ]
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        627,
+        0,
+        1254,
+        627
+      ],
+      "headBounds": [
+        250,
+        10,
+        150,
+        145
+      ]
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        0,
+        627,
+        627,
+        1254
+      ],
+      "headBounds": [
+        250,
+        10,
+        150,
+        145
+      ]
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        627,
+        627,
+        1254,
+        1254
+      ],
+      "headBounds": [
+        250,
+        10,
+        150,
+        145
+      ]
+    }
+  ],
+  "reviewNotes": "Adult approved face and slim upper torso, long thighs/shins. Anatomical right hand on viewer left, natural hand size. Original built-in pixels unmodified; grid seam has black padding."
+}

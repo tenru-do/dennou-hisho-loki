@@ -1,0 +1,9 @@
+package com.example.rokidkeyboardbridge;
+public final class ShyFidgetMotionTest {
+ static int n;static void ok(boolean b,String s){n++;if(!b)throw new AssertionError(s);}
+ public static void main(String[] args){for(String t:new String[]{"照れて身をよじって","身もだえして","もじもじして"})ok(ShyFidgetMotion.request(t),"direct "+t);for(String t:new String[]{"身もだえしないで","もじもじしないで","彼女が身もだえしてと言った","身もだえる仕草とは？"})ok(!ShyFidgetMotion.request(t),"not direct "+t);
+ for(int pose=0;pose<4;pose++){EmbodiedScenePolicy s=new EmbodiedScenePolicy();s.preview(EmbodiedScenePolicy.RELAXED,pose,1000);s.expression(1);int before=s.clip(1100,false);ok(s.carries("照れて身をよじって"),"carry before new request");s.user("照れて身をよじって",1200);ok(s.clip(1600,false)==36+pose,"same relaxed pose");ok(s.motionType(1600)==8&&s.moving(1600),"active short motion");ok(s.clip(1600,true)==-1,"quiet");ok(s.clip(6100,false)==before&&s.motionType(6100)==-1,"prior expression restored");s.user("照れて身をよじって",7000);s.user("やめて",7300);ok(s.clip(7400,false)==before&&s.motionType(7400)==-1,"stop clears reaction and keeps posture");}
+ EmbodiedScenePolicy overhead=new EmbodiedScenePolicy();overhead.user("上から仰向けで横たわって",1000);int clip=overhead.clip(1100,false);overhead.user("照れて身をよじって",1200);ok(overhead.clip(1300,false)==clip,"old overhead does not stand up");
+ for(long t:new long[]{0,300,900,1800,3000,4700,4800,8000}){float[] mesh=new float[17*33*2];for(int row=0;row<=32;row++)for(int col=0;col<=16;col++){int i=(row*17+col)*2;mesh[i]=240*col/16f;mesh[i+1]=600*row/32f;}float[] before=mesh.clone();ShyFidgetMotion.apply(mesh,16,32,240,600,120,120,60,80,t);float max=0;for(int i=0;i<mesh.length;i++){max=Math.max(max,Math.abs(mesh[i]-before[i]));if(i>=27*17*2)ok(mesh[i]==before[i],"feet remain fixed");}ok(max<4,"bounded displacement");if(t==0||t>=4800)ok(max==0,"settles exactly");}
+ System.out.println("PASS "+n+" shy-fidget request/state/geometry checks");}
+}

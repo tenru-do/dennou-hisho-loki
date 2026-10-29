@@ -17,7 +17,7 @@ final class TopicFallbackContent {
         for(int i=0;i<incoming.length();i++) {
             JSONObject item=incoming.getJSONObject(i);
             String key=item.optString("title");
-            if(seen.add(key)) { result.put(item); history.put(key); }
+            if(seen.add(key)) { result.put(new JSONObject(item.toString()).put("description", "")); history.put(key); }
         }
         JSONArray retained=new JSONArray();
         for(int i=Math.max(0,history.length()-200);i<history.length();i++) retained.put(history.getString(i));
