@@ -1,0 +1,28 @@
+{
+  "glassVersion": 697,
+  "phoneVersion": 303,
+  "phoneApkUnchangedSinceV695": true,
+  "healbeCompanionVersion": 3,
+  "distribution": "alpha",
+  "nativeAssertionsPassed": 448,
+  "signedApkHashes": {
+    "loki-glass-v697-release.apk": "e55624e750138eafca1c46d26776b470d20db972997ee4c1a662a6159f931325",
+    "loki-phone-v303-release.apk": "6190080a989ef52e6d591715e23d5d94011b070d1be108b1d2c883a5fd051641",
+    "loki-healbe-v3-release.apk": "bbbfe46145415a30d7ceaaadde6b8a4dcc07dc7b1454a513ecfe2e2fc5dae7d0"
+  },
+  "displayCases": [
+    "SDK detailed data 53 minutes old but device sync 6 minutes old displays sync 6 minutes",
+    "device sync 20 minutes old displays sync 20 minutes",
+    "maximum-value Android TextView layout"
+  ],
+  "foregroundServiceObserved": true,
+  "naturalSecondRetrievalSucceeded": true,
+  "observedSuccessIntervalMinutes": 5.04,
+  "limitations": [
+    "not an exact five-minute guarantee",
+    "extended Doze not tested",
+    "whole-phone reboot not tested",
+    "five-minute fallback may use fifteen-minute JobScheduler if foreground service start is restricted"
+  ],
+  "credentialsOrPersonalHealthReadingsIncluded": false
+}

@@ -4,7 +4,7 @@ final class CloudSync {
  static final AtomicBoolean busy=new AtomicBoolean();
  private static int generation;
  private static final Object initLock=new Object();private static boolean initialized;
- static synchronized void stop(Context c){generation++;c.getSharedPreferences("link",0).edit().putBoolean("linked",false).commit();SnapshotStore.clear(c);state(c,"連携を停止しました");}
+ static synchronized void stop(Context c){generation++;c.stopService(new Intent(c,SyncService.class));c.getSharedPreferences("link",0).edit().putBoolean("linked",false).commit();SnapshotStore.clear(c);state(c,"連携を停止しました");}
  static void state(Context c,String value){c.getSharedPreferences("link",0).edit().putString("status",value).apply();}
  static void init(Context c)throws Exception{synchronized(initLock){if(initialized)return;HealbeSdk.init(c.getApplicationContext(),new HealbeSdk.Configuration.Builder().setAppVersion("Loki-HEALBE-0.1").build()).timeout(15,TimeUnit.SECONDS).blockingAwait();initialized=true;}}
  static boolean login(Context c,String email,String password)throws Exception{int ticket; synchronized(CloudSync.class){ticket=generation;}init(c);HealbeSdk sdk=HealbeSdk.get();sdk.USER.prepareSession().timeout(15,TimeUnit.SECONDS).blockingGet();HealbeSessionState state=sdk.USER.login(email,password).timeout(20,TimeUnit.SECONDS).blockingGet();synchronized(CloudSync.class){if(ticket!=generation)return false;boolean valid=HealbeSessionState.isUserValid(state);c.getSharedPreferences("link",0).edit().putBoolean("linked",valid).commit();return valid;}}

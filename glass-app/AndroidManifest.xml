@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.rokidkeyboardbridge"
-    android:versionCode="695"
-    android:versionName="0.9.695-healbe-sdk-time">
+    android:versionCode="697"
+    android:versionName="0.9.697-health-sync-age">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <permission android:name="com.example.rokidkeyboardbridge.permission.INTERNAL_EVENTS" android:protectionLevel="signature" />
     <uses-permission android:name="com.example.rokidkeyboardbridge.permission.INTERNAL_EVENTS" />
