@@ -1,0 +1,248 @@
+{
+  "kind": "standing-color-16-frame-review",
+  "imageWidth": 1086,
+  "imageHeight": 1448,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        271,
+        369
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        271,
+        0,
+        543,
+        369
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        543,
+        0,
+        814,
+        369
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        814,
+        0,
+        1086,
+        369
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 4,
+      "cropLTRB": [
+        0,
+        369,
+        271,
+        730
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 5,
+      "cropLTRB": [
+        271,
+        369,
+        543,
+        730
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 6,
+      "cropLTRB": [
+        543,
+        369,
+        814,
+        730
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 7,
+      "cropLTRB": [
+        814,
+        369,
+        1086,
+        730
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 8,
+      "cropLTRB": [
+        0,
+        730,
+        271,
+        1092
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 9,
+      "cropLTRB": [
+        271,
+        730,
+        543,
+        1092
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 10,
+      "cropLTRB": [
+        543,
+        730,
+        814,
+        1092
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 11,
+      "cropLTRB": [
+        814,
+        730,
+        1086,
+        1092
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 12,
+      "cropLTRB": [
+        0,
+        1092,
+        271,
+        1448
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 13,
+      "cropLTRB": [
+        271,
+        1092,
+        543,
+        1448
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 14,
+      "cropLTRB": [
+        543,
+        1092,
+        814,
+        1448
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    },
+    {
+      "index": 15,
+      "cropLTRB": [
+        814,
+        1092,
+        1086,
+        1448
+      ],
+      "headBounds": [
+        150,
+        1,
+        44,
+        52
+      ]
+    }
+  ],
+  "reviewNotes": "All 16 standing gesture frames visually reviewed against adult reference. Approximate manually inspected head/shoulder/leg landmarks; no automatic identity certification."
+}

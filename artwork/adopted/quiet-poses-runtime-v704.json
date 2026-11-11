@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "assets": [
+    {
+      "asset": "loki_approved_seated_thought_20261102.png",
+      "source": "artwork/reference/loki-user-approved-seated-20261102.png",
+      "sha256": "6fab8af66e029fd0825a00a0d0d04ef6794a6df2e67f52cbfc4113ce58ee43b0",
+      "originalUnchanged": true
+    },
+    {
+      "asset": "loki_approved_seated_cross_a_20261102.png",
+      "source": "artwork/adopted/20261102-seated-additions/01-seated-crossed-raised.png",
+      "sha256": "07febf88b56d2ef7b0c4a376e3ad210bb18ebf6192eeeffa6088bc6c948c2577",
+      "originalUnchanged": true
+    },
+    {
+      "asset": "loki_approved_seated_cross_b_20261102.png",
+      "source": "artwork/adopted/20261102-seated-additions/02-seated-crossed-lowered.png",
+      "sha256": "19603a3b83beeb1f881467588e239fd91cc351fa39b29a111770f13a990c7d91",
+      "originalUnchanged": true
+    },
+    {
+      "asset": "loki_approved_sleep_20261102.png",
+      "source": "artwork/adopted/20261102-rest-sleep/loki-sleep-overhead.png",
+      "sha256": "9ce97c6898b0e846c9893084beb9196e59e3b2f59144319098f50fc1b7bab9e1",
+      "originalUnchanged": true
+    },
+    {
+      "asset": "loki_approved_rest_arms_20261102.png",
+      "source": "artwork/adopted/20261102-rest-sleep/loki-rest-arms-relaxed.png",
+      "sha256": "c9e973ca1da7bde49219c021e644f421aee8526f65ca256db14be68024d8204c",
+      "originalUnchanged": true
+    },
+    {
+      "asset": "loki_approved_rest_hands_20261102.png",
+      "source": "artwork/adopted/20261102-rest-sleep/loki-rest-hands-together.png",
+      "sha256": "56c11cf7abaecfd434e865c18d7476d9659bb36340da3b8c143cdc2cad92d1e6",
+      "originalUnchanged": true
+    },
+    {
+      "asset": "loki_approved_rest_listening_20261102.png",
+      "source": "artwork/adopted/20261102-rest-sleep/loki-rest-listening.png",
+      "sha256": "a51ef0aea2d0c319fba34f72122b8d17458703e6c8e5ec3aa690be22e3eeca28",
+      "originalUnchanged": true
+    }
+  ],
+  "animation": "local chest micro-motion, original eye/mouth patches, crossfade; no new generated images",
+  "note": "v704：通常の座位・休息のみ。既存6枚にユーザー提供の開眼休息画像を追加。"
+}

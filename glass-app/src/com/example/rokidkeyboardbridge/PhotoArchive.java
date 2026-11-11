@@ -28,7 +28,12 @@ final class PhotoArchive {
   try{File target=new File(root,file.getName()+".meta.gcm"),tmp=new File(root,file.getName()+".meta.tmp");Files.write(tmp.toPath(),cipher.encrypt(value));Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);}catch(Exception e){throw new IOException("metadata save failed",e);}
  }
  synchronized byte[] metadata(File file)throws IOException{
-  File meta=new File(root,file.getName()+".meta.gcm");if(!meta.exists())return ("{\"capturedAt\":"+time(file)+",\"available\":false}").getBytes(java.nio.charset.StandardCharsets.UTF_8);return read(meta);
+  File meta=new File(root,file.getName()+".meta.gcm");if(!meta.exists())return missingMetadata(file,false);return read(meta);
+ }
+ private byte[] missingMetadata(File file,boolean unavailable){
+  return ("{\"capturedAt\":"+time(file)+",\"available\":false"
+   +(new File(root,file.getName()+".read-pending").isFile()?",\"readOverlay\":true":"")
+   +(unavailable?",\"metadataUnavailable\":true":"")+"}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
  }
  /** Optional capture metadata must not prevent an authenticated JPEG from transferring. */
  synchronized byte[] metadataForTransfer(File file)throws IOException{
@@ -41,7 +46,7 @@ final class PhotoArchive {
     if(!recovery.exists())Files.copy(meta.toPath(),recovery.toPath());
     if(!Arrays.equals(Files.readAllBytes(meta.toPath()),Files.readAllBytes(recovery.toPath())))throw new IOException("撮影情報の退避内容が一致しません");
    }
-   return ("{\"capturedAt\":"+time(file)+",\"available\":false,\"metadataUnavailable\":true}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+   return missingMetadata(file,true);
   }
  } synchronized byte[] read(File file)throws IOException{
   if(!file.getCanonicalFile().getParentFile().equals(root.getCanonicalFile()))throw new IOException("invalid photo path");
@@ -59,6 +64,15 @@ final class PhotoArchive {
   verifyTransferred(photo,receipt,expectedSha,total);
   if(!photo.delete())throw new IOException("transferred photo deletion failed");
   File meta=new File(root,photo.getName()+".meta.gcm");if(meta.exists()&&!meta.delete())throw new IOException("transferred metadata deletion failed");File keep=marker(photo);if(keep.exists()&&!keep.delete())throw new IOException("transferred KEEP cleanup failed");
+ }
+ synchronized void removePhoneDeleted(File photo,org.json.JSONObject receipt,String expectedSha,int total)throws IOException{
+  if(receipt==null||!receipt.optBoolean("deleted"))throw new IOException("phone deletion not confirmed");
+  verifyTransferred(photo,receipt,expectedSha,total);
+  for(String suffix:new String[]{".meta.gcm",".meta.gcm.recovery",".keep",".read-pending",".phone-deleted"}){
+   File sidecar=new File(root,photo.getName()+suffix);
+   if(sidecar.exists()&&!sidecar.delete())throw new IOException("deleted photo metadata cleanup failed");
+  }
+  if(!photo.delete())throw new IOException("phone-deleted original cleanup failed");
  }
  synchronized void encryptLegacy()throws IOException{
   if(cipher==null)return;
@@ -89,6 +103,8 @@ final class PhotoArchive {
   if(jpeg==null||jpeg.length<4)throw new IOException("撮影データなし");
   if(cipher!=null){try{jpeg=cipher.encrypt(jpeg);}catch(Exception e){throw new IOException("写真の暗号化に失敗",e);}}
   File[] existing=photos();long bytes=0;for(File f:existing)bytes+=f.length();
+  // READ is an additional review copy. It must not evict older originals to make room.
+  if(readPhoto&&(bytes+jpeg.length>limit||root.getUsableSpace()<reserve+jpeg.length))throw new IOException("READ写真の保存容量不足：既存の写真は削除しません");
   for(File f:existing){if(bytes+jpeg.length<=limit&&root.getUsableSpace()>=reserve+jpeg.length)break;
    if(marker(f).exists()||time(f)<=keepUntil&&time(f)>=keepUntil-AFTER-BEFORE)continue;
    long size=f.length();if(!f.delete())throw new IOException("古い写真を削除できません");bytes-=size;new File(root,f.getName()+".meta.gcm").delete();

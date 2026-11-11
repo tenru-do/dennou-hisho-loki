@@ -1,0 +1,248 @@
+{
+  "candidateSha256": "a8b72e6de960fcb09caabacad3567adbf5debe1da4fc36e8b3ae13371352798d",
+  "referenceKey": "standing",
+  "frames": [
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12021857923497267,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.1721311475409836,
+        "legPerHeight": 0.48360655737704916
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12021857923497267,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.1721311475409836,
+        "legPerHeight": 0.48360655737704916
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12021857923497267,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.1721311475409836,
+        "legPerHeight": 0.48360655737704916
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12021857923497267,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.1721311475409836,
+        "legPerHeight": 0.48360655737704916
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12290502793296089,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17597765363128492,
+        "legPerHeight": 0.4720670391061452
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12290502793296089,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17597765363128492,
+        "legPerHeight": 0.4720670391061452
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12290502793296089,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17597765363128492,
+        "legPerHeight": 0.4720670391061452
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12290502793296089,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17597765363128492,
+        "legPerHeight": 0.4720670391061452
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12256267409470752,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17548746518105848,
+        "legPerHeight": 0.4735376044568245
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12256267409470752,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17548746518105848,
+        "legPerHeight": 0.4735376044568245
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12256267409470752,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17548746518105848,
+        "legPerHeight": 0.4735376044568245
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12256267409470752,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17548746518105848,
+        "legPerHeight": 0.4735376044568245
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12464589235127478,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17847025495750707,
+        "legPerHeight": 0.46458923512747874
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12464589235127478,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17847025495750707,
+        "legPerHeight": 0.46458923512747874
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12464589235127478,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17847025495750707,
+        "legPerHeight": 0.46458923512747874
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.12464589235127478,
+        "headPerShoulder": 0.6984126984126984,
+        "shoulderPerHeight": 0.17847025495750707,
+        "legPerHeight": 0.46458923512747874
+      },
+      "reference": {
+        "headWidthPerHeight": 0.12133891213389121,
+        "headPerShoulder": 0.6468401486988847,
+        "shoulderPerHeight": 0.18758716875871687,
+        "legPerHeight": 0.5153586867769331
+      },
+      "flags": []
+    }
+  ],
+  "manualFaceIdentityReviewRequired": true,
+  "approved": false
+}

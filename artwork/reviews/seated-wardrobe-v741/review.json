@@ -1,0 +1,20 @@
+{
+  "assetSha256": "deef5ee901a0ab53251daa15df6e68736f7916fd6208fd521bc44b598b63283d",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "manualWardrobeReviewed": true,
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "contactSheet": {
+    "path": "artwork/reviews/seated-wardrobe-v741/comparison.png",
+    "sha256": "5ee798f3fa83b62ca83795b141da8be2446311ca958be955cc610b10f3517870"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/seated-wardrobe-v741/landmarks.json",
+    "sha256": "5ec061763d9cdc80eff3c0450d1f9f40daa59ab4be9b433a925973c0f5d918b0"
+  },
+  "wardrobeReference": "glass-app/assets/loki_approved_seated_thought_20261102.png",
+  "wardrobeReferenceSha256": "2cac328c521145381724bea27cb64150364b85195a5a4eb454c1e848d94c7592"
+}

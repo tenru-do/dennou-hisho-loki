@@ -1,0 +1,19 @@
+{
+  "passed": 119,
+  "clip": 1,
+  "frames": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "viewport": [
+    480,
+    640
+  ],
+  "glassApkSha256": "adc7d8638ab5c413061fd963af19b96db514afe74caf04f1e079cf4698fe2a80",
+  "method": "Actual Android Canvas on connected glasses, isolated app context, production APK renderer and unchanged assets",
+  "productionUiOperated": false,
+  "externalApiCalls": 0,
+  "cameraOrAudioUsed": false
+}

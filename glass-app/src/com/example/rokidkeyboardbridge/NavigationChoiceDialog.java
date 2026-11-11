@@ -71,7 +71,7 @@ final class NavigationChoiceDialog {
             // The touchpad can emit fresh DOWN/UP pairs for one slide (repeatCount=0).
             long now=android.os.SystemClock.uptimeMillis();
             if(now<nextSlideAt[0])return true;
-            nextSlideAt[0]=now+400L;
+            nextSlideAt[0]=now+400;
             java.util.List<Button> buttons=new java.util.ArrayList<>();collectButtons(root,buttons);
             if(buttons.isEmpty())return true;
             int index=buttons.indexOf(focus);

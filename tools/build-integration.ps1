@@ -1,4 +1,4 @@
-param([ValidateSet('glass','phone','camera','audio-relay')][string]$App,[switch]$Development,[switch]$Release,[string]$KeyStorePath,[string]$KeyAlias)
+﻿param([ValidateSet('glass','phone','camera','audio-relay')][string]$App,[switch]$Development,[switch]$Release,[string]$KeyStorePath,[string]$KeyAlias)
 $ErrorActionPreference='Stop'
 if($Release){
     if($Development){throw 'Release cannot be combined with Development'}
@@ -6,6 +6,7 @@ if($Release){
 }
 $root=Split-Path $PSScriptRoot -Parent
 if($App -eq 'glass'){& "$PSScriptRoot/Assert-CharacterArtwork.ps1"}
+if($App -eq 'glass'){& "$PSScriptRoot/Assert-ColorMigration.ps1"}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/Assert-ConversationPromptBaseline.ps1" -App $App}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/generate-loki-self-profile.ps1"}
 if($App -eq 'glass'){& "$PSScriptRoot/Test-ConversationCompletion.ps1"}

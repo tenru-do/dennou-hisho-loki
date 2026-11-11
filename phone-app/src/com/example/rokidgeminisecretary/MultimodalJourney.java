@@ -10,7 +10,11 @@ final class MultimodalJourney {
     volatile Phase phase = Phase.FIRST_MILE;
     double[] boarding, alighting;
     String boardingName = "", alightingName = "";
-    JSONObject initialTransit, egressPreview;
+    JSONObject initialTransit, egressPreview, accessPreview;
+    int manualTransitIndex=-1;
+    private JourneyProgress initialProgress;
+    boolean boardingEstimated;
+    final String sessionId=java.util.UUID.randomUUID().toString();
     volatile boolean ready;
     long advancedAt;
     long revision;
@@ -58,7 +62,9 @@ final class MultimodalJourney {
             start=phase==Phase.FIRST_MILE ? new double[]{lat,lng} : (phase==Phase.TRANSIT_LEG ? boarding : alighting).clone();
             end=target(); travel=mode();
         }
-        return request.route(start[0],start[1],end[0],end[1],travel);
+        JSONObject road=request.route(start[0],start[1],end[0],end[1],travel);
+        synchronized(this){if(phase==Phase.FIRST_MILE)accessPreview=new JSONObject(road.toString());}
+        return road;
     }
     static JSONObject transitSection(JSONObject selected) throws Exception {
         JSONArray all=steps(selected), kept=new JSONArray(); int first=-1,last=-1;
@@ -84,32 +90,13 @@ final class MultimodalJourney {
     private static double distance(double lat,double lng,double[] p){double a=Math.sin(Math.toRadians(lat-p[0])/2),b=Math.sin(Math.toRadians(lng-p[1])/2);double h=a*a+Math.cos(Math.toRadians(lat))*Math.cos(Math.toRadians(p[0]))*b*b;return 6371000*2*Math.asin(Math.sqrt(Math.min(1,h)));}
     /** Complete remaining journey for the unchanged Overview formatter, separate from active geometry. */
     synchronized JSONObject overview(JSONObject current, long fetchedAt) throws Exception {
-        JSONArray currentSteps=steps(current), combined=new JSONArray();
-        double seconds=TransitJourney.duration(current.optString("duration")), meters=current.optDouble("distanceMeters",-1);
-        for(int i=0;i<currentSteps.length();i++) combined.put(currentSteps.getJSONObject(i));
-        if(phase==Phase.FIRST_MILE && initialTransit!=null) {
-            JSONArray planned=steps(initialTransit); int first=-1,last=-1;
-            for(int i=0;i<planned.length();i++)if("TRANSIT".equals(planned.getJSONObject(i).optString("travelMode"))){if(first<0)first=i;last=i;}
-            double railSeconds=TransitJourney.duration(initialTransit.optString("duration")),railMeters=initialTransit.optDouble("distanceMeters",-1);
-            for(int i=0;i<planned.length();i++) {
-                JSONObject step=planned.getJSONObject(i);
-                if(i>=first && i<=last)combined.put(step);
-                else { double s=TransitJourney.duration(step.optString("staticDuration"));
-                    railSeconds=s<0||railSeconds<0?-1:Math.max(0,railSeconds-s);
-                    double d=step.optDouble("distanceMeters",-1); railMeters=d<0||railMeters<0?-1:Math.max(0,railMeters-d); }
-            }
-            seconds=seconds<0||railSeconds<0?-1:seconds+railSeconds; meters=meters<0||railMeters<0?-1:meters+railMeters;
-        }
-        if(phase!=Phase.LAST_MILE) {
-            if(egressPreview==null) {seconds=-1;meters=-1;}
-            else {
-                JSONArray tail=steps(egressPreview);for(int i=0;i<tail.length();i++)combined.put(tail.getJSONObject(i));
-                double s=TransitJourney.duration(egressPreview.optString("duration")),d=egressPreview.optDouble("distanceMeters",-1);
-                seconds=s<0||seconds<0?-1:seconds+s;meters=d<0||meters<0?-1:meters+d;
-            }
-        }
-        JSONObject whole=new JSONObject().put("polyline",current.getJSONObject("polyline"))
-                .put("legs",new JSONArray().put(new JSONObject().put("steps",combined)));
+        if(phase==Phase.FIRST_MILE&&accessPreview==null)accessPreview=new JSONObject(current.toString());
+        if(phase==Phase.LAST_MILE)egressPreview=new JSONObject(current.toString());
+        JSONArray combined=new JSONArray(); double seconds=0,meters=0;
+        JSONObject[] sections=initialTransit==null?new JSONObject[]{current}:new JSONObject[]{accessPreview,transitSection(initialTransit),egressPreview};
+        for(JSONObject section:sections){if(section==null){seconds=-1;meters=-1;continue;}JSONArray rows=steps(section);for(int i=0;i<rows.length();i++)combined.put(rows.getJSONObject(i));double t=TransitJourney.duration(section.optString("duration")),d=section.optDouble("distanceMeters",-1);seconds=seconds<0||t<0?-1:seconds+t;meters=meters<0||d<0?-1:meters+d;}
+        JSONObject whole=new JSONObject().put("legs",new JSONArray().put(new JSONObject().put("steps",combined)));
+        GooglePolyline.mergeSteps(whole);if(!whole.has("polyline"))whole.put("polyline",current.getJSONObject("polyline"));
         JSONArray maneuvers=new JSONArray();
         for(int i=0;i<combined.length();i++) {
             JSONObject instruction=combined.getJSONObject(i).optJSONObject("navigationInstruction");
@@ -121,18 +108,34 @@ final class MultimodalJourney {
             progress=new JourneyProgress(journey).snapshot(Double.NaN,Double.NaN,-1,0,fetchedAt,new JSONArray());
         }
         return NavigationOverviewPayload.create(TransitJourney.parse(destination,whole,fetchedAt),seconds,meters,fetchedAt,maneuvers,progress)
-                .put("phase",phase.name()).put("transitRefreshPending",phase==Phase.FIRST_MILE);
+                .put("phase",phase.name()).put("transitRefreshPending",phase==Phase.FIRST_MILE)
+                .put("requestedMode","transit").put("wholeRoute",routePoints(whole));
     }
     private static JSONArray steps(JSONObject route) throws Exception {
         JSONArray out=new JSONArray(),legs=route.getJSONArray("legs");
         for(int i=0;i<legs.length();i++){JSONArray steps=legs.getJSONObject(i).getJSONArray("steps");for(int j=0;j<steps.length();j++)out.put(steps.getJSONObject(j));}
         return out;
     }
+    private static JSONArray routePoints(JSONObject route)throws Exception {JSONArray out=new JSONArray();for(double[] p:GooglePolyline.decode(route.getJSONObject("polyline").getString("encodedPolyline")))out.put(new JSONArray().put(p[0]).put(p[1]));return out;}
+    synchronized JSONArray boardingChoices() throws Exception {
+        JSONArray out=new JSONArray();if(!ready||initialTransit==null||phase==Phase.LAST_MILE)return out;
+        JSONArray rows=steps(transitSection(initialTransit));
+        for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(!"TRANSIT".equals(row.optString("travelMode"))||i<manualTransitIndex)continue;JSONObject d=row.getJSONObject("transitDetails"),stops=d.getJSONObject("stopDetails"),line=d.optJSONObject("transitLine");String label=(line==null?"公共交通":line.optString("name","公共交通"))+" ／ "+stops.getJSONObject("departureStop").optString("name")+" → "+stops.getJSONObject("arrivalStop").optString("name");out.put(new JSONObject().put("index",i).put("label",label));}return out;
+    }
+    synchronized boolean board(int index){try{JSONArray choices=boardingChoices();if(index<0&&choices.length()==1)index=choices.getJSONObject(0).getInt("index");for(int i=0;i<choices.length();i++)if(index==choices.getJSONObject(i).getInt("index")){manualTransitIndex=index;boardingEstimated=false;phase=Phase.TRANSIT_LEG;ready=false;revision++;advancedAt=System.currentTimeMillis();return true;}}catch(Exception ignored){}return false;}
+    synchronized int inferRide(double lat,double lng,double accuracy,double speed,long sample,long now){
+        if(!ready||initialTransit==null||phase==Phase.LAST_MILE||phase==Phase.TRANSIT_LEG||!validFix(lat,lng,accuracy,sample,now)||!Double.isFinite(speed)||speed<4||boarding==null||distance(lat,lng,boarding)<200)return -1;
+        try{if(initialProgress==null)initialProgress=new JourneyProgress(TransitJourney.parse(destination,transitSection(initialTransit),now));JSONObject snap=initialProgress.snapshot(lat,lng,accuracy,sample,now,new JSONArray());JSONObject leg=snap.optJSONObject("currentLeg");return snap.optBoolean("positionConfirmed")&&leg!=null&&"TRANSIT".equals(leg.optString("travelMode"))?snap.optInt("currentLegIndex",-1):-1;}catch(Exception unavailable){return -1;}
+    }
     synchronized boolean advance(String action) {
         if (!ready) return false;
         if ((phase==Phase.FIRST_MILE||phase==Phase.BOARDING) && "board".equals(action)) phase=Phase.TRANSIT_LEG;
         else if(phase==Phase.FIRST_MILE && "arrive".equals(action))phase=Phase.BOARDING;
-        else if (phase==Phase.TRANSIT_LEG && "alight".equals(action)) phase=Phase.LAST_MILE;
+        else if (phase==Phase.TRANSIT_LEG && "alight".equals(action)) {
+            boolean next=false;
+            if(manualTransitIndex>=0&&initialTransit!=null)try{JSONArray rows=steps(transitSection(initialTransit));for(int i=manualTransitIndex+1;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(!"TRANSIT".equals(row.optString("travelMode")))continue;JSONObject stop=row.getJSONObject("transitDetails").getJSONObject("stopDetails").getJSONObject("departureStop");boarding=stopPoint(stop,row.getJSONObject("startLocation"));boardingName=stop.optString("name");manualTransitIndex=i;next=true;break;}}catch(Exception missing){return false;}
+            phase=next?Phase.BOARDING:Phase.LAST_MILE;
+        }
         else return false;
         ready=false; revision++; advancedAt=System.currentTimeMillis(); return true;
     }

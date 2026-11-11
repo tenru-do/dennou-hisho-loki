@@ -1,0 +1,19 @@
+{
+  "asset": "loki_standing_gestures_v685.png",
+  "assetSha256": "60695172bdae9a08ac5d45b53f38340d91c79bc830ec6576e700930569cf486b",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 4,
+  "rows": 4,
+  "reviewedFrames": 16,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": false,
+  "contactSheet": {
+    "path": "artwork/reviews/v718/loki_standing_gestures_v685.png.contact.png",
+    "sha256": "9c6ad8cf6c8f1bbc9c4ebe1d7ece1ad88daece01ea32e976b7898207729fdf28"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v718/loki_standing_gestures_v685.png.landmarks.json",
+    "sha256": "21ba293cf990186d8bc748d47d6d1adad3b2d666ac543e2259b52879fed6fcd4"
+  }
+}

@@ -16,7 +16,7 @@ final class NavigationOverviewSummary {
         JSONObject data=journey==null?null:journey.optJSONObject("overviewSummary");
         if(data==null) data=new JSONObject();
         double seconds=data.optDouble("durationSeconds",-1), meters=data.optDouble("distanceMeters",-1);
-        String mode=journey==null?input.optString("routeMode"):journey.optString("requestedMode");
+        String mode=data.optString("requestedMode",journey==null?input.optString("routeMode"):journey.optString("requestedMode"));
         String destination=journey==null?input.optString("routeDestination"):journey.optString("finalDestination");
         String title="経路詳細", detail="全体情報を取得できません";
         if("transit".equalsIgnoreCase(mode)) {

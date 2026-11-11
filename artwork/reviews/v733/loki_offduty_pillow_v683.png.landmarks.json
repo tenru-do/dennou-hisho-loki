@@ -1,0 +1,94 @@
+{
+  "imageWidth": 1024,
+  "imageHeight": 1536,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        512,
+        768
+      ],
+      "headBounds": [
+        202,
+        9,
+        106,
+        123
+      ],
+      "visibleAlphaBounds": [
+        160,
+        9,
+        351,
+        740
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        512,
+        0,
+        1024,
+        768
+      ],
+      "headBounds": [
+        202,
+        9,
+        106,
+        123
+      ],
+      "visibleAlphaBounds": [
+        160,
+        9,
+        351,
+        740
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        0,
+        768,
+        512,
+        1536
+      ],
+      "headBounds": [
+        202,
+        9,
+        106,
+        123
+      ],
+      "visibleAlphaBounds": [
+        160,
+        9,
+        351,
+        739
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        512,
+        768,
+        1024,
+        1536
+      ],
+      "headBounds": [
+        202,
+        9,
+        106,
+        123
+      ],
+      "visibleAlphaBounds": [
+        160,
+        9,
+        351,
+        739
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    }
+  ]
+}

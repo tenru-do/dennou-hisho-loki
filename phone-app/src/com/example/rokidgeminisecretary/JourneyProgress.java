@@ -10,6 +10,8 @@ final class JourneyProgress {
     private final List<double[][]> geometry = new ArrayList<double[][]>();
     private int current = -1, candidate = -1;
     private long candidateSince, lastSample;
+    private int manualRide=-1;
+    synchronized void confirmRide(int index){if(index>=0&&index<journey.legs.size()&&"TRANSIT".equals(journey.legs.get(index).travelMode)&&index!=manualRide){manualRide=index;current=index;candidate=-1;candidateSince=0;}}
     JourneyProgress(TransitJourney journey) {
         this.journey = journey;
         for (TransitJourney.Leg leg : journey.legs) {
@@ -27,7 +29,7 @@ final class JourneyProgress {
         if(newer){if(lastSample>0&&sampleTime-lastSample>15000){candidate=-1;candidateSince=0;}lastSample=sampleTime;}
         int best = -1; double distance = Double.MAX_VALUE;
         if (fresh) {
-            for (int i = Math.max(0, current); i < Math.min(geometry.size(),current<0?geometry.size():current+2); i++) {
+            for (int i = Math.max(0, current); i < (manualRide>=0?manualRide+1:geometry.size()); i++) {
                 double d = distanceTo(geometry.get(i), lat, lng);
                 if (d < distance) { distance = d; best = i; }
             }
@@ -45,7 +47,8 @@ final class JourneyProgress {
                 .put("finalDestination", journey.finalDestination).put("wholeRoute", wholeRoute)
                 .put("fetchedAt", journey.fetchedAt).put("legCount", journey.legs.size())
                 .put("currentLegIndex", current).put("positionConfirmed", confident)
-                .put("selectionSource", "gps_estimate");
+                .put("selectionSource", current==manualRide&&manualRide>=0?"manual_boarding":"gps_estimate")
+                .put("rideConfirmed",current==manualRide&&manualRide>=0);
         JSONArray segments=new JSONArray();
         for(int i=0;i<geometry.size();i++)if(geometry.get(i).length>=2)segments.put(new JSONObject().put("index",i).put("travelMode",journey.legs.get(i).travelMode).put("estimated",journey.legs.get(i).geometryEstimated).put("points",pointsJson(geometry.get(i))));
         out.put("routeSegments",segments);

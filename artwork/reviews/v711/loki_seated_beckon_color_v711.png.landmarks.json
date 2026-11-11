@@ -1,0 +1,68 @@
+{
+  "kind": "color-and-proportion-four-frame-review",
+  "imageWidth": 1254,
+  "imageHeight": 1254,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        627,
+        627
+      ],
+      "headBounds": [
+        286,
+        15,
+        90,
+        120
+      ]
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        627,
+        0,
+        1254,
+        627
+      ],
+      "headBounds": [
+        280,
+        15,
+        90,
+        120
+      ]
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        0,
+        627,
+        627,
+        1254
+      ],
+      "headBounds": [
+        286,
+        15,
+        90,
+        120
+      ]
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        627,
+        627,
+        1254,
+        1254
+      ],
+      "headBounds": [
+        280,
+        15,
+        90,
+        120
+      ]
+    }
+  ],
+  "reviewNotes": "Visual comparison of all four frames: mature identity, slender seated shoulders and torso, natural hands, head within crop; approximate manually inspected landmarks, not automatic anatomical certification."
+}

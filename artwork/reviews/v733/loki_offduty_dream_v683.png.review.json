@@ -1,0 +1,22 @@
+{
+  "asset": "loki_offduty_dream_v683.png",
+  "assetSha256": "056153d4d8ab331a32aa66b813fec69686c64475fb754d73b4557a525ccfb3fd",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Furniture/background only edit; generated native alpha unchanged. Figure identity, clothing and grid manually reviewed on black. No physical anatomy certification inferred from metrics.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_offduty_dream_v683.png.contact.png",
+    "sha256": "bf24430a88582273f746c9c6710c35858bec5a0feeef3aa3ae5f5590176163de"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_offduty_dream_v683.png.landmarks.json",
+    "sha256": "5152cc81c9cdd0e436cf4c4eb2b6e4a7a7547e4fb7fd8e0fdce1e46dc6c9d084"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/quiet-android-checks.json"
+}

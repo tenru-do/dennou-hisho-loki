@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "approvedOn": "2026-11-02",
+  "approval": "ユーザー「採用して」",
+  "file": "loki-user-approved-seated-20261102.png",
+  "sha256": "6fab8af66e029fd0825a00a0d0d04ef6794a6df2e67f52cbfc4113ce58ee43b0",
+  "role": "座位の考え中・傾聴ポーズの採用原本",
+  "useAsIs": true,
+  "standingMaster": "loki-user-approved-base-20261027.png",
+  "scope": "座位の追加参照。衣装もこのポーズの承認済み差分として保持する。全ポーズの標準衣装を変更しない。",
+  "runtimeIntegrated": true,
+  "runtimeVersion": 702,
+  "integrationDetails": "通常の座位・休息6枚の実装。詳細はquiet-poses-runtime-v702.json。"
+}

@@ -1,0 +1,15 @@
+package com.example.rokidkeyboardbridge;
+import android.content.*;import android.content.res.*;import android.graphics.*;import android.view.*;import java.io.*;import java.lang.reflect.*;import java.util.zip.*;
+public final class SeatedPresenceNativeChecks {
+ static int n;static void ok(boolean b,String m){n++;if(!b)throw new AssertionError(m);}
+ static void save(Context c,Bitmap b,String name)throws Exception{try(FileOutputStream f=c.openFileOutput(name,0)){b.compress(Bitmap.CompressFormat.PNG,100,f);}}
+ public static int run(Context host)throws Exception{n=0;File apk=new File(host.getFilesDir(),"glass.apk");AssetManager am=AssetManager.class.getDeclaredConstructor().newInstance();AssetManager.class.getMethod("addAssetPath",String.class).invoke(am,apk.getPath());Context c=new ContextWrapper(host){public AssetManager getAssets(){return am;}};
+ Bitmap artwork;try(InputStream in=am.open(ApprovedQuietPosePolicy.ASSETS[0])){artwork=BitmapFactory.decodeStream(in);}ApprovedQuietPoseRenderer renderer=new ApprovedQuietPoseRenderer(new View(c));Field selected=ApprovedQuietPoseRenderer.class.getDeclaredField("selected");selected.setAccessible(true);selected.setInt(renderer,0);renderer.state(0,FullBodyPoseCatalog.Kind.THINK,0);
+ Method image=ApprovedQuietPoseRenderer.class.getDeclaredMethod("image",Canvas.class,Bitmap.class,int.class,int.class,int.class,long.class,int.class,boolean.class,boolean.class,float.class,float.class);image.setAccessible(true);
+ Bitmap first=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888),second=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888);
+ image.invoke(renderer,new Canvas(first),artwork,0,480,640,4500L,255,true,false,0f,0f);image.invoke(renderer,new Canvas(second),artwork,0,480,640,5700L,255,true,true,0f,0f);
+ int changed=0;for(int y=0;y<640;y+=2)for(int x=0;x<480;x+=2)if(first.getPixel(x,y)!=second.getPixel(x,y))changed++;ok(changed>100,"live canvas changes");save(host,first,"thought-before.png");save(host,second,"thought-speaking.png");
+ try(ZipFile z=new ZipFile(apk)){for(int id:new int[]{4,168,181,184}){Bitmap source=FullBodyRealisticAssets.decode(z,id,1),output=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888);float[] f=FullBodyRealisticFeatures.ALL[id];float scale=FullBodyScalePolicy.scale(id,source.getWidth(),source.getHeight(),480,640),left=CharacterViewport.left(480,(f[2]+f[8])*.5f*source.getWidth()/f[0],scale),crown=Math.max(0,FullBodyFrameScalePolicy.BOUNDS[id][2]-2)*source.getWidth()/f[0];float top=CharacterViewport.top(id==4?640-source.getHeight()*scale:CharacterViewport.headMargin(640)-crown*scale,crown,scale,640);Canvas canvas=new Canvas(output);canvas.drawColor(Color.BLACK);canvas.translate(left,top);canvas.scale(scale,scale);canvas.drawBitmap(source,0,0,new Paint(3));save(host,output,"pose-"+id+".png");ok(top+crown*scale>=CharacterViewport.headMargin(640)-.01f,"head retained");source.recycle();output.recycle();}}
+ first.recycle();second.recycle();artwork.recycle();renderer.release();am.close();return n;
+ }
+}

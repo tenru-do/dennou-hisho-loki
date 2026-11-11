@@ -15,6 +15,8 @@ final class JourneyHud {
                 || "transit".equalsIgnoreCase(mode);
         JSONObject leg = journey.optJSONObject("currentLeg");
         // Walking/cycling use the complete valid road geometry even before GPS selects a step.
+        JSONObject summary=journey.optJSONObject("overviewSummary");
+        if(overview&&summary!=null&&summary.optJSONArray("wholeRoute")!=null)return summary.optJSONArray("wholeRoute");
         JSONArray route = overview || roadJourney ? journey.optJSONArray("wholeRoute")
                 : leg == null ? null : leg.optJSONArray("route");
         return route == null ? new JSONArray() : route;
@@ -47,7 +49,7 @@ final class JourneyHud {
             }
             out.put("transportSummary", "予定 乗換" + Math.max(0, planned.length() - 1) + "回 " + transport);
         }
-        if (leg == null || !journey.optBoolean("positionConfirmed") || journey.optBoolean("waitingToBoard")) {
+        if (leg == null || (!journey.optBoolean("positionConfirmed")&&!journey.optBoolean("rideConfirmed")) || journey.optBoolean("waitingToBoard")) {
             if(journey.optBoolean("waitingToBoard"))for(String key:new String[]{"nextDistance","afterNextInstruction","afterNextDistance","afterNextDuration","currentRoad","arrival","routeArrival","totalRemainingDistance","totalRemainingDuration"})out.put(key,"");
             // Retain notification guidance while GPS cannot identify the current step.
             if (out.optString("instruction").isEmpty()) out.put("instruction", "現在区間を確認中");
@@ -86,7 +88,7 @@ final class JourneyHud {
             out.put("instruction", label + "：" + leg.optString("lineName", ""));
             out.put("detail", leg.optString("departureStop", "") + " " + time(leg.optString("departureTime"))
                     + " 発 → 降車 " + leg.optString("arrivalStop", "")
-                    + " / " + time(leg.optString("arrivalTime")) + " 着予定（区間推定）");
+                    + " / " + time(leg.optString("arrivalTime")) + " 着予定"+(journey.optBoolean("rideConfirmed")&&!journey.optBoolean("boardingEstimated")?"（乗車操作済み）":"（区間推定）"));
             if ("TRANSIT_LEG".equals(journey.optString("phase"))) {
                 JSONObject stops = details == null ? null : details.optJSONObject("stopDetails");
                 JSONObject departure = stops == null ? null : stops.optJSONObject("departureStop");

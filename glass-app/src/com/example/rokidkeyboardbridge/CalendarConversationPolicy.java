@@ -3,6 +3,7 @@ package com.example.rokidkeyboardbridge;
 final class CalendarConversationPolicy {
     static boolean lookup(String raw) {
         if(raw==null)return false;
+        if(CalendarReadContext.explicit(raw))return true;
         String t=raw.replaceAll("\\s","");
         if(!t.matches(".*(?:予定|スケジュール|カレンダー|[Cc]alendar|予約日|予約時間).*"))return false;
         if(t.matches("(?:今日|明日|明後日|今週|来週|今月|来月|次|この後|今後)?の?(?:予定|スケジュール|カレンダー)[？?。]*(?:は[？?。]*)?"))return true;

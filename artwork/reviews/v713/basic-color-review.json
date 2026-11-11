@@ -1,0 +1,150 @@
+{
+  "scope": "Basic poses 0..167 only, 28 atlases; not the entire artwork migration",
+  "manualBodyAndCrownReview": true,
+  "manualFaceLandmarksReviewed": true,
+  "physicalWornScreenVerified": false,
+  "renderedBasicFrames": 168,
+  "coordinateCorrections": 11,
+  "assets": [
+    {
+      "asset": "loki_fullbody_000_005.png",
+      "sha256": "51f72939bbc928bd01e92a5da793eb0624d2cdbc3028b460fc497181ec0bb62f",
+      "originalSha256": "2c4933d50d68170e4cde06e4742ace683915b3abaa773b8d24447c81ff3050e9"
+    },
+    {
+      "asset": "loki_fullbody_006_011.png",
+      "sha256": "49c87c2b7d3e411e57eb55ae82d92e182a457cbfc134f6737887adc18ce2577f",
+      "originalSha256": "da82e441374a2a23b7838400086ceaf8bd8d5888d098b5aa7e088ad09bb2aa4b"
+    },
+    {
+      "asset": "loki_fullbody_012_017.png",
+      "sha256": "adf95d65fb72ed01ddf1a04341bd1c30a5a974d6c70aba347910944868c5ac51",
+      "originalSha256": "59a6d95d1f537ee290951ef0f7551a993df2bab339affa05e30b81287ab957c2"
+    },
+    {
+      "asset": "loki_fullbody_018_023.png",
+      "sha256": "5161370d77ad91d299fd6b8f1314706d3c6b14deabbddefbd6b385204d94fccc",
+      "originalSha256": "455f34178dc293245db0f3a052b33c3a94931985b3181a1ee0a63832ed477dc6"
+    },
+    {
+      "asset": "loki_fullbody_024_029.png",
+      "sha256": "c4d57155fcca9d6db5510f86997b51c16bcd0256748d03d2f825fd0f27bb58d7",
+      "originalSha256": "9a6a8c48c04daae80b519afd802e55f834591eb33047fc18c92940ade92c82ba"
+    },
+    {
+      "asset": "loki_fullbody_030_035.png",
+      "sha256": "2281c1b58287409317074b2c5421aebde60e3027ce49114f58e3bbb8f8983856",
+      "originalSha256": "3f7be4685021abf2cdc6d29a5f393ebc656510cb278f637545af167573da4d48"
+    },
+    {
+      "asset": "loki_fullbody_036_041.png",
+      "sha256": "876a90956000ab7cebe5ed34b56a22e613cb6c9d62814efc65279d2f11e72b5e",
+      "originalSha256": "139b7358c8d5f2c5c2f20c52866be45e9658321490826166da7aab55fadc8220"
+    },
+    {
+      "asset": "loki_fullbody_042_047.png",
+      "sha256": "3a211b22171c32df116e630618899f50a88258786c233be0100b079745d56270",
+      "originalSha256": "b318a2ff007818e79bef1cfcdc2c86c87c7210e2a40db9379c5bb806a4ab4fe9"
+    },
+    {
+      "asset": "loki_fullbody_048_053.png",
+      "sha256": "64fdec145a840f5d81d26adfd9974e40d3e91154474019642742843973ff3f05",
+      "originalSha256": "72374542cce5180ae4050a87c12bd0c19d9b7cc8ae6a0078e05b6fb4f7a45f2d"
+    },
+    {
+      "asset": "loki_fullbody_054_059.png",
+      "sha256": "f310abcbf59103c0631df5df011af33a718d81f63bd3f9ac481ed5b31bd78363",
+      "originalSha256": "4a13c85f74d2e1c0f193b0e6e4dde057e46ec51fe31d79a794f2802fc4f39139"
+    },
+    {
+      "asset": "loki_fullbody_060_065.png",
+      "sha256": "6ca4e5faec366e3c2bd10428d015daed2ae4971e20ff1369b67368c8fa633bbb",
+      "originalSha256": "f93a518e31d90ae79ad4b1dbb590645b37e5275ef32772d714fc05297d5789d0"
+    },
+    {
+      "asset": "loki_fullbody_066_071.png",
+      "sha256": "e4a76e8cca57b08b6d4e70613730c68e9298489235c0f121e4772230f80070d2",
+      "originalSha256": "ee9d510a510664a00b6ef6267545a59a0238400d078990ca91fdfc9c59d1c0aa"
+    },
+    {
+      "asset": "loki_fullbody_072_077.png",
+      "sha256": "c93d5cb595a401a1a81ee3af973cbce3d584b3112f60b62308ab0c69491b1f24",
+      "originalSha256": "3b4a048003f30f9f478018c74be6a69d60e54daa583a63e625bc234810f4cd95"
+    },
+    {
+      "asset": "loki_fullbody_078_083.png",
+      "sha256": "aca6f882f4d8e64822cb3f8caf597b8cb89dbfd212ad884154eeb556a91b07f8",
+      "originalSha256": "03fafc6f8bb2b33ff58552527161bd20320c1ade14006d5a0a2c2b293cf02366"
+    },
+    {
+      "asset": "loki_fullbody_084_089.png",
+      "sha256": "5a52bfb5c8aac32d1f431b000685a4192143013e4f76002f9d480951f1d288ba",
+      "originalSha256": "ce04b1aa8e4399f03e517401a72ec1fa95f74bfc42b29d8aa753e786c755dab6"
+    },
+    {
+      "asset": "loki_fullbody_090_095.png",
+      "sha256": "33cf259d39c08e3ed03a9bcf8891226d0e6a292ead362c0bf67097ea7d5808bd",
+      "originalSha256": "4f522603ba42b52007ee790400f6cc2037f209c0b27585b919e207ac6bcaec47"
+    },
+    {
+      "asset": "loki_fullbody_096_101.png",
+      "sha256": "941650f44b9078281333f587cdf996dcbc3687ca070050461e08e8a87ac701ba",
+      "originalSha256": "d3b9f47256499c4ad4209626aaf8d596534ebbda12573ad16521959a853d01e0"
+    },
+    {
+      "asset": "loki_fullbody_102_107.png",
+      "sha256": "10c184faa8ec84ef9c6be1d79729a785536b2042d37cde88e7c0077d36caaa48",
+      "originalSha256": "a58228821aeb4a14c80890c7cb26f5459c83491341893f6f0352691fcc071e6a"
+    },
+    {
+      "asset": "loki_fullbody_108_113.png",
+      "sha256": "7edb13c74a37f617c47175b9d59d8d4b2f60606b13fa718ac21f98c7984a725b",
+      "originalSha256": "e0a0316185ac2d286d602ed0ea386df5dce59bf555a2df27e00103ac9a904b2d"
+    },
+    {
+      "asset": "loki_fullbody_114_119.png",
+      "sha256": "a704032c08099905ecb9f9ee1d014457ca1e994c8dbadbbc109ea3f21a80b6bb",
+      "originalSha256": "94d8333445f384a342760fee4008cc4be29bada137bb04ad5012b87f467b58a2"
+    },
+    {
+      "asset": "loki_fullbody_120_125.png",
+      "sha256": "f55bd17ae6e852da67e539bb3c9955cc1e612aae9d680cae3aa3ea1187b8202f",
+      "originalSha256": "d38f375fb7085c0b508e0ed364c028574c660e69d36c5e90ad68fa59d8a84992"
+    },
+    {
+      "asset": "loki_fullbody_126_131.png",
+      "sha256": "a82030417ff92ab47523f836e38f1945b0a15414f3b2499b009f1c4f8c023ee6",
+      "originalSha256": "195b3ce8e26afcdf2f90055092e955ed5218ecf9747fd840a00ca311faf09395"
+    },
+    {
+      "asset": "loki_fullbody_132_137.png",
+      "sha256": "46af34666c09c71360cb187a884ebb6f5feb0ea8ff606f2f9a694c182e054caa",
+      "originalSha256": "395579f08fa363988bac0eaa3278f80c7a673ec365baa84b83e32e737320801a"
+    },
+    {
+      "asset": "loki_fullbody_138_143.png",
+      "sha256": "9706cd163d43bdfb1621af601c5345d4fe4c658d685c722fa97588759e8c72ea",
+      "originalSha256": "8925fc733eaf76b29813aeae39a61db259686863d57486d62a9e19327692a4e9"
+    },
+    {
+      "asset": "loki_fullbody_144_149.png",
+      "sha256": "f280411721b39849c3e5862190c80009916cf51853b68701b02228a92b8af463",
+      "originalSha256": "f53d68c9915f7cbe475aee373d8294824bf8c7b43a237aa8d4f21cb4656240eb"
+    },
+    {
+      "asset": "loki_fullbody_150_155.png",
+      "sha256": "3c90c4de9d470a1dd73a8a1be04b2af899352cbc4156eb2b8dbdb42daf6f8329",
+      "originalSha256": "66ef4ad8dc3594eca7c45b66d7138f319c62157ebb6448879ca3ab2efd3ab815"
+    },
+    {
+      "asset": "loki_fullbody_156_161.png",
+      "sha256": "906a54179d1b5c1902fd91c6d0b25bf24a645cbce25c5592845bbc5cca2186b9",
+      "originalSha256": "2aa0e61efe90d816d21be56b2efcaf578155cde2f56e8a612bae55e6a894f6a8"
+    },
+    {
+      "asset": "loki_fullbody_162_167.png",
+      "sha256": "924677a7e3bde138752fe8e98b9f5e7cb3b6ec3080afe367229df334e4d85c01",
+      "originalSha256": "694f139268d94415856df429ba0e076fd075ecd2ec4a70c37d9a3920345ccf35"
+    }
+  ]
+}

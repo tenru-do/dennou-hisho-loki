@@ -1,0 +1,22 @@
+{
+  "asset": "loki_offduty_arms_v683.png",
+  "assetSha256": "0d0e53c3ad5cc85d5553357c8e9d4cc6c742b6c2aa3e4f253e1117f249715ec7",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Furniture/background only edit; generated native alpha unchanged. Figure identity, clothing and grid manually reviewed on black. No physical anatomy certification inferred from metrics.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_offduty_arms_v683.png.contact.png",
+    "sha256": "f34ebfdd6745c5b1f0a4901794c81203cadb5228c21d50b6999732847e44dd8f"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_offduty_arms_v683.png.landmarks.json",
+    "sha256": "a0f69099e051dcf2bfac017755a0a48f92449a2113a095294abe1e64645d680b"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/quiet-android-checks.json"
+}

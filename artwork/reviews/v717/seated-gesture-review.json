@@ -1,0 +1,45 @@
+{
+  "activeSeatedGestureFrames": 32,
+  "legacyFallbackFrames": 8,
+  "chairRemoved": true,
+  "pcReviewed": true,
+  "deviceVerified": false,
+  "assets": [
+    {
+      "asset": "loki_seated_gestures_v687.png",
+      "size": [
+        1024,
+        1536
+      ],
+      "sha256": "d3130d861588783326f722e856b1a215b65875b32bacb207c3c0885d27824de5",
+      "activeSeatedOverride": true
+    },
+    {
+      "asset": "loki_seated_ear_v689.png",
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "13d6bffe3a4a8b0603e23c1f38cdd159cc467eafd48d2e68b8a1fe9c33f29fcb",
+      "activeSeatedOverride": true
+    },
+    {
+      "asset": "loki_seated_beckon_v689.png",
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "f269697f34c5819c2e43ca89a20101a3c8c428f36c77e6045492ffe897175689",
+      "activeSeatedOverride": true
+    },
+    {
+      "asset": "loki_body_affection_seated_v669.png",
+      "size": [
+        1536,
+        1024
+      ],
+      "sha256": "65d880dd0b3be64be2b1de66f5f3f4bdc9ba74a57806f24197bcf7d642014343",
+      "activeSeatedOverride": false
+    }
+  ]
+}

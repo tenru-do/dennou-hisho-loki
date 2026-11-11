@@ -1,0 +1,20 @@
+{
+  "asset": "loki_face_cool_v559.png",
+  "assetSha256": "6dccea1e8168c6f537070d27792fbed1705fbef24b19d872841e2259f826aa84",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 8,
+  "rows": 5,
+  "reviewedOccupiedFrames": 37,
+  "manualIdentityReviewed": true,
+  "manualExpressionReviewed": true,
+  "manualAnatomyReviewed": true,
+  "contactSheet": {
+    "path": "artwork/reviews/v719/portrait-color-landmarks.png",
+    "sha256": "b11bbce0c528e09aef6e43b959fca3d4066c7d7391dd2e0e71ca8d34b67cdb1d"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v719/portrait-color-landmarks.json",
+    "sha256": "349590fbf1c78d8c6c874f13e9c015e1273ac8cd7df327ecb0d1e90a4cf1d302"
+  },
+  "deviceVerified": false
+}

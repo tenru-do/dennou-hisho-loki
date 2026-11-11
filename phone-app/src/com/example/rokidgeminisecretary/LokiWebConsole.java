@@ -16,21 +16,21 @@ final class LokiWebConsole {
     private static String code = "", invitation = "";
     private static long codeUntil;
     private static int attempts;
-    private static final int PHOTO_PAGE_SIZE = 200;
+    private static final int PHOTO_PAGE_SIZE = 500;
     private static final Object PHOTO_WORK = new Object();
     private static final java.util.concurrent.atomic.AtomicBoolean GOOGLE_PHOTO_WORK=new java.util.concurrent.atomic.AtomicBoolean();
     static synchronized JSONObject trackedReceipt(Context owner,JSONObject data)throws Exception {
-        String id=data.getString("id"),event=data.getString("event");JSONArray all=new JSONArray(prefs(owner).getString("outbox","[]"));boolean found=false,changed=false,execute=false,stopRequested=false;String finalState="";
+        String id=data.getString("id"),event=data.getString("event");JSONArray all=new JSONArray(prefs(owner).getString("outbox","[]"));boolean found=false,changed=false,execute=false,stopRequested=false;String finalState="";JSONObject visualControl=null;
         for(int i=0;i<all.length();i++){JSONObject old=all.getJSONObject(i);if(!id.equals(old.optString("key")))continue;
             JSONObject next=TrackedWebRequest.receipt(old,event,data.optString("reason",""),System.currentTimeMillis());if(data.optBoolean("stopRejected")&&!TrackedWebRequest.terminal(next.optString("requestState")))next.put("stopRejectedAt",System.currentTimeMillis());
-            finalState=next.optString("requestState");stopRequested=next.has("stopRequestedAt")&&!next.has("stopRejectedAt")&&!TrackedWebRequest.terminal(finalState);execute=TrackedWebRequest.executionGrant(old.optString("requestState"),event,finalState);
+            visualControl=old.optJSONObject("visualControl");finalState=next.optString("requestState");stopRequested=next.has("stopRequestedAt")&&!next.has("stopRejectedAt")&&!TrackedWebRequest.terminal(finalState);execute=TrackedWebRequest.executionGrant(old.optString("requestState"),event,finalState);
             changed=!next.toString().equals(old.toString());all.put(i,next);found=true;break;}
         if(!found)throw new IllegalArgumentException("Unknown request ID");
         ConversationReliability.partial(id,finalState,data,System.currentTimeMillis());
         // Save receipt before acknowledgement. Retrying an acknowledgement can only remove the matching dispatchable ID.
         if(changed&&!prefs(owner).edit().putString("outbox",all.toString()).commit())throw new IOException("Receipt storage failed");
         boolean ack="RECEIVED".equals(event)&&MainActivity.ackTrackedWebCommand(owner,id);
-        return new JSONObject().put("ok",true).put("ack",ack).put("execute",execute).put("stopRequested",stopRequested).put("requestState",finalState).put("displaySettings",ConversationReliability.settings(owner));
+        return new JSONObject().put("ok",true).put("ack",ack).put("execute",execute).put("stopRequested",stopRequested).put("requestState",finalState).put("visualControl",visualControl).put("displaySettings",ConversationReliability.settings(owner));
     }
     static synchronized boolean queueReferenceConversation(Context c,String requestId,String text,String referenceKey)throws Exception{
         if(!WorkspaceCommandPolicy.validId(requestId))throw new IOException("参照を選び直してください");
@@ -40,6 +40,7 @@ final class LokiWebConsole {
         TrackedWebRequest.wire(key,text,referenceKey);
         ConversationRecoveryStore.save(c,key,"send",new JSONObject().put("requestId",requestId).put("message",text).put("referenceKey",referenceKey));
         JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("referenceKey",referenceKey).put("device","スマホ").put("status","受付中").put("tracked",true).put("requestState","CREATED");
+        record.put("visualControl",ConversationWorkspace.snapshot(c).optJSONObject("visualControl"));
         JSONArray next=WebRequestLedger.append(old,record);if(next==null)throw new IOException("未完了の送信が100件あります。送信状況を確認してください");
         if(!prefs(c).edit().putString("outbox",next.toString()).commit())throw new IOException("送信記録を保存できません");
         boolean queued=MainActivity.queueTrackedWebCommand(c,key,text,referenceKey);record.put("accepted",queued).put("requestState",queued?"QUEUED":"FAILED").put("status",queued?"グラスへ送信待ち":"送信できませんでした");
@@ -85,7 +86,7 @@ final class LokiWebConsole {
         android.widget.TextView details=new android.widget.TextView(owner);String fingerprint;try{fingerprint=BridgeTlsServer.fingerprint();}catch(Exception e){fingerprint="取得できません";}details.setText("初回はこのスマホの証明書を確認してください。\nSHA256: "+fingerprint+"\n登録した端末は30日間再接続できます。共有PCでは端末登録をオフにしてください。");content.addView(details);
         android.widget.Button manage=new android.widget.Button(owner);manage.setText("接続端末を個別に確認・権限変更");manage.setOnClickListener(v->new ReliabilityDialog(owner).sessions());content.addView(manage);
         android.widget.ScrollView scroll=new android.widget.ScrollView(owner);scroll.addView(content);
-        currentDialog[0]=new AlertDialog.Builder(owner).setTitle("QR・リンクでPC／タブレットを接続").setView(scroll)
+        currentDialog[0]=new AlertDialog.Builder(owner).setTitle("タブレット・PCの接続（QR・リンク）").setView(scroll)
             .setNeutralButton("全Web端末の認証を解除",(d,w)->new AlertDialog.Builder(owner).setMessage("PC・タブレットの接続をすべて解除しますか？").setPositiveButton("解除",(a,b)->{revokeAll(owner);android.widget.Toast.makeText(owner,"Web端末の認証を解除しました",0).show();}).setNegativeButton("取消",null).show())
             .setNegativeButton("閉じる",null).show();
     }
@@ -193,6 +194,7 @@ final class LokiWebConsole {
                 String requestId=digest(session.getString("hash")+":"+rawId);
                 json(socket,200,ImageQuestions.enqueue(owner,requestId,input.optString("message",""),jpeg,input.optInt("imageCount",1),input.optJSONArray("kinds")));return true;
             }
+            if(method.equals("GET")&&path.equals("/web/api/photo-import-status")){json(socket,200,PhotoImportProgress.view(ConversationWorkspace.snapshot(owner),PhotoImportRequests.current(owner),System.currentTimeMillis()));return true;}
             if(method.equals("GET")&&path.equals("/web/api/photos")) {
                 int offset=Math.max(0,Integer.parseInt(query.getOrDefault("offset","0")));ArrayList<File> all=photos(owner);offset=Math.min(offset,Math.max(0,((all.size()-1)/PHOTO_PAGE_SIZE)*PHOTO_PAGE_SIZE));JSONArray items=new JSONArray();
                 for(int i=offset;i<Math.min(all.size(),offset+PHOTO_PAGE_SIZE);i++){File f=all.get(i);items.put(new JSONObject().put("id",id(f)).put("time",Long.parseLong(id(f).substring(0,13))).put("metadata",RecorderPhotoStore.metadata(f)));}
@@ -254,6 +256,7 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/answer-correction-view")){JSONObject source=AnswerCorrections.resolve(owner,new JSONObject(body).getJSONObject("source"));json(socket,200,AnswerCorrections.view(owner,source));return true;}
             if(method.equals("POST")&&path.equals("/web/api/answer-correction-save")){json(socket,200,AnswerCorrections.submit(owner,new JSONObject(body)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/answer-corrections")){json(socket,200,new JSONObject().put("items",AnswerCorrections.list(owner)));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/image-queue-resume")){json(socket,200,QueuedImageReview.resume(owner,new JSONObject(body).getString("key")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/reconnect-approve")){json(socket,200,ReconnectReview.approve(owner,new JSONObject(body).getString("key")));return true;}
             if(method.equals("GET")&&path.equals("/web/api/transfer-network")){json(socket,200,TransferNetwork.state(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/transfer-network")){TransferNetwork.save(owner,new JSONObject(body).getString("mode"));json(socket,200,TransferNetwork.state(owner));return true;}
@@ -286,7 +289,7 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/conversation-favorite")){json(socket,200,ConversationCollections.favorite(owner,owner.webHistory(),new JSONObject(body)));return true;}
             if(method.equals("POST")&&path.equals("/web/api/conversation-export")){json(socket,200,new JSONObject().put("text",ConversationCollections.export(owner,owner.webHistory(),new JSONObject(body))));return true;}
             if(method.equals("POST")&&path.equals("/web/api/queue-change")){json(socket,200,QueuedConversation.change(owner,new JSONObject(body)));return true;}
-            if(method.equals("GET")&&path.equals("/web/api/history")){JSONObject historyPage=ConversationReliability.page(owner.webHistory(),20,"","");json(socket,200,new JSONObject().put("items",historyPage.getJSONArray("items")).put("historyPage",historyPage).put("partials",ConversationReliability.partials(ConversationContinuation.ledger(owner),System.currentTimeMillis())).put("requests",new JSONArray(prefs(owner).getString("outbox","[]"))).put("queueOrder",MainActivity.queuedWebOrder(owner)).put("serverNow",System.currentTimeMillis()).put("timing",ConversationContinuation.timing(new JSONArray(prefs(owner).getString("outbox","[]")),System.currentTimeMillis())).put("runtime",owner.webConversationRuntime()).put("imageReference",ImageReferenceStore.view(owner)).put("progress",ConversationWorkspace.snapshot(owner).optJSONObject("conversation")).put("progressFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")).put("answerSync",ConversationWorkspace.snapshot(owner).optJSONObject("answerSync")).put("answerSyncFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/history")){JSONObject historyPage=ConversationReliability.page(owner.webHistory(),20,"","");json(socket,200,new JSONObject().put("items",historyPage.getJSONArray("items")).put("historyPage",historyPage).put("partials",ConversationReliability.partials(ConversationContinuation.ledger(owner),System.currentTimeMillis())).put("requests",new JSONArray(prefs(owner).getString("outbox","[]"))).put("queueOrder",MainActivity.queuedWebOrder(owner)).put("queuedImages",QueuedImageReview.rows(owner)).put("serverNow",System.currentTimeMillis()).put("timing",ConversationContinuation.timing(new JSONArray(prefs(owner).getString("outbox","[]")),System.currentTimeMillis())).put("runtime",owner.webConversationRuntime()).put("imageReference",ImageReferenceStore.view(owner)).put("progress",ConversationWorkspace.snapshot(owner).optJSONObject("conversation")).put("progressFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")).put("answerSync",ConversationWorkspace.snapshot(owner).optJSONObject("answerSync")).put("answerSyncFresh",ConversationWorkspace.snapshot(owner).optBoolean("connected")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/send")) {
                 synchronized(LokiWebConsole.class) {ConversationTools.topicReady(owner);
                     JSONObject input=new JSONObject(body);String text=input.getString("message").trim(), requestId=input.getString("requestId");
@@ -301,6 +304,7 @@ final class LokiWebConsole {
                     if(input.has("referenceKey")&&!ImageReferenceSummary.matchesKey(input.optString("referenceKey"),ImageReferenceStore.view(owner)))throw new IOException("参照が更新・失効しています。本文を残して最新の参照を選び直してください。まだ送信していません");
                     // Persist intent before enqueue. Retries never enqueue the same browser request twice.
                     JSONObject record=new JSONObject().put("key",key).put("time",System.currentTimeMillis()).put("message",text).put("device",session.getString("name")).put("status","受付中").put("tracked",true).put("referenceKey",input.optString("referenceKey")).put("requestState","CREATED");
+                    record.put("visualControl",ConversationWorkspace.snapshot(owner).optJSONObject("visualControl"));
                     JSONArray next=WebRequestLedger.append(old,record);
                     if(next==null){json(socket,409,new JSONObject().put("queued",false).put("error","未完了の送信記録が100件あります。送信状況を確認してください。追加送信はしていません"));return true;}
                     if(!prefs(owner).edit().putString("outbox",next.toString()).commit())throw new IOException("送信記録を保存できません");

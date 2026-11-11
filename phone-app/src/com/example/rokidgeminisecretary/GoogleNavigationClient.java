@@ -202,7 +202,8 @@ final class GoogleNavigationClient {
     static JSONObject route(Context c, double lat, double lng, String destination, String mode) throws Exception {
         return routes(c,lat,lng,destination,mode,false).getJSONObject(0);
     }
-    static JSONArray routes(Context c,double lat,double lng,String destination,String mode,boolean alternatives)throws Exception {
+    static JSONArray routes(Context c,double lat,double lng,String destination,String mode,boolean alternatives)throws Exception {return routes(c,lat,lng,destination,mode,alternatives,false);}
+    static JSONArray routes(Context c,double lat,double lng,String destination,String mode,boolean alternatives,boolean busOnly)throws Exception {
         reserve(c, "routes", 50, 3);
         String travel = RoutesRequestPolicy.mode(mode);
         JSONObject point = new JSONObject().put("latitude", lat).put("longitude", lng);
@@ -213,7 +214,7 @@ final class GoogleNavigationClient {
         if ("TRANSIT".equals(travel)) {
             body.put("computeAlternativeRoutes", alternatives);
             body.put("departureTime", java.time.Instant.now().toString());
-            // Omit transitPreferences: no mode filter or walking/transfer preference.
+            if(busOnly)body.put("transitPreferences",new JSONObject().put("allowedTravelModes",new JSONArray().put("BUS")));
         }
         android.util.Log.d("LokiRoutesApi", "request mode=" + travel);
         Response response = request(c, "https://routes.googleapis.com/directions/v2:computeRoutes", body, fields);

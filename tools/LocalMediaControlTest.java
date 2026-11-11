@@ -26,6 +26,7 @@ public final class LocalMediaControlTest {
   check(LocalMediaControl.target(10000,-30000,120000)==0,"clamp beginning");
   check(LocalMediaControl.target(110000,30000,120000)==120000,"clamp ending");
   check(LocalMediaControl.target(Long.MAX_VALUE-5,30000,Long.MAX_VALUE)==Long.MAX_VALUE,"no overflow");
+  Fake ninety=new Fake();ninety.duration=300000;JSONObject ninetyInput=request(list(ninety),90000);check(LocalMediaControl.execute(context,ninetyInput).optBoolean("ok")&&ninety.state.getPosition()==150000,"90 seconds forward");check(LocalMediaControl.execute(context,ninetyInput).optBoolean("ok")&&ninety.calls==1,"90 second retry at most once");
   Fake fake=new Fake();JSONObject row=list(fake),input=request(row,30000);JSONObject output=LocalMediaControl.execute(context,input);
   check(output.optBoolean("ok")&&output.optString("status").equals("confirmed")&&fake.state.getPosition()==90000,"forward confirmed");
   check(LocalMediaControl.execute(context,input).optBoolean("ok")&&fake.calls==1,"lost response retry at most once");

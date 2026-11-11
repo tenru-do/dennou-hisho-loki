@@ -1,0 +1,204 @@
+{
+  "imageWidth": 1024,
+  "imageHeight": 1536,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        341,
+        483
+      ],
+      "headBounds": [
+        128,
+        2,
+        85,
+        80
+      ],
+      "visibleAlphaBounds": [
+        122,
+        10,
+        255,
+        478
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        341,
+        0,
+        682,
+        483
+      ],
+      "headBounds": [
+        128,
+        2,
+        85,
+        80
+      ],
+      "visibleAlphaBounds": [
+        118,
+        11,
+        231,
+        469
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        682,
+        0,
+        1024,
+        483
+      ],
+      "headBounds": [
+        129,
+        2,
+        85,
+        80
+      ],
+      "visibleAlphaBounds": [
+        122,
+        14,
+        264,
+        471
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        0,
+        483,
+        341,
+        978
+      ],
+      "headBounds": [
+        128,
+        2,
+        85,
+        82
+      ],
+      "visibleAlphaBounds": [
+        121,
+        7,
+        255,
+        490
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 4,
+      "cropLTRB": [
+        341,
+        483,
+        682,
+        978
+      ],
+      "headBounds": [
+        128,
+        2,
+        85,
+        82
+      ],
+      "visibleAlphaBounds": [
+        109,
+        7,
+        224,
+        491
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 5,
+      "cropLTRB": [
+        682,
+        483,
+        1024,
+        978
+      ],
+      "headBounds": [
+        129,
+        2,
+        85,
+        82
+      ],
+      "visibleAlphaBounds": [
+        109,
+        11,
+        238,
+        491
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 6,
+      "cropLTRB": [
+        0,
+        978,
+        341,
+        1536
+      ],
+      "headBounds": [
+        128,
+        2,
+        85,
+        93
+      ],
+      "visibleAlphaBounds": [
+        120,
+        7,
+        257,
+        511
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 7,
+      "cropLTRB": [
+        341,
+        978,
+        682,
+        1536
+      ],
+      "headBounds": [
+        128,
+        2,
+        85,
+        93
+      ],
+      "visibleAlphaBounds": [
+        112,
+        9,
+        221,
+        511
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    },
+    {
+      "index": 8,
+      "cropLTRB": [
+        682,
+        978,
+        1024,
+        1536
+      ],
+      "headBounds": [
+        129,
+        2,
+        85,
+        93
+      ],
+      "visibleAlphaBounds": [
+        113,
+        8,
+        238,
+        517
+      ],
+      "reviewNotes": "Grid and figure manually inspected on black against original; crop-local head bounds are approximate."
+    }
+  ]
+}

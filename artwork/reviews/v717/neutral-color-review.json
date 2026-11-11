@@ -1,0 +1,44 @@
+{
+  "scope": "Neutral poses 264..304 only, added to the 168 basic and 7 quiet color assets",
+  "pcBodyCrownAndFaceAnchorReview": true,
+  "cropBoundsPassed": 41,
+  "newBuildInstalled": false,
+  "physicalScreenVerified": false,
+  "assets": [
+    {
+      "asset": "loki_kneeling_daydream_v461.png",
+      "sha256": "17971aef65051adb6d0faa5c1e54bc6e229543d3cc26fc8cc61d7561d98525be",
+      "originalSha256": "165bfc17019833ddc0ca2767c99d87698e7c61fe9cc7b54692ffde0c4f2ddd3c"
+    },
+    {
+      "asset": "loki_kneeling_recall_v461.png",
+      "sha256": "fd983d65e4ae6d9cc01b23672a0c95530b3a631a1515a90c7ccfce66938e033d",
+      "originalSha256": "739746275d4dfa6d9e118f46e2a2ee82056de02aeb6d2fb7f586e11fa2b8de16"
+    },
+    {
+      "asset": "loki_kneeling_tears_v460.png",
+      "sha256": "f666d714c6ccfe0e5f6faf934119a9663ff0290dee4fd78dc4fce1192110e3a6",
+      "originalSha256": "3d71f4de1f4a02a9c25915470c3b06cefde02d682f3d91d477d2babe4abb9c03"
+    },
+    {
+      "asset": "loki_planner_seated_6_v441.png",
+      "sha256": "6f0d40b955141d88b98f118b70e086b0f45fc9974fa78d87b6b559ea8ff19b8b",
+      "originalSha256": "a19dcebaffb63de5b20e93acac59628d3e4c7e963fcbed8aae35643387f9217c"
+    },
+    {
+      "asset": "loki_planner_standing_6_v441.png",
+      "sha256": "9d1f511bb49982b80d638cf7303c4fb367bd3bd14a3fb30ad68f5e00f17becb1",
+      "originalSha256": "08d28a249ccee3fb1fc177873d9251a8c6306d2763b4290c8d6555051d783f27"
+    },
+    {
+      "asset": "loki_seated_laugh_6_v459.png",
+      "sha256": "ee5aca09ce73f5714fc49b6b0e2d9fdc68b88fbfef04ea23c72e707baf7a1558",
+      "originalSha256": "12aaa9272097422df0fc5a1de1add1aa839f8e5c930bd0b4cb2c972b432a7bf3"
+    },
+    {
+      "asset": "loki_seated_surprise_6_v459.png",
+      "sha256": "ce3afadf27c47c0487102ae5cc6707eb87a77a3fff217e01931512e007be48e2",
+      "originalSha256": "7c533fa948e57cf846e2ae737f09a4d1a98099958f29c554774b1a7137f75432"
+    }
+  ]
+}

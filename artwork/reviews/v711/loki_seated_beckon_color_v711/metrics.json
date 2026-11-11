@@ -1,0 +1,72 @@
+{
+  "candidateSha256": "15416d64b80a2245fac9cf51756db465d5a885278eb4698ceb5c5114059a3332",
+  "referenceKey": "seated",
+  "frames": [
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.14563106796116504,
+        "headPerShoulder": 0.5769230769230769,
+        "shoulderPerHeight": 0.2524271844660194,
+        "legPerHeight": 0.423503311595547
+      },
+      "reference": {
+        "headWidthPerHeight": 0.1401673640167364,
+        "headPerShoulder": 0.6261682242990654,
+        "shoulderPerHeight": 0.22384937238493724,
+        "legPerHeight": 0.4316827873404833
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.14563106796116504,
+        "headPerShoulder": 0.5769230769230769,
+        "shoulderPerHeight": 0.2524271844660194,
+        "legPerHeight": 0.423503311595547
+      },
+      "reference": {
+        "headWidthPerHeight": 0.1401673640167364,
+        "headPerShoulder": 0.6261682242990654,
+        "shoulderPerHeight": 0.22384937238493724,
+        "legPerHeight": 0.4316827873404833
+      },
+      "flags": []
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.15734265734265734,
+        "headPerShoulder": 0.5769230769230769,
+        "shoulderPerHeight": 0.2727272727272727,
+        "legPerHeight": 0.40030384200627417
+      },
+      "reference": {
+        "headWidthPerHeight": 0.1401673640167364,
+        "headPerShoulder": 0.6261682242990654,
+        "shoulderPerHeight": 0.22384937238493724,
+        "legPerHeight": 0.4316827873404833
+      },
+      "flags": [
+        "shoulderPerHeight"
+      ]
+    },
+    {
+      "metrics": {
+        "headWidthPerHeight": 0.15734265734265734,
+        "headPerShoulder": 0.5769230769230769,
+        "shoulderPerHeight": 0.2727272727272727,
+        "legPerHeight": 0.40030384200627417
+      },
+      "reference": {
+        "headWidthPerHeight": 0.1401673640167364,
+        "headPerShoulder": 0.6261682242990654,
+        "shoulderPerHeight": 0.22384937238493724,
+        "legPerHeight": 0.4316827873404833
+      },
+      "flags": [
+        "shoulderPerHeight"
+      ]
+    }
+  ],
+  "manualFaceIdentityReviewRequired": true,
+  "approved": false
+}

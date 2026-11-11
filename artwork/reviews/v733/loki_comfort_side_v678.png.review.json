@@ -1,0 +1,22 @@
+{
+  "asset": "loki_comfort_side_v678.png",
+  "assetSha256": "96bbc133dd6aab5c9fd2255cec7a1f014540a57b0134d6501d2e6f32f9c74ccd",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Furniture/background only edit; generated native alpha unchanged. Figure identity, clothing and grid manually reviewed on black. No physical anatomy certification inferred from metrics.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_comfort_side_v678.png.contact.png",
+    "sha256": "9470aaa1f2d712004b5e0f04d298f2683607c57ec4278e620712cf54af088c36"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_comfort_side_v678.png.landmarks.json",
+    "sha256": "c980a2df51c970855e85088a2954c06ee2a059249a0ead32edd543ddfaf6f947"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/quiet-android-checks.json"
+}

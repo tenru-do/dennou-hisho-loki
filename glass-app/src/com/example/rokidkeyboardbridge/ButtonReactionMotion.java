@@ -15,6 +15,7 @@ final class ButtonReactionMotion {
     void clear(){started=-1;}
     void apply(Canvas canvas,int width,int height,long now){
         if(!active(now))return;
+        if(!contact)return; // Ordinary controls acknowledge with face/gaze, never squash the whole body.
         double p=(now-started)/(double)DURATION_MS;
         float wave=Math.min(1,(now-started+16)/80f)*(float)Math.pow(Math.sin(Math.PI*(.1+.9*p)),2)*CharacterMotionTuning.scale();
         if(contact&&touchStyle==1)wave*=.55f;else if(contact&&touchStyle==2)wave*=(float)Math.sin((now-started)/90.0)*.65f;

@@ -1,0 +1,182 @@
+{
+  "imageWidth": 1448,
+  "imageHeight": 1086,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        362,
+        543
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        101,
+        6,
+        333,
+        537
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        362,
+        0,
+        724,
+        543
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        101,
+        6,
+        269,
+        537
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        724,
+        0,
+        1086,
+        543
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        101,
+        6,
+        255,
+        537
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        1086,
+        0,
+        1448,
+        543
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        101,
+        6,
+        255,
+        537
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 4,
+      "cropLTRB": [
+        0,
+        543,
+        362,
+        1086
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        101,
+        7,
+        255,
+        536
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 5,
+      "cropLTRB": [
+        362,
+        543,
+        724,
+        1086
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        96,
+        6,
+        255,
+        536
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 6,
+      "cropLTRB": [
+        724,
+        543,
+        1086,
+        1086
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        76,
+        7,
+        256,
+        537
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    },
+    {
+      "index": 7,
+      "cropLTRB": [
+        1086,
+        543,
+        1448,
+        1086
+      ],
+      "headBounds": [
+        134,
+        4,
+        82,
+        90
+      ],
+      "visibleAlphaBounds": [
+        61,
+        6,
+        256,
+        536
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    }
+  ]
+}

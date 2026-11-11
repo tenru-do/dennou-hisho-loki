@@ -1,0 +1,22 @@
+{
+  "asset": "loki_offduty_pillow_v683.png",
+  "assetSha256": "edae24879ee3fcfc6300f9cb6831e264fa8ef3be3c9050110177e6752e652e87",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Original successful built-in imagegen output and native alpha preserved. All cells reviewed on black. Mature face, natural head/shoulders/hands and long legs retained. Furniture/bedding removed in rest images; leg sheet uses fixed camera and intermediate clothed leg positions.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_offduty_pillow_v683.png.contact.png",
+    "sha256": "32043a545e38b93c845c926d00923005619adbec903f9687533d06441d9faf38"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_offduty_pillow_v683.png.landmarks.json",
+    "sha256": "85729ae06a399217dfb07c67f2483247b1a7ed69a02ac6a77e9d1d74f19c4245"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/quiet-android-checks.json"
+}

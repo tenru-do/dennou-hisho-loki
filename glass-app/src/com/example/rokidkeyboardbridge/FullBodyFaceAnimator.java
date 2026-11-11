@@ -10,12 +10,26 @@ final class FullBodyFaceAnimator {
  private float gaze,gazeY,mouthEnvelope=1;
  void attention(float next,float vertical,float speech){gazeY=Math.max(-1,Math.min(1,vertical));gaze=Math.max(-1,Math.min(1,next));mouthEnvelope=Math.max(0,Math.min(1,speech));}
  private boolean stableSmile,originalSeatedMouth;
+ private float expressionEnvelope=1;
  private Bitmap mouthPatch,mouthPatchSource;private int mouthPatchLeft,mouthPatchTop;
  private final float[] mouthVertices=new float[9*7*2];
  private Bitmap skinSource;
+ private Bitmap colorTextureSource;
+ private boolean colorTexture;
  private BitmapShader skinShader;
- void prepare(Bitmap source){skinSource=source;skinShader=new BitmapShader(source,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);}
- void clear(){skinSource=null;skinShader=null;p.setShader(null);if(mouthPatch!=null&&!mouthPatch.isRecycled())mouthPatch.recycle();mouthPatch=null;mouthPatchSource=null;}
+ static boolean naturalColor(Bitmap source){
+  if(source==null||source.isRecycled())return false;
+  int warm=0,visible=0;
+  for(int y=0;y<32;y++)for(int x=0;x<32;x++){
+   int c=source.getPixel(x*(source.getWidth()-1)/31,y*(source.getHeight()-1)/31);
+   int r=Color.red(c),g=Color.green(c),b=Color.blue(c);
+   if(Color.alpha(c)>200&&r>45){visible++;if(r-g>=5&&g-b>=2)warm++;}
+  }
+  return visible>0&&warm>visible/20;
+ }
+ private void colorTexture(Bitmap source){if(colorTextureSource!=source){colorTextureSource=source;colorTexture=naturalColor(source);}}
+ void prepare(Bitmap source){skinSource=source;skinShader=new BitmapShader(source,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);colorTexture(source);}
+ void clear(){skinSource=null;skinShader=null;colorTextureSource=null;colorTexture=false;p.setShader(null);if(mouthPatch!=null&&!mouthPatch.isRecycled())mouthPatch.recycle();mouthPatch=null;mouthPatchSource=null;}
  private static final float[][] coolFeatures=new float[FullBodyRealisticFeatures.ALL.length][];
  static float[] features(int pose){if(pose<0||pose>=FullBodyRealisticFeatures.ALL.length)return null;if(!CoolSmilePolicy.supports(pose))return FullBodyRealisticFeatures.ALL[pose];if(coolFeatures[pose]==null)coolFeatures[pose]=CoolSmilePolicy.features(pose,FullBodyRealisticFeatures.ALL[pose]);return coolFeatures[pose];}
  static boolean supports(int pose){return features(pose)!=null;}
@@ -33,12 +47,20 @@ final class FullBodyFaceAnimator {
  void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking){
   drawFeatures(canvas,source,f,elapsed,speaking,blinking,false);
  }
+ void drawQuietFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,int emotion){
+  drawQuietFeatures(canvas,source,f,elapsed,speaking,emotion,1);
+ }
+ void drawQuietFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,int emotion,float envelope){
+  boolean smile=emotion==QuietPosePerformance.JOY||emotion==QuietPosePerformance.RELIEF;
+  try{stableSmile=smile;expressionEnvelope=Math.max(0,Math.min(1,envelope));drawFeatures(canvas,source,f,elapsed,speaking,true,smile);}finally{stableSmile=false;expressionEnvelope=1;}
+ }
  private void drawFeatures(Canvas canvas,Bitmap source,float[] f,long elapsed,boolean speaking,boolean blinking,boolean preserveSmile){
   if(f==null||source==null||source.isRecycled())return;
+  colorTexture(source);
   canvas.save();canvas.scale(source.getWidth()/f[0],source.getHeight()/f[1]);
   float closed=blinking?blink(elapsed)*CharacterMotionTuning.eyes():0;
   if(closed>0||Math.abs(gaze)>.001f||Math.abs(gazeY)>.001f){if(f[4]>0)eyeMotion(canvas,source,f,2,closed);if(f[10]>0&&Math.abs(f[8]-f[2])>f[4]*.4f)eyeMotion(canvas,source,f,8,closed);}
-  float open=speaking?mouth(elapsed,true)*mouthEnvelope*CharacterMotionTuning.face():preserveSmile?.12f*(.5f+.5f*(float)Math.sin(elapsed/950.0)):0;if(stableSmile)open*=.65f;if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
+  float open=speaking?mouth(elapsed,true)*mouthEnvelope*CharacterMotionTuning.face():preserveSmile?.12f*expressionEnvelope*(.5f+.5f*(float)Math.sin(elapsed/950.0)):0;if(stableSmile)open*=.65f;if(open>0&&f[16]>0)mouth(canvas,source,f,open,preserveSmile);
   canvas.restore();
  }
  // Retain the original lashes, iris, lip corners and shading rather than drawing generic eyes.
@@ -48,6 +70,10 @@ final class FullBodyFaceAnimator {
   c.scale(f[0]/source.getWidth(),f[1]/source.getHeight());p.setStyle(Paint.Style.FILL);p.setColor(Color.WHITE);c.drawBitmap(source,0,0,p);c.restore();
  }
  private void eyeMotion(Canvas c,Bitmap source,float[]f,int offset,float closed){
+  if(colorTexture){
+   // Retain the realistic lashes/shading rather than drawing a generic black lid.
+   patch(c,source,f,f[offset],f[offset+1],f[offset+2]*.58f,Math.max(1,f[offset+2]*.22f),f[offset+3],1-.32f*closed);return;
+  }
   if(f[offset+5]>0){eye(c,source,f,offset,closed);return;}
   // Closed lids tighten briefly; never invent an iris over a closed/occluded eye.
   patch(c,source,f,f[offset],f[offset+1],f[offset+2]*.55f,Math.max(1,f[offset+2]*.17f),f[offset+3],1-.14f*closed);
@@ -81,7 +107,9 @@ final class FullBodyFaceAnimator {
   p.setShader(null);p.setColor(Color.WHITE);p.setStyle(Paint.Style.FILL);c.drawBitmapMesh(mouthPatch,8,6,mouthVertices,0,null,0,p);
  }
  private void mouth(Canvas c,Bitmap source,float[]f,float open,boolean preserveSmile){
-  if(originalSeatedMouth){seatedMouth(c,source,f,open);return;}
+  // A synthetic black opening is conspicuous on realistic colored skin. Move
+  // the existing lip texture, preserving its corners, shading and identity.
+  if(originalSeatedMouth||colorTexture){seatedMouth(c,source,f,open);return;}
   float x=f[14],y=f[15],w=f[16],angle=f[17],original=f[18];
   if(preserveSmile){
    // Keep the smiling corners and tilt while opening the centre of the lips.

@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-05",
+  "devices": [
+    {
+      "package": "com.example.rokidgeminisecretary",
+      "version": 318,
+      "installedApkSha256": "b26f027f5fe7715442c65ed183fb61b30f17875a8856398686f58c4b9a4ab9b1",
+      "testedCandidateMatch": true,
+      "normalActivityStarted": true,
+      "originalFilesRetained": true,
+      "normalLokiActivityResumed": true
+    },
+    {
+      "package": "com.example.rokidkeyboardbridge",
+      "version": 733,
+      "installedApkSha256": "632e425b3629e391ea853948720e8202d05d993bba3902651535435d53591fcf",
+      "testedCandidateMatch": true,
+      "normalActivityStarted": true,
+      "originalFilesRetained": true,
+      "normalLokiActivityResumed": true
+    }
+  ],
+  "phoneWeb": {
+    "publicWebAssetAvailable": true,
+    "pageSize500": true,
+    "progressUiCodeAvailable": true,
+    "unauthenticatedProgressStatus": 401,
+    "passed": true
+  },
+  "isolatedTestAppsRemoved": true,
+  "authenticationRead": false,
+  "realPhotoTransferStarted": false,
+  "recordingOrCaptureStarted": false,
+  "externalApiTestRequests": 0,
+  "r08ConfigurationChanged": false
+}
