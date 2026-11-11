@@ -18,12 +18,13 @@ final class ApprovedFaceRenderer {
     void kissScene(int type,long elapsed){if(kisses!=null)kisses.scene(type,elapsed);}
     void previewSequence(int cell,long now){expressions.preview(8+Math.max(0,Math.min(15,cell)),now);}
  void attention(float x,float y,long now){if(expressions!=null)expressions.rapport.life.performance.button(x,y,now);}
-    void rapportUser(String text,long now){if(expressions!=null)expressions.rapport.user(text,now);}
+    void warmCommand(String text,long now){if(expressions!=null)expressions.warmUser(text,now);if((WarmPresencePolicy.stop(text)||WarmPresencePolicy.command(text)==WarmPresencePolicy.NONE&&!WarmPresencePolicy.followup(text))&&kisses!=null)kisses.clearPreview();else if(WarmPresencePolicy.command(text)==WarmPresencePolicy.KISS_FACE&&CharacterMotionTuning.warmth>0&&kisses!=null)kisses.preview(0,now);}
+    void rapportUser(String text,long now){warmCommand(text,now);if(expressions!=null)expressions.rapport.user(text,now);}
     void rapportAnswer(String text,FullBodyPoseCatalog.Kind kind,long now){if(expressions!=null)expressions.rapport.answer(text,kind,now);}
     boolean waitingForReaction(long now){return expressions!=null&&expressions.rapport.waiting(now);}
     void previewConversationGesture(int kind,long now){if(expressions!=null)expressions.rapport.life.event(kind,now,true);}
     void previewRapport(long now){if(kisses!=null)kisses.clearPreview();if(expressions!=null)expressions.rapport.preview(now);}
-    boolean needsFastFrames(long now){return (expressions!=null&&(expressions.rapport.active(now)||expressions.rapport.life.moving(now)||expressions.virtualMoving()||expressions.transitioning(now)))||kisses!=null&&kisses.needsFastFrames(now);}
+    boolean needsFastFrames(long now){return (expressions!=null&&(expressions.warmMoving(now)||expressions.rapport.active(now)||expressions.rapport.life.moving(now)||expressions.virtualMoving()||expressions.transitioning(now)))||kisses!=null&&kisses.needsFastFrames(now);}
     boolean hasLifePortraits(){return expressions!=null&&expressions.ready();}
     void preview(int cell,long now){if(kisses!=null)kisses.clearPreview();if(expressions!=null)expressions.preview(cell,now);}
     void react(long now,boolean touching,int direction){if(expressions!=null)expressions.react(now,touching,direction);}
@@ -93,7 +94,7 @@ final class ApprovedFaceRenderer {
             faceMesh[index++]=destination.top+(y+dy)*destination.height();
         }
         canvas.drawBitmapMesh(faceFrame,cols,rows,faceMesh,0,null,0,image);
-        if(speaking&&!FullBodyPortraitGeometry.OPEN[cell]&&articulation>.12f){
+        if(speaking&&!naturalColorAtlas&&!FullBodyPortraitGeometry.OPEN[cell]&&articulation>.12f){
             float x=destination.left+f[4]*destination.width(),y=destination.top+f[5]*destination.height();
             float eyeDistance=(float)Math.hypot(f[2]-f[0],f[3]-f[1]);
             float rx=Math.max(.021f,Math.min(.048f,eyeDistance*.20f))*destination.width();
@@ -105,12 +106,14 @@ final class ApprovedFaceRenderer {
             motionInk.setColor(Color.rgb(0,118,124));motionInk.setStyle(Paint.Style.STROKE);motionInk.setStrokeWidth(Math.max(.5f,destination.width()*.002f));canvas.drawPath(contour,motionInk);canvas.restoreToCount(save);
         }
     }
+    private boolean naturalColorAtlas;
     ApprovedFaceRenderer(Context context) {
         CharacterMotionPreferences.load(context);
         expressions=new PortraitExpressionRenderer(context);kisses=new KissPortraitRenderer(context);
         try (InputStream stream = context.getAssets().open("loki_face_cool_v559.png")) {
             Bitmap original=BitmapFactory.decodeStream(stream);
             if(original==null)throw new IllegalStateException("Full-body portrait atlas missing");
+            naturalColorAtlas=FullBodyFaceAnimator.naturalColor(original);
             atlas=FullBodyPortraitInk.render(original);
             original.recycle();
         } catch (Exception error) { android.util.Log.e("ApprovedFace", "Approved atlas failed", error); }
@@ -256,14 +259,14 @@ final class ApprovedFaceRenderer {
         deformRegion(canvas,mx-.07f,my-mh,mx+.07f,my+mh,mouthScale);
         */
         float mx=features[4],my=features[5];
-        if(hasTears(cell)) {
+        if(hasTears(cell)&&!naturalColorAtlas) {
             for(int eye=0;eye<2;eye++) {
                 float phase=((now+eye*720)%2200)/2200f;
                 drawDroplet(canvas,features[eye*2],features[eye*2+1]+.025f+phase*.16f,
                     .007f,(float)Math.sin(phase*Math.PI));
             }
         }
-        if(hasSweat(cell)) {
+        if(hasSweat(cell)&&!naturalColorAtlas) {
             float phase=(now%3500)/3500f;
             drawDroplet(canvas,Math.min(.88f,features[2]+.10f),features[3]-.12f+phase*.16f,.006f,
                 (float)Math.sin(phase*Math.PI));

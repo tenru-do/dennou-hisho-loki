@@ -2,6 +2,10 @@
 
 グラス **v697**・スマホ **v303**（変更なし）・任意のHEALBE補助 **v4**。[変更内容・導入方法・検証範囲](docs/releases/healbe-v4.md)、[APKダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/healbe-v4)。
 
+## 最新のソース（2026-11-11）
+
+グラス **v742**・スマホ **v319**までの更新を反映しています。画像の衣装・体格の連続性、脚組みの中間動作、KEEP・READ・TOPIC・送信待ち・PC接続などを更新しました。[変更内容と検証範囲](docs/releases/source-v742.md)。新しい公開署名APKの配布とは区別してください。
+
 # 電脳秘書ロキ
 
 Rokidグラスを、Bluetoothキーボード・音声・スマートフォンから操作できるGeminiベースの実験的AI秘書にするAndroidアプリ群です。

@@ -7,7 +7,7 @@ final class FullBodyGestureRegions {
   int bestStart=-1,bestLength=0,start=-1;
   for(int y=from;y<to;y++){
    bitmap.getPixels(row,0,w,0,y,w,1);boolean empty=true;
-   for(int p:row)if(Math.max((p>>16)&255,Math.max((p>>8)&255,p&255))>12){empty=false;break;}
+   for(int p:row)if((p>>>24)>32&&Math.max((p>>16)&255,Math.max((p>>8)&255,p&255))*(p>>>24)>12*255){empty=false;break;}
    if(empty&&start<0)start=y;
    if((!empty||y==to-1)&&start>=0){int length=y-start;if(length>bestLength){bestStart=start;bestLength=length;}start=-1;}
   }

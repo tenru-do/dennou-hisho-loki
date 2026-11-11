@@ -1,0 +1,22 @@
+{
+  "asset": "loki_rest_master_v675.png",
+  "assetSha256": "5855e935a97b84da66e443c4128afaabd7fc62424bd2af34643e1696a824a01f",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 1,
+  "rows": 1,
+  "reviewedFrames": 1,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Original successful built-in imagegen output and native alpha preserved. All cells reviewed on black. Mature face, natural head/shoulders/hands and long legs retained. Furniture/bedding removed in rest images; leg sheet uses fixed camera and intermediate clothed leg positions.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_rest_master_v675.png.contact.png",
+    "sha256": "ff667a41b789b21af33a64c359e75ea56b0083f21b377a82eba3815cf01ca64b"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_rest_master_v675.png.landmarks.json",
+    "sha256": "9c85d33ac812eb45baf1640ea91d77c417e735355b282dad88f4b50987ab2c13"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/quiet-android-checks.json"
+}

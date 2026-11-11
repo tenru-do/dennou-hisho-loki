@@ -1,0 +1,33 @@
+{
+  "passed": 183,
+  "motion": "cross-uncross-left-right",
+  "frames": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "crossfadeMidpoints": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "sourceLowerBodyDistinctnessVerified": true,
+  "viewport": [
+    480,
+    640
+  ],
+  "glassApkSha256": "632e425b3629e391ea853948720e8202d05d993bba3902651535435d53591fcf",
+  "method": "Actual Android Canvas on connected glasses, isolated app context, production APK renderer and unchanged assets",
+  "productionUiOperated": false,
+  "externalApiCalls": 0,
+  "cameraOrAudioUsed": false
+}

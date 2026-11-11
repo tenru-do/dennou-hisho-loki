@@ -1,0 +1,22 @@
+{
+  "asset": "loki_rest_wave_v675.png",
+  "assetSha256": "0bb100a61ba59382061ed59eac3aa315814dcd36036cb250c3bb403a3a80cea1",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Furniture/background only edit; generated native alpha unchanged. Figure identity, clothing and grid manually reviewed on black. No physical anatomy certification inferred from metrics.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_rest_wave_v675.png.contact.png",
+    "sha256": "abbdd6cab2ff19a83cf0cab3086499b4c0749142875ed8b6a03aaaf7dd48ad99"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_rest_wave_v675.png.landmarks.json",
+    "sha256": "52590d6b115bbad656c818c00bf671e30b8a15866615703c137bc7fb1674b7c5"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/quiet-android-checks.json"
+}

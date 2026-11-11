@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "checks": "provenance, PNG dimensions, landmark bounds; human comparison required",
+  "passed": true,
+  "errors": [],
+  "reference": "artwork/reference/loki-user-approved-base-20261027.png",
+  "assets": [
+    {
+      "asset": "loki_approved_seated_thought_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_seated_thought_20261102.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "2cac328c521145381724bea27cb64150364b85195a5a4eb454c1e848d94c7592",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0664,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    },
+    {
+      "asset": "loki_approved_seated_cross_a_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_seated_cross_a_20261102.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "6ea9bb151085b16e45a1949dd75e2b8b88125f707dd3ceedd98c592d840714bf",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0677,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    },
+    {
+      "asset": "loki_approved_seated_cross_b_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_seated_cross_b_20261102.png",
+      "width": 1024,
+      "height": 1536,
+      "sha256": "b2cc8ef4a822095303964eba26d7e40f019de276ba34cdb6d9fadf730d81f39b",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0625,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    },
+    {
+      "asset": "loki_approved_sleep_20261102.png",
+      "source": "artwork/adopted/20261102-rest-sleep/loki-sleep-overhead.png",
+      "width": 401,
+      "height": 760,
+      "sha256": "9ce97c6898b0e846c9893084beb9196e59e3b2f59144319098f50fc1b7bab9e1",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0526,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    },
+    {
+      "asset": "loki_approved_rest_arms_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_rest_arms_20261102.png",
+      "width": 841,
+      "height": 1870,
+      "sha256": "35eccb47898c83fdcf7849654cbb9a1bc31cee1daad24f380d8d50e1e277772a",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0706,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    },
+    {
+      "asset": "loki_approved_rest_hands_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_rest_hands_20261102.png",
+      "width": 856,
+      "height": 1837,
+      "sha256": "28b8240a511e24e70a83ac1bbd92e1f796c22bb2d2ffe804cd9bfdc267896bf0",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0615,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": true
+    },
+    {
+      "asset": "loki_approved_rest_listening_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_rest_listening_20261102.png",
+      "width": 836,
+      "height": 1881,
+      "sha256": "a57b96ca1310ff75bcc3ba360420715e0a9593c70ce95847f86b966623a4a943",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.051,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    },
+    {
+      "asset": "loki_approved_sofa_relaxed_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_sofa_relaxed_20261102.png",
+      "width": 887,
+      "height": 1774,
+      "sha256": "1b07b9c71723bc05cfc6d10df7808ff961c78f96b99de63fc69b33071b7af5b2",
+      "originalUnchanged": true,
+      "landmarksWithinImage": true,
+      "eyeSpanToCanvasHeight": 0.0569,
+      "manualIdentityReviewRequired": true,
+      "closeupNotAutomatic": false
+    }
+  ]
+}

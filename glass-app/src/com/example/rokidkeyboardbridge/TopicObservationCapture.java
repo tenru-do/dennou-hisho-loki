@@ -107,10 +107,19 @@ final class TopicObservationCapture {
             return wav.array();
     }
     static byte[] recorderPhoto(Context context, BooleanSupplier cancelled) throws Exception {return photo(context,cancelled,true);}
+    static byte[] keepPhoto(Context context, BooleanSupplier cancelled) throws Exception {
+        return photo(context,cancelled,true,KeepExposureSettings.mode(context),true);
+    }
     private static byte[] photo(Context context, BooleanSupplier cancelled) throws Exception {
         return photo(context,()->cancelled.getAsBoolean()||PhotoRecorderService.active!=null,false);
     }
     private static byte[] photo(Context context, BooleanSupplier cancelled, boolean recorder) throws Exception {
+        return photo(context,cancelled,recorder,0);
+    }
+    private static byte[] photo(Context context, BooleanSupplier cancelled, boolean recorder,int exposureMode) throws Exception {
+        return photo(context,cancelled,recorder,exposureMode,false);
+    }
+    private static byte[] photo(Context context, BooleanSupplier cancelled, boolean recorder,int exposureMode,boolean keep) throws Exception {
         try (CaptureLease lease = CaptureLease.acquire(CaptureLease.CAMERA, cancelled)) {
         HandlerThread thread = new HandlerThread("TopicCamera");thread.start();
         Handler cameraHandler=new Handler(thread.getLooper());
@@ -119,6 +128,9 @@ final class TopicObservationCapture {
         android.media.ImageReader[] reader={null};byte[][] jpeg={null};int[] orientation={0};Throwable[] failure={null};
         java.util.concurrent.atomic.AtomicBoolean closing=new java.util.concurrent.atomic.AtomicBoolean();
         Runnable[] nextExposureFrame={null};int[] exposureFrames={0};long[] exposureStart={0};boolean[] aeStable={false};
+        KeepAutoExposureCycle automatic=new KeepAutoExposureCycle();
+        android.hardware.camera2.CaptureRequest.Builder[] exposureRequest={null};
+        float[] evStep={0};int[] evMinimum={0},evMaximum={0},currentEv={0},sensitivity={0};long[] exposureNs={0};java.util.concurrent.atomic.AtomicReference<byte[]> autoReference=new java.util.concurrent.atomic.AtomicReference<>();
         try {
             cameraHandler.post(()->{
                 try {
@@ -140,13 +152,28 @@ final class TopicObservationCapture {
                             if(image!=null&&!closing.get()){
                                 // Warm-up JPEGs are closed without allocating/copying their buffers.
                                 // Only REC waits for auto-exposure; existing TOPIC capture stays unchanged.
-                                if(recorder&&exposureFrames[0]<6&&SystemClock.elapsedRealtime()-exposureStart[0]<1500L
+                                if(keep&&automatic.correcting()&&automatic.discardSettling(SystemClock.elapsedRealtime())&&!cancelled.getAsBoolean()){
+                                    cameraHandler.post(nextExposureFrame[0]);return;
+                                }
+                                if(!automatic.correcting()&&recorder&&exposureFrames[0]<6&&SystemClock.elapsedRealtime()-exposureStart[0]<1500L
                                         &&(exposureFrames[0]<2||!aeStable[0])&&!cancelled.getAsBoolean()){
                                     exposureFrames[0]++;cameraHandler.post(nextExposureFrame[0]);return;
                                 }
                                 java.nio.ByteBuffer buffer=image.getPlanes()[0].getBuffer();
                                 if(buffer.remaining()>(recorder?8000000:1000000))throw new IllegalStateException("JPEG buffer too large");
-                                byte[] bytes=new byte[buffer.remaining()];buffer.get(bytes);jpeg[0]=bytes;
+                                byte[] bytes=new byte[buffer.remaining()];buffer.get(bytes);
+                                if(keep&&exposureMode==0&&automatic.needsAnalysis()&&evStep[0]>0&&(evMinimum[0]<0||evMaximum[0]>0)&&!cancelled.getAsBoolean()){
+                                    float ev=automatic.decide(KeepAutoExposureAnalyzer.analyze(bytes),exposureNs[0],sensitivity[0]);
+                                    int selected=KeepAutoExposurePolicy.compensation(ev,evStep[0],evMinimum[0],evMaximum[0]);
+                                    if(selected!=currentEv[0]&&!cancelled.getAsBoolean()){
+                                        autoReference.set(bytes);currentEv[0]=selected;
+                                        exposureRequest[0].set(android.hardware.camera2.CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,selected);
+                                        automatic.applied(SystemClock.elapsedRealtime());aeStable[0]=false;
+                                        android.util.Log.i("LokiRecorderExposure","adaptive_ev="+(selected*evStep[0]));
+                                        cameraHandler.post(nextExposureFrame[0]);return;
+                                    }
+                                }
+                                jpeg[0]=bytes;autoReference.set(null);
                             }
                         }catch(Throwable error){failure[0]=error;}
                         finally{android.util.Log.i("TopicCamera","ImageReader image.close completed");if(!recorder||jpeg[0]!=null||failure[0]!=null||closing.get()||cancelled.getAsBoolean())done.countDown();}
@@ -163,10 +190,17 @@ final class TopicObservationCapture {
                                         request.addTarget(reader[0].getSurface());request.set(android.hardware.camera2.CaptureRequest.JPEG_QUALITY,(byte)(recorder?85:70));
                                         request.set(android.hardware.camera2.CaptureRequest.JPEG_ORIENTATION,recorder?orientation[0]:0);
                                         if(recorder)request.set(android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE,android.hardware.camera2.CaptureRequest.CONTROL_AE_MODE_ON);
+                                        if(recorder){
+                                            android.util.Range<Integer> range=characteristics.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+                                            android.util.Rational step=characteristics.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+                                            if(range!=null&&step!=null&&step.floatValue()>0){evStep[0]=step.floatValue();evMinimum[0]=range.getLower();evMaximum[0]=range.getUpper();currentEv[0]=KeepExposurePolicy.compensation(exposureMode,step.floatValue(),range.getLower(),range.getUpper());request.set(android.hardware.camera2.CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,currentEv[0]);}
+                                        }
+                                        exposureRequest[0]=request;
                                         exposureStart[0]=SystemClock.elapsedRealtime();
                                         android.hardware.camera2.CameraCaptureSession.CaptureCallback callback=new android.hardware.camera2.CameraCaptureSession.CaptureCallback(){
                                             public void onCaptureCompleted(android.hardware.camera2.CameraCaptureSession s,android.hardware.camera2.CaptureRequest r,android.hardware.camera2.TotalCaptureResult result){
                                                 Integer state=result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE);
+                                                Long shutter=result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME);Integer iso=result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY);exposureNs[0]=shutter==null?0:shutter;sensitivity[0]=iso==null?0:iso;
                                                 aeStable[0]=state!=null&&(state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_CONVERGED||state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED||state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_LOCKED);
                                                 if(recorder)android.util.Log.i("LokiRecorderExposure","warmup="+exposureFrames[0]+" ae="+state+" exposure_ns="+result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME)+" iso="+result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY));
                                             }
@@ -188,6 +222,7 @@ final class TopicObservationCapture {
             long until=SystemClock.elapsedRealtime()+8000L;
             while(!cancelled.getAsBoolean()&&SystemClock.elapsedRealtime()<until&&!done.await(100,TimeUnit.MILLISECONDS)){}
             if(cancelled.getAsBoolean())throw new InterruptedException("TOPIC camera cancelled");
+            if(jpeg[0]==null&&autoReference.get()!=null){jpeg[0]=autoReference.get();android.util.Log.w("LokiRecorderExposure","adaptive correction unconfirmed; keeping original metered JPEG");}
             if(jpeg[0]==null)throw new IllegalStateException("TOPIC camera unavailable",failure[0]);
             // Recorder keeps the hardware JPEG and its orientation metadata. Avoid
             // full-resolution decode/rotate/re-encode allocations beside the HUD.

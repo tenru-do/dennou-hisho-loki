@@ -34,6 +34,17 @@ final class FullBodyRealisticAssets {
  static final int[] SEATED={168,181,182,183,184,185};
  // Foreign shoes from the preceding sheet row; the blank gap below is retained.
  static int topStrayRows(int id){return id==259?20:id==260?9:id==261?1:id==262?2:id==263?18:0;}
+ // Legacy opaque sheets needed a black cover for a neighboring shoe. Applying
+ // that cover to an alpha cutout creates a floating black rectangle.
+ static boolean transparentArtwork(Bitmap frame){
+  if(frame==null||!frame.hasAlpha())return false;
+  int clear=0,total=0;
+  for(int y=0;y<8;y++)for(int x=0;x<8;x++){
+   int pixel=frame.getPixel(x*(frame.getWidth()-1)/7,y*(frame.getHeight()-1)/7);
+   total++;if((pixel>>>24)<16)clear++;
+  }
+  return clear>total/20;
+ }
  static Bitmap decode(ZipFile apk,int id,int sample)throws Exception {
   if(id<0||id>=REGIONS.length)throw new IllegalArgumentException("Fullbody frame "+id);
   if(CoolSmilePolicy.supports(id))try(InputStream input=apk.getInputStream(apk.getEntry("assets/cool-smile-v561/frame-"+id+".png"))){BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=sample;return BitmapFactory.decodeStream(input,null,options);}
@@ -43,7 +54,7 @@ final class FullBodyRealisticAssets {
    try{int[]r=REGIONS[id];BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=sample;options.inMutable=true;
     Bitmap frame=decoder.decodeRegion(new Rect(r[0],r[1],r[2],r[3]),options);
     int strayRows=topStrayRows(id);
-    if(strayRows>0&&frame!=null){if(!frame.isMutable()){Bitmap editable=frame.copy(Bitmap.Config.ARGB_8888,true);if(editable==null)throw new IllegalStateException("Cannot create editable crop "+id);frame.recycle();frame=editable;}Paint clean=new Paint();clean.setColor(Color.BLACK);new Canvas(frame).drawRect(0,0,frame.getWidth(),(strayRows+sample-1)/sample,clean);}
+    if(strayRows>0&&frame!=null){if(!frame.isMutable()){Bitmap editable=frame.copy(Bitmap.Config.ARGB_8888,true);if(editable==null)throw new IllegalStateException("Cannot create editable crop "+id);frame.recycle();frame=editable;}Paint clean=new Paint();clean.setColor(Color.BLACK);if(transparentArtwork(frame))clean.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));new Canvas(frame).drawRect(0,0,frame.getWidth(),(strayRows+sample-1)/sample,clean);}
     return frame;}
    finally{decoder.recycle();}
   }

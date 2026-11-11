@@ -10,7 +10,7 @@ function showWebBootFailure(){const el=document.getElementById('webBootStatus');
 window.addEventListener('error',event=>{if(event.error)showWebBootFailure();});
 window.addEventListener('unhandledrejection',event=>{if(event.reason?.name!=='AbortError')showWebBootFailure();});
 const $=id=>document.getElementById(id);
-const PHOTO_PAGE_SIZE=200;
+const PHOTO_PAGE_SIZE=500;
 let meetingSignature='', meetingCurrent=null, meetingBlob='', meetingPlayGeneration=0;
 let activeTab='photos', meetingControlBusy=false, meetingUploadController=null, meetingUploadId='', meetingImportSignature='';
 let token=browserTokenStore.read(), offset=0, items=[], total=0, selected=new Set(), generation=0, blobs=[], viewing=-1, largeBlob='', zoom=1, busy=false, historySignature='', sendId='';
@@ -21,6 +21,44 @@ let composerDraftRevision=0, generationParentRevision=0, recoveryRestoreGenerati
 function setComposerMessage(value){$('message').value=value;composerDraftRevision++;window.lokiConversationUi?.draftChanged();}
 function composerSnapshot(){return JSON.stringify([token,$('message').value,composerDraftRevision,chatImageGeneration,generatedParent,generationParentRevision,imageReferenceDraft?.key||'',imageReferenceDraft?.prefix||'']);}
 const note=text=>{$('notice').textContent=text;};
+let photoImportTimer=null,photoImportController=null,photoImportEpoch=0,photoImportUntil=0,photoImportFailures=0,photoImportPolls=0,photoImportRequestBusy=false;
+function stopPhotoImportPolling(clear=false){
+ photoImportEpoch++;if(photoImportTimer!==null)clearTimeout(photoImportTimer);photoImportTimer=null;
+ if(photoImportController)photoImportController.abort();photoImportController=null;
+ if(clear){$('photoImportStatus').textContent='';$('photoImportConnection').textContent='';$('photoImportProgress').hidden=true;$('import').disabled=photoImportRequestBusy;}
+}
+function startPhotoImportPolling(restart=true){
+ if(!token||activeTab!=='photos'||document.hidden)return;
+ if(!restart&&(photoImportTimer!==null||photoImportController))return;
+ stopPhotoImportPolling();photoImportUntil=Date.now()+1800000;photoImportFailures=0;photoImportPolls=0;
+ pollPhotoImportProgress(photoImportEpoch);
+}
+async function pollPhotoImportProgress(epoch){
+ if(epoch!==photoImportEpoch||!token||activeTab!=='photos'||document.hidden)return;
+ if(Date.now()>=photoImportUntil||photoImportPolls>=360){$('photoImportConnection').textContent='自動更新の上限（30分・360回）に達しました。「状態を更新」で確認を続けられます。取り込み自体は停止していません。';return;}
+ photoImportTimer=null;photoImportPolls++;const session=token,controller=new AbortController();photoImportController=controller;
+ const timeout=setTimeout(()=>controller.abort(),10000);let again=false,delay=5000;
+ try{
+  const progress=await api('photo-import-status',undefined,controller.signal);
+  if(epoch!==photoImportEpoch||session!==token)return;
+  photoImportFailures=0;again=progress.active===true;
+  $('photoImportStatus').textContent=progress.label||'取り込み状況は未確認です。「状態を更新」で確認してください。';
+  $('photoImportConnection').textContent=progress.active?'進捗は約5秒ごとに確認します。写真一覧は「一覧を更新」で反映できます。':'';
+  const meter=$('photoImportProgress'),known=progress.totalKnown===true&&Number.isSafeInteger(progress.total)&&progress.total>=0;
+  meter.hidden=!known||progress.total===0;
+  if(known&&progress.total>0){meter.max=progress.total;meter.value=Math.max(0,Math.min(progress.total,Number(progress.confirmed||0)+Number(progress.retained||0)));}
+  $('import').disabled=photoImportRequestBusy||progress.active===true;
+ }catch(error){
+  if(epoch!==photoImportEpoch||session!==token)return;
+  again=true;delay=Math.min(30000,5000*2**Math.min(++photoImportFailures,3));
+  $('photoImportConnection').textContent='通信を確認できません。前回の件数を残して再確認します。'+(error.name==='AbortError'?'':error.message);
+ }finally{
+  clearTimeout(timeout);if(photoImportController===controller)photoImportController=null;
+  if(again&&epoch===photoImportEpoch&&session===token&&token&&activeTab==='photos'&&!document.hidden)photoImportTimer=setTimeout(()=>pollPhotoImportProgress(epoch),delay);
+ }
+}
+document.addEventListener('loki-session-cleared',()=>stopPhotoImportPolling(true));
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPhotoImportPolling();else startPhotoImportPolling();});
 function webConnectionState(text){const el=$('webLiveState');if(el&&el.textContent!==text)el.textContent=text;}
 window.addEventListener('offline',()=>webConnectionState('タブレットの通信が切れています。自動再送はしていません。'));
 window.addEventListener('online',()=>webConnectionState('通信が戻りました。スマホとの接続は次の取得で確認します。'));
@@ -38,6 +76,7 @@ function caption(item){const m=item.metadata;return new Date(item.time).toLocale
 function updateSelected(){for(const suffix of ['', 'Bottom']){$('selectedCount'+suffix).textContent=selected.size+'枚選択';$('saveSelected'+suffix).disabled=$('deleteSelected'+suffix).disabled=!selected.size||busy;$('selectPage'+suffix).disabled=$('clearSelection'+suffix).disabled=busy;}for(const card of $('grid').children){const checked=selected.has(card.dataset.id);card.classList.toggle('selected',checked);card.querySelector('input').checked=checked;card.querySelector('input').disabled=busy;}}
 async function loadPhotos(){
  const epoch=++generation;const result=await api('photos?offset='+offset);if(epoch!==generation)return;
+ startPhotoImportPolling(false);
  offset=result.offset;total=result.total;items=result.items;selected.clear();blobs.forEach(URL.revokeObjectURL);blobs=[];$('grid').replaceChildren();
  $('count').textContent=total+'枚';$('page').textContent=total?(offset+1)+'〜'+(offset+items.length)+' / '+total+'枚':'写真がありません';$('previous').disabled=offset===0;$('next').disabled=offset+items.length>=total;
  const jobs=[];
@@ -64,7 +103,8 @@ function showConversationRuntime(runtime){
  const host=$('conversationRuntime');if(!runtime){host.textContent='グラスの状態は取得できません。スマホの接続を確認してください';return;}
  const labels={READY:'待機',WAIT:'次の送信を待っています',THINKING:'回答処理中',ERROR:'エラー',UNKNOWN:'未確認'};
  const age=runtime.stateAgeMs>=0?Math.floor(runtime.stateAgeMs/1000)+'秒前':'時刻未確認';
- host.textContent=(runtime.contactRecent?'直近のグラス通信あり':'直近15秒のグラス通信は未確認')+' ／ '+(runtime.stateFresh?'状態：':'最後の状態：')+(labels[runtime.state]||'未確認')+(runtime.message?' ／ '+runtime.message:'')+'（'+age+'）'+(runtime.state==='WAIT'&&runtime.waitMs>0?' ／ 待ち '+Math.ceil(runtime.waitMs/1000)+'秒':'')+' ／ スマホ側の送信待ち '+(runtime.queued||0)+'件';
+ host.textContent=(runtime.contactRecent?'直近のグラス通信あり':'直近15秒のグラス通信は未確認')+' ／ '+(runtime.stateFresh?'状態：':'最後の状態：')+(labels[runtime.state]||'未確認')+(runtime.message?' ／ '+runtime.message:'')+'（'+age+'）'+(runtime.state==='WAIT'&&runtime.waitMs>0?' ／ 待ち '+Math.ceil(runtime.waitMs/1000)+'秒':'')+' ／ スマホ側の送信待ち '+(runtime.queued||0)+'件'+((runtime.reconnect?.held||[]).length?'（うち内容確認待ち '+runtime.reconnect.held.length+'件）':'');
+ if((runtime.queued||0)>0){const b=document.createElement('button');b.textContent='送信待ちを確認・個別に再送';b.onclick=()=>{const panel=$('pendingTurns');if(panel){panel.open=true;panel.scrollIntoView({block:'start'});}else $('pendingTurnsSummary')?.click();};host.append(' ',b);}
  host.dataset.stale=String(!runtime.stateFresh);host.dataset.error=String(runtime.state==='ERROR');
 }
 function editQueuedText(entry){
@@ -162,7 +202,8 @@ async function connectBrowser(ticket=''){
 }
 $('pairForm').addEventListener('submit',e=>{e.preventDefault();connectBrowser();});
 on('logout',async()=>{await api('logout',{});token='';browserTokenStore.clear();showAuth();note('接続を解除しました');});
-on('refresh',loadPhotos);on('import',async()=>{if(!confirm('グラスのKEEP撮影を停止し、原本をグラスに残してスマホへコピーします。AIへ画像は送りません。続けますか？'))return;await api('import',{});note('原本を残す取り込みを依頼しました。まだ保存完了ではありません。一覧を更新して確認してください。');});
+on('refresh',()=>{startPhotoImportPolling();return loadPhotos();});on('photoImportRefresh',()=>startPhotoImportPolling());
+on('import',async()=>{if(photoImportRequestBusy)return;if(!confirm('グラスのKEEP撮影を停止し、原本をグラスに残してスマホへコピーします。AIへ画像は送りません。続けますか？'))return;photoImportRequestBusy=true;$('import').disabled=true;let queued=false;try{await api('import',{});queued=true;startPhotoImportPolling();note('原本を残す取り込みを依頼しました。保存確認・対象・残り枚数を取り込み状況に表示します。');}finally{photoImportRequestBusy=false;if(!queued)$('import').disabled=false;}});
 for(const suffix of ['', 'Bottom']){
 on('selectPage'+suffix,()=>{selected=new Set(items.map(x=>x.id));updateSelected();});on('clearSelection'+suffix,()=>{selected.clear();updateSelected();});on('deleteSelected'+suffix,()=>deleteIds([...selected]));
 on('saveSelected'+suffix,async()=>{if(busy)return;busy=true;updateSelected();try{for(const item of items.filter(x=>selected.has(x.id)))await saveItem(item);note('JPEGを保存しました。ブラウザのダウンロードを確認してください');}finally{busy=false;updateSelected();}});
@@ -172,7 +213,7 @@ on('deleteAll',async()=>{const preview=await api('delete-preview');if(!preview.c
 on('closeViewer',closeViewer);$('viewer').addEventListener('cancel',e=>{e.preventDefault();closeViewer();});
 on('prevPhoto',()=>openViewer(viewing-1));on('nextPhoto',()=>openViewer(viewing+1));on('zoomIn',()=>{zoom=Math.min(5,zoom+.5);applyZoom();});on('zoomOut',()=>{zoom=Math.max(1,zoom-.5);applyZoom();});on('resetZoom',()=>{zoom=1;applyZoom();});$('largePhoto').addEventListener('dblclick',()=>{zoom=zoom>1?1:2;applyZoom();});
 on('savePhoto',()=>viewing>=0?saveItem(items[viewing]):undefined);on('deletePhoto',()=>viewing>=0?deleteIds([items[viewing].id]):undefined);
-function showTab(tab){activeTab=tab;for(const name of ['photos','chat','meetings']){$(name).hidden=name!==tab;$(name+'Tab').setAttribute('aria-pressed',String(name===tab));}}
+function showTab(tab){activeTab=tab;for(const name of ['photos','chat','meetings']){$(name).hidden=name!==tab;$(name+'Tab').setAttribute('aria-pressed',String(name===tab));}if(tab==='photos')startPhotoImportPolling();else stopPhotoImportPolling();}
 on('photosTab',()=>showTab('photos'));
 on('chatTab',async()=>{showTab('chat');await Promise.all([loadHistory(),loadInboxSummary(),loadSentImageLog()]);});
 on('meetingsTab',async()=>{showTab('meetings');await refreshMeetings();});

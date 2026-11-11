@@ -3,6 +3,7 @@ package com.example.rokidkeyboardbridge;
 final class CharacterMotionTuning {
  private static final int[] ORDER={0,2,1,3,1,0,3,2};
  static volatile boolean naturalPoses=true;
+ static volatile int warmth=2;
  static volatile int eyeLevel=2,faceLevel=2,bodyLevel=2,approachLevel=2;
  static float part(int value){return value==0?0:value==1?.5f:1f;}
  static float eyes(){return part(eyeLevel);}static float face(){return part(faceLevel);}static float body(){return part(bodyLevel);}static float approach(){return part(approachLevel);}

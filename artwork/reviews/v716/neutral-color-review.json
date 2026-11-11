@@ -1,0 +1,91 @@
+{
+  "scope": "Neutral poses 168..251 only, added to the 168 basic and 7 quiet color assets",
+  "pcBodyCrownAndFaceAnchorReview": true,
+  "cropBoundsPassed": 84,
+  "newBuildInstalled": false,
+  "physicalScreenVerified": false,
+  "assets": [
+    {
+      "asset": "loki_fullbody_000_005.png",
+      "sha256": "51f72939bbc928bd01e92a5da793eb0624d2cdbc3028b460fc497181ec0bb62f",
+      "originalSha256": "51f72939bbc928bd01e92a5da793eb0624d2cdbc3028b460fc497181ec0bb62f"
+    },
+    {
+      "asset": "loki_fullbody_idle_6.png",
+      "sha256": "76bab6229ab3808367490973cf5482b654857fb4333bc068e5e0a8def027ce26",
+      "originalSha256": "43c70d7f11929290bb53827217246a83f8c0b445841cbdfb5c40b67087f6e808"
+    },
+    {
+      "asset": "loki_fullbody_walk_6.png",
+      "sha256": "5d513ce7e98e680666f1e4c8c8093e0f403c79e16a0cb7944e526deb664e7b26",
+      "originalSha256": "bd16ee5fd63a7ff2c75a11ad456680974b23b85ccba5d9344adf3f691199f740"
+    },
+    {
+      "asset": "loki_jkd_6_v429.png",
+      "sha256": "eda471fc03938ab21b3a39f9b8e7a463b6fd5f982cf5ab2c1badab3acb1606d2",
+      "originalSha256": "ca00c0f56461137fc4983681d751a79bcde7839eff6096bcf9365706b6f129e0"
+    },
+    {
+      "asset": "loki_link_coffee_6_v427.png",
+      "sha256": "ff4496ee0b09eb87efa28b6bff5c6a3105a942dfc1a873d6f7d02ebd2d334a30",
+      "originalSha256": "f09db15020200b66cbfc71a3009bb3850e5c4cd52d7f000005a385ec0bbb88f3"
+    },
+    {
+      "asset": "loki_link_seat_fold_6_v427.png",
+      "sha256": "c47985ac4096360a422d9b3ac5e9f23589a3d0c74f209637a0617259ec1d4852",
+      "originalSha256": "57e4703943293ba81867dba8e0ebe6ef17e448965f0e48dae8d3d60532258284"
+    },
+    {
+      "asset": "loki_link_seat_fold_corrected_6_v427.png",
+      "sha256": "887f94fa776b5d27e1c4ab202a78f61adb237f972cd1558f3c9e2b74fc0b97ea",
+      "originalSha256": "2cd1c161f5128527d5a49df3e577747d7b46f1bf528d9a13791cc57bdae0d901"
+    },
+    {
+      "asset": "loki_link_seat_think_6_v427.png",
+      "sha256": "4deac99e41d69003e0af9c88ea25c42436086716d5082a2bf1e982ab79c4bbba",
+      "originalSha256": "0096489576b43d8bd4d6dc4c6359392dbe5f07204fcbf3a1f221fc5c079b5b73"
+    },
+    {
+      "asset": "loki_link_stand_explain_6_v427.png",
+      "sha256": "a80c7d8bae6272e5634415a30bce855ab8703db0c5fe39fc874a39c3ac619747",
+      "originalSha256": "d06a7fc054ff91f99bf1a4d7197372846410cd750fda2a89810987a207179535"
+    },
+    {
+      "asset": "loki_link_stand_fold_6_v427.png",
+      "sha256": "7ed02f90dee605a21fc957295ed0f8b42c18a98a922b69f78bfaa6568b2217d6",
+      "originalSha256": "e21ff5ff6fa17c93bf56ba525e38fe71d9f5019ac074418f69ba17ee89ad70c3"
+    },
+    {
+      "asset": "loki_link_tablet_6_v427.png",
+      "sha256": "e56388523016812b89ebcc4ed24908d0fc6477e6d4714bc210b36e046c0092be",
+      "originalSha256": "639cd1f6fe23e656d3e11bb9f448d0712d537841a3a36851e5dc324a09f1687d"
+    },
+    {
+      "asset": "loki_pen_6_v429.png",
+      "sha256": "e374af2daa812f0c7a206fc8bfb3a4968d3b4c321ed677605226c3d7ac32f8dd",
+      "originalSha256": "c63680e69fad9b5aad7e682eb517d096e26774dbe9b7e81688868bc18ea48983"
+    },
+    {
+      "asset": "loki_seated_front_6.png",
+      "sha256": "f9eef069518f08c7ae0b729d403c38d86442b36b826021b3f530f1cca7904a98",
+      "originalSha256": "40b8e5158dd88096631991dcb32c5e81a55070bbf8223654c3b007214d40fd93"
+    },
+    {
+      "asset": "loki_standing_pen_6_v430.png",
+      "sha256": "0bc44e34d1b0282383ee890be00920bcf42cee5433895bcf8a98de4ef9e0e772",
+      "originalSha256": "ae8461acc5830897b48a64d307c7f8e588ada586ca7844f9b4cf8477ed8d4ece"
+    },
+    {
+      "asset": "loki_transition_gesture_6.png",
+      "sha256": "6393f01c6c95911a7446e1eade42db6826b5e175f1bd99a8287d497d40e0229d",
+      "originalSha256": "c148f3d319496378a8235e0d95c76a6a1f14ac0fc4a9842c884444cd82c8b451"
+    },
+    {
+      "asset": "loki_transition_posture_6.png",
+      "sha256": "b55fba68243eb0c79b5e6712da6aed1326ed7ad2d859fc04be9ac7cecb78841c",
+      "originalSha256": "ee2e87d4e070586adc13056eb3cb7cf8f12bd1ec10739bc65c5e2e61bf79984a"
+    }
+  ],
+  "newlyChangedAssetCount": 15,
+  "alreadyIntegratedAssetCount": 1
+}

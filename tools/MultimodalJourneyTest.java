@@ -79,13 +79,13 @@ public final class MultimodalJourneyTest {
         overview.ready=true;overview.advance("board");
         JSONObject trainRoute=route(rail).put("duration","550s").put("distanceMeters",8000).put("polyline",train.getJSONObject("polyline"));
         summary=overview.overview(trainRoute,100000);
-        check(summary.getDouble("durationSeconds")==730,"refreshed transit overview includes egress");
+        check(summary.getDouble("durationSeconds")==740,"whole overview retains access after boarding");
         check(!summary.getBoolean("transitRefreshPending"),"transit refreshed");
         overview.ready=true;overview.advance("alight");
         JSONObject walk=route(egress).put("duration","190s").put("distanceMeters",320).put("polyline",last.getJSONObject("polyline"));
         summary=overview.overview(walk,100000);
-        check(summary.getDouble("durationSeconds")==190&&summary.getDouble("distanceMeters")==320,"last mile actual replaces preview");
-        check(summary.getJSONArray("transitStops").length()==0,"no departed trains in remaining journey");
+        check(summary.getDouble("durationSeconds")==750&&summary.getDouble("distanceMeters")==8720,"whole trip retains completed rides and updates egress");
+        check(summary.getJSONArray("transitStops").length()==1,"complete overview retains departed trains");
         System.out.println("MultimodalJourney PASS checks="+checks);
     }
 }

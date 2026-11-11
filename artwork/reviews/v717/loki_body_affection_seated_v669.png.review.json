@@ -1,0 +1,19 @@
+{
+  "asset": "loki_body_affection_seated_v669.png",
+  "assetSha256": "65d880dd0b3be64be2b1de66f5f3f4bdc9ba74a57806f24197bcf7d642014343",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 4,
+  "rows": 2,
+  "reviewedFrames": 8,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": false,
+  "contactSheet": {
+    "path": "artwork/reviews/v717/loki_body_affection_seated_v669.png.contact.png",
+    "sha256": "567b5b7c64fe75b992966ea026f038307d5a6409aec39491cbcd8c66130247cf"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v717/loki_body_affection_seated_v669.png.landmarks.json",
+    "sha256": "22d8c18068676b5449f9a01893107ce3322c562a678f9d947248407de9b6194e"
+  }
+}

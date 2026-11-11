@@ -4,7 +4,7 @@ import android.app.*;import android.content.*;import android.view.*;import andro
 final class HudLayout {
  private final Activity owner;private final LinearLayout panel;private final LinkedHashMap<String,View> buttons=new LinkedHashMap<>();private static final String KEY="hud-button-order-v1";
  HudLayout(Activity owner,LinearLayout panel){this.owner=owner;this.panel=panel;String[] ids={"CAM","READ","PLAY","BT30","NAV","TOPIC","KEEP","VOICE","SET"};
-  for(int i=0;i<panel.getChildCount();i++){View child=panel.getChildAt(i);if(!(child instanceof Button))continue;String label=((Button)child).getText().toString();for(String id:ids)if(label.startsWith(id)||id.equals("PLAY")&&child instanceof MusicToggleButton){buttons.put(id,child);break;}}
+  for(int i=0;i<panel.getChildCount();i++){View child=panel.getChildAt(i);if(!(child instanceof Button))continue;String label=((Button)child).getText().toString();for(String id:ids)if(label.startsWith(id)||id.equals("BT30")&&label.startsWith("BT90")||id.equals("PLAY")&&child instanceof MusicToggleButton){buttons.put(id,child);break;}}
   if(buttons.containsKey("BT30")&&!prefs().getBoolean("bt30-top-restored-v641",false)){
    android.content.SharedPreferences.Editor edit=prefs().edit().putBoolean("bt30-top-restored-v641",true);
    String saved=prefs().getString(KEY,"");

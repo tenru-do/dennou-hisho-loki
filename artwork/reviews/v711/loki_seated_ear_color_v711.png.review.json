@@ -1,0 +1,18 @@
+{
+  "asset": "loki_seated_ear_color_v711.png",
+  "assetSha256": "b1fc2f524001dac0e098942bdcdfcf6af44b1391f6372a37943f12d2681f5825",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "contactSheet": {
+    "path": "artwork/reviews/v711/loki_seated_ear_color_v711/comparison.png",
+    "sha256": "0baeaece6aca72de60ae11a5b37d1b9e7bc72d23cbc8c9524062e085786f2ff0"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v711/loki_seated_ear_color_v711.png.landmarks.json",
+    "sha256": "ec69914e8c34daafe81aaa28b8cb32e3a21f2ba2601ab3a5870cf58608420e69"
+  }
+}

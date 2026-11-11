@@ -95,6 +95,10 @@ public final class MemoryManager {
         }
     }
 
+    public JSONObject saveExplicit(String topic,String content)throws Exception {
+        synchronized(STORE_LOCK){JSONArray rows=read();for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(content.trim().equals(row.optString("content")))return new JSONObject(row.toString()).put("alreadySaved",true);}return save(topic,content);}
+    }
+
     public JSONObject delete(String target) throws Exception {
         synchronized (STORE_LOCK) {
         JSONArray existing = read();

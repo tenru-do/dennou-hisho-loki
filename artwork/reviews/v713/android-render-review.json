@@ -1,0 +1,11 @@
+{
+  "decoded": 443,
+  "attempted": 443,
+  "quietRendered": 8,
+  "basicRendered": 168,
+  "failures": [],
+  "scope": "Existing crop metadata against staged artwork and manual quiet face-coordinate proposals; not anatomy approval or installation verification",
+  "candidateArchiveSha256": "00eb6bcb9063a0774475162af3fd3622a555ae24d5efe67deb9831ebb67447d3",
+  "device": "glass",
+  "productionUpdated": false
+}

@@ -9,7 +9,10 @@ final class HealbeSdkReader {
    int balance=v.optInt("balanceKcal",Integer.MIN_VALUE);long measured=v.optLong("measuredAt"),seen=v.optLong("observedAt"),now=System.currentTimeMillis();
    if(!"HEALBE_SDK".equals(v.optString("source"))||balance< -15000||balance>15000||measured<=0||seen<measured||seen>now)return new JSONObject();
    String day=Instant.ofEpochMilli(measured).atZone(ZoneId.systemDefault()).toLocalDate().toString();if(!day.equals(v.optString("date")))return new JSONObject();
-   return new JSONObject().put("balanceKcal",balance).put("measuredAt",measured).put("observedAt",seen).put("date",day).put("source","HEALBE_SDK").put("provisional",true);
+   JSONObject result=new JSONObject().put("balanceKcal",balance).put("measuredAt",measured).put("observedAt",seen).put("date",day).put("source","HEALBE_SDK").put("provisional",true);
+   long waterAt=v.optLong("hydrationMeasuredAt");String hydration=v.optString("hydrationState");
+   if(waterAt>0&&waterAt<=now&&now-waterAt<=1800000&&hydration.matches("LOW|NORMAL|CALCULATING|NO_DATA")){result.put("hydrationState",hydration).put("hydrationMeasuredAt",waterAt);int deficit=v.optInt("waterDeficitMl",-1);if(deficit>=0&&deficit<=10000)result.put("waterDeficitMl",deficit);HealbeHydrationAlert.forwardSdk(c,result,now);}
+   return result;
   }
  }catch(Exception unavailable){return new JSONObject();}}
  static JSONObject preferred(Context c,JSONObject screen){JSONObject sdk=read(c);if(!sdk.has("balanceKcal"))return screen;long age=System.currentTimeMillis()-sdk.optLong("measuredAt");return age>=0&&age<=900000||!screen.has("balanceKcal")?sdk:screen;}

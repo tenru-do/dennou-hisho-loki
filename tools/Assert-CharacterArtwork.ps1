@@ -1,4 +1,4 @@
-param([string]$ManifestFile)
+﻿param([string]$ManifestFile)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 if(!$ManifestFile){$ManifestFile=Join-Path $root 'artwork/character-artwork-review.json'}
@@ -12,6 +12,8 @@ $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/ro
 $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/PortraitExpressionRenderer.java'))
 $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/PostureBridgeRenderer.java'))
 $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/SeatedGestureAtlas.java'))
+$renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/SeatedLegMotionRenderer.java'))
+$renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/ApprovedFaceRenderer.java'))
 $names=@([regex]::Matches($renderer,'"(loki_[a-zA-Z0-9_]+\.png)"') | ForEach-Object {$_.Groups[1].Value} | Sort-Object -Unique)
 foreach($name in $names){
  $entry=@($review.assets | Where-Object {$_.name -eq $name})
@@ -24,6 +26,12 @@ foreach($name in $names){
   if((Get-FileHash -LiteralPath $proofPath -Algorithm SHA256).Hash.ToLower() -ne $entry[0].evidenceSha256){throw "Image review evidence changed: $name"}
   $proof=Get-Content -LiteralPath $proofPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if($proof.assetSha256 -ne $entry[0].sha256 -or $proof.referenceSha256 -ne $review.referenceSha256 -or !$proof.manualIdentityReviewed -or !$proof.manualAnatomyReviewed -or $proof.reviewedFrames -ne $proof.columns*$proof.rows){throw "Incomplete or stale identity/anatomy review: $name"}
+  if($name -match '^loki_seated_leg_transition_v(\d+)\.png$' -and [int]$Matches[1] -ge 741){
+   $outfitReference='glass-app/assets/loki_approved_seated_thought_20261102.png'
+   if(!$proof.manualWardrobeReviewed -or $proof.wardrobeReference -ne $outfitReference -or $proof.wardrobeReferenceSha256 -ne (Get-FileHash -LiteralPath (Join-Path $root $outfitReference) -Algorithm SHA256).Hash.ToLower()){
+    throw 'Seated leg outfit continuity was not reviewed against the current approved seated artwork'
+   }
+  }
   foreach($item in @($proof.contactSheet,$proof.landmarks)){
    $itemPath=[IO.Path]::GetFullPath((Join-Path $root $item.path))
    if(!$itemPath.StartsWith((Join-Path $root 'artwork/reviews/'),[StringComparison]::OrdinalIgnoreCase) -or (Get-FileHash -LiteralPath $itemPath -Algorithm SHA256).Hash.ToLower() -ne $item.sha256){throw "Missing or changed comparison/landmarks: $name"}

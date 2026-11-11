@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "approvedOn": "2026-11-02",
+  "approval": "ユーザー「採用して」のうち通常の睡眠・休息用途",
+  "sourceImageNumber": 5,
+  "file": "loki-sleep-overhead.png",
+  "role": "服を着た通常の睡眠・休息、真上から見た姿勢",
+  "sha256": "9ce97c6898b0e846c9893084beb9196e59e3b2f59144319098f50fc1b7bab9e1",
+  "originalUnchanged": true,
+  "runtimeIntegrated": true,
+  "animationCreated": false,
+  "standingReferenceUnchanged": true,
+  "runtimeVersion": 702,
+  "integrationDetails": "通常の座位・休息6枚の実装。詳細はquiet-poses-runtime-v702.json。"
+}

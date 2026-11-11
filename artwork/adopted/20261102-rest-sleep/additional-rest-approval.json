@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "approvedOn": "2026-11-02",
+  "approval": "ユーザー「これも採用して」",
+  "scope": "通常の睡眠・休息用の追加原本",
+  "items": [
+    {
+      "file": "loki-rest-arms-relaxed.png",
+      "role": "仰向け・腕を自然に下ろした休息姿勢",
+      "sha256": "c9e973ca1da7bde49219c021e644f421aee8526f65ca256db14be68024d8204c",
+      "originalUnchanged": true,
+      "runtimeIntegrated": true,
+      "animationCreated": false,
+      "runtimeVersion": 702
+    },
+    {
+      "file": "loki-rest-hands-together.png",
+      "role": "手を重ねた休息姿勢・足先が枠外の構図",
+      "sha256": "56c11cf7abaecfd434e865c18d7476d9659bb36340da3b8c143cdc2cad92d1e6",
+      "originalUnchanged": true,
+      "runtimeIntegrated": true,
+      "animationCreated": false,
+      "runtimeVersion": 702
+    }
+  ],
+  "standingReferenceUnchanged": true,
+  "note": "原本を加工せず保存。2枚目は足先が画面外のため、全身基準の置換や伸縮補完はしない。アプリ組み込み・動作化は未実施。",
+  "integrationDetails": "通常の座位・休息6枚の実装。詳細はquiet-poses-runtime-v702.json。"
+}

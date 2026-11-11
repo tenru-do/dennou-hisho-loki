@@ -1,0 +1,25 @@
+{
+  "asset": "loki_standing_accessory_v685.png",
+  "assetSha256": "a14561b0e0f09c82311f3d0fcd9221aee44f92943ce9c223a18105178718c93b",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 4,
+  "rows": 2,
+  "reviewedFrames": 8,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": false,
+  "contactSheet": {
+    "path": "artwork/reviews/v718/loki_standing_accessory_v685.png.contact.png",
+    "sha256": "ce4a832f563134dcb92ef99cac00de592dc6370c8ce758711c4f54f13efa5f7f"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v718/loki_standing_accessory_v685.png.landmarks.json",
+    "sha256": "d3bd38065930ddd1dcf9155d17f13decf66f65c54085f256f5d6ea87b6ef92a3"
+  },
+  "headCentersReviewed": [
+    249,
+    574,
+    933,
+    1285
+  ]
+}

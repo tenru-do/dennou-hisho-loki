@@ -77,7 +77,7 @@ final class LocalMediaControl {
     static synchronized JSONObject execute(Context context,JSONObject request)throws Exception {
         String id=request.optString("requestId"),sessionId=request.optString("session");long delta=request.optLong("delta");
         long created=request.optLong("createdAt"),wall=System.currentTimeMillis();
-        if(!id.matches("[a-f0-9-]{36}")||(delta!=30000&&delta!=-30000)||created>wall+5000||wall-created>30000)
+        if(!id.matches("[a-f0-9-]{36}")||(delta!=30000&&delta!=-30000&&delta!=90000)||created>wall+5000||wall-created>30000)
             return result(false,"invalid","操作の有効期限が切れました。再生アプリを選び直してください。");
         android.content.SharedPreferences prefs=context.getSharedPreferences("media_control_receipts",Context.MODE_PRIVATE);
         JSONObject receipts;try{receipts=new JSONObject(prefs.getString("receipts","{}"));}catch(Exception e){return result(false,"storage","操作履歴を確認できません。送信していません。");}
@@ -88,7 +88,7 @@ final class LocalMediaControl {
         if(entry==null||now-entry.issued>TTL||!entry.identity.equals(entry.session.identity()))return result(false,"changed","再生内容が変わりました。再生アプリを選び直してください。");
         context.getSharedPreferences("media_control_receipts",0).edit().putString("lastTarget",device(context)+" / "+entry.session.app()).apply();
         Session session=entry.session;PlaybackState before=session.state();long duration=session.duration();now=SystemClock.elapsedRealtime();
-        if(!seekable(before,duration,now))return result(false,"unsupported","この再生状態では30秒操作に対応していません。アプリの再生画面で確認してください。");
+        if(!seekable(before,duration,now))return result(false,"unsupported","この再生状態では再生位置の変更に対応していません。アプリの再生画面で確認してください。");
         long start=position(before,now,duration),destination=target(start,delta,duration);
         if(delta>0&&before.getState()==PlaybackState.STATE_PLAYING&&destination-start<5000)return result(false,"limit","曲の末尾に近いため、再生元のアプリで位置を調整してください。");
         if(Math.abs(destination-start)<1000)return result(false,"limit","再生位置の端に達しています。");

@@ -10,6 +10,7 @@
  <application android:label="ロキ HEALBE直接連携（検証版）" android:allowBackup="false" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" tools:replace="android:label">
   <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity>
   <service android:name=".SyncService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+  <receiver android:name=".SyncRecoveryReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>
   <service android:name=".SyncJob" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
   <provider android:name=".EnergyProvider" android:authorities="com.example.lokihealbe.energy" android:exported="true" android:readPermission="com.example.lokihealbe.READ_HEALTH" android:writePermission="com.example.lokihealbe.NEVER_WRITE" />
  </application>

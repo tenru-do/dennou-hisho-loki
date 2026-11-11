@@ -23,7 +23,7 @@ public final class ContextVisualDeviceChecks {
   Bitmap out=Bitmap.createBitmap(240*3,600,Bitmap.Config.ARGB_8888);Canvas sheet=new Canvas(out);sheet.drawColor(Color.BLACK);
   try(ZipFile zip=new ZipFile(apk)){for(int i=0;i<3;i++){view.setUserContext(i==0?"立って":i==1?"座って":"ねそべって");AvatarPipelineDeviceChecks.installFrame(view,zip,i==0?4:168);Bitmap b=Bitmap.createBitmap(240,600,Bitmap.Config.ARGB_8888);view.onDraw(new Canvas(b));field("blendStarted").setLong(view,android.os.SystemClock.uptimeMillis()-10000);b.eraseColor(Color.BLACK);view.onDraw(new Canvas(b));sheet.drawBitmap(b,i*240,0,null);b.recycle();}}
   Bitmap clipped=Bitmap.createBitmap(480,600,Bitmap.Config.ARGB_8888);Canvas cropCanvas=new Canvas(clipped);cropCanvas.drawColor(Color.MAGENTA);view.draw(cropCanvas);boolean untouched=true;for(int y=0;y<600;y++)for(int x=240;x<480;x++)if(clipped.getPixel(x,y)!=Color.MAGENTA)untouched=false;ok(untouched,"real View clips overflow without drawing outside viewport");clipped.recycle();
-  for(int pose=0;pose<9;pose++)ok(Math.abs(ComfortPoseGeometry.scale(pose,240,600)*ComfortPoseGeometry.HEAD_WIDTH[pose]-CharacterViewport.standingHead(240,600))<.01,"same head unit independent of pose width");
+  for(int pose=0;pose<9;pose++)ok(Math.abs(ComfortPoseGeometry.scale(pose,240,600)*ComfortPoseGeometry.eyeSpan(pose)-CharacterViewport.eyeSpan(240,600))<.01,"same head unit independent of pose width");
   try(FileOutputStream f=new FileOutputStream(new File(system.getFilesDir(),"context-v688-native.png"))){out.compress(Bitmap.CompressFormat.PNG,100,f);}out.recycle();view.releaseInspection();CharacterMotionTuning.intentGain=CharacterMotionTuning.intentSpeed=1;AvatarPipelineDeviceChecks.normalInspection(system);return n;
  }
 }

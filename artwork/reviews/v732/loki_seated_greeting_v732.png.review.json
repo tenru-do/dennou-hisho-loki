@@ -1,0 +1,22 @@
+{
+  "asset": "loki_seated_greeting_v732.png",
+  "assetSha256": "bc01b747c4dba251c55e5ff1b830838f0287d87c7d37e5fb1a0359d4a6b74083",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Visually reviewed all four complete frames against original identity. Smaller natural head, long slender legs after user requested a second correction; consistent mature face, shoulders, torso, hands, knees and shoes. The images and native alpha are not post-warped. Runtime clip1 only; no claim that all existing artwork has been corrected.",
+  "contactSheet": {
+    "path": "artwork/reviews/v732/loki_seated_greeting_v732.png.contact.png",
+    "sha256": "5fd1f6804aacded7241275ea0fe1d2bc2e11df2052141ed2348e952610d53565"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v732/loki_seated_greeting_v732.png.landmarks.json",
+    "sha256": "f8b6bb7c64743198dfcaa5ac7959231539fb5feeb150ac372b7b318e68f9f66c"
+  },
+  "deviceVerificationScope": "Actual glasses Android Canvas in isolated app context at10 timeline points; not wearer visual approval",
+  "deviceProof": "artwork/reviews/v732/android-canvas-checks.json"
+}

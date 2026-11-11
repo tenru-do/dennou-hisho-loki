@@ -23,3 +23,6 @@ Android SDK 35、JDK 21、Gradle 9.3.0で `gradle -p healbe-companion :app:assem
 公式資料: https://healbe.com/dev/
 SDK配布: https://nexus.healbe.com/repository/maven-public/
 公開サンプル: https://bitbucket.org/Healbe/healbe-public-android-sdk-demo/
+
+## v6 同期停止からの復旧
+5分常駐を開始できた場合も15分の永続予備ジョブを残す。8分以内に同期成功している場合は予備ジョブで重複取得しない。端末起動・補助アプリ更新後は、連携が有効な場合だけ予備ジョブを再登録する。停止・連携解除時は従来どおりサービスとジョブを停止する。5分の正確な周期や、Androidの強制停止後の自動復旧は保証しない。2026-11-03の実機では約296秒間隔の自然同期と、同期時刻・実値変化時刻の両方の更新を確認。再起動や長時間Dozeの試験は未実施。

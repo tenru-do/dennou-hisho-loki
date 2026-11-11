@@ -15,6 +15,13 @@ public final class HealbeHydrationDeviceChecks {
   HealbeHydrationAlert.forward(c,now-600000,pkg,"水分補給テスト","古い記録");ok(new JSONArray(p.getString("pending_command_queue","[]")).length()==2);
   ArrayList<String> list=new ArrayList<>();list.add(q.getString(0));list.add(q.getString(1));ok(CodexNoticeQueue.removeMatching(list,id));ok(list.size()==1&&list.get(0).equals("動作確認の質問"));
   String codex="__CODEX_NOTIFY__:"+new JSONObject().put("id",id).put("kind","completed").put("issuedAt",now).put("message","合成通知");ok(CodexNoticeQueue.id(codex).equals(id));
-  p.edit().remove("pending_command_queue").remove("pending_command").commit();h.edit().clear().commit();return n;
+  p.edit().remove("pending_command_queue").remove("pending_command").commit();h.edit().clear().commit();c.getSharedPreferences("healbe_sdk_hydration_alert",0).edit().clear().commit();java.lang.reflect.Field pendingField=MainActivity.class.getDeclaredField("pendingCommand");pendingField.setAccessible(true);pendingField.set(null,"");
+  JSONObject water=new JSONObject().put("hydrationState","LOW").put("hydrationMeasuredAt",now-1800001);HealbeHydrationAlert.forwardSdk(c,water,now);ok(new JSONArray(p.getString("pending_command_queue","[]")).length()==0);
+  water.put("hydrationMeasuredAt",now);HealbeHydrationAlert.forwardSdk(c,water,now);ok(new JSONArray(p.getString("pending_command_queue","[]")).length()==1);
+  HealbeHydrationAlert.forwardSdk(c,water,now+60000);ok(new JSONArray(p.getString("pending_command_queue","[]")).length()==1);
+  HealbeHydrationAlert.forward(c,now,pkg,"水分補給","公式通知も同時到着");ok(new JSONArray(p.getString("pending_command_queue","[]")).length()==1);
+  water.put("hydrationState","CALCULATING");HealbeHydrationAlert.forwardSdk(c,water,now+120000);ok(new JSONArray(p.getString("pending_command_queue","[]")).length()==1);
+  water.put("hydrationState","NORMAL");HealbeHydrationAlert.forwardSdk(c,water,now+120000);ok(!c.getSharedPreferences("healbe_sdk_hydration_alert",0).getBoolean("low",true));
+  p.edit().remove("pending_command_queue").remove("pending_command").commit();h.edit().clear().commit();c.getSharedPreferences("healbe_sdk_hydration_alert",0).edit().clear().commit();return n;
  }
 }

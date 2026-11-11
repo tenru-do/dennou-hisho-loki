@@ -1,0 +1,22 @@
+{
+  "asset": "loki_seated_leg_transition_v733.png",
+  "assetSha256": "3837eaab7df15a1d412b957eb4ceabeb8abb3e5682bf78b2543e781607906cde",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 4,
+  "rows": 2,
+  "reviewedFrames": 8,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": true,
+  "reviewNotes": "Original successful built-in imagegen output and native alpha preserved. All cells reviewed on black. Mature face, natural head/shoulders/hands and long legs retained. Furniture/bedding removed in rest images; leg sheet uses fixed camera and intermediate clothed leg positions.",
+  "contactSheet": {
+    "path": "artwork/reviews/v733/loki_seated_leg_transition_v733.png.contact.png",
+    "sha256": "45a598cd4bc51023e872a6b0d016f74241fd3412e60bbacf2315d32a7d0f3ae9"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v733/loki_seated_leg_transition_v733.png.landmarks.json",
+    "sha256": "173d0a5c9be8955b087ef00cbcab95302d9893fb4f22273512f20c0c8ebdaecf"
+  },
+  "deviceVerificationScope": "Actual Android Canvas in isolated app context, final v733 APK; not wearer optical approval.",
+  "deviceProof": "artwork/reviews/v733/android-canvas-checks.json"
+}

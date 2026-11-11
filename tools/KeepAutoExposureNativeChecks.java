@@ -1,0 +1,14 @@
+package com.example.rokidkeyboardbridge;
+import android.content.*;import android.graphics.*;import java.io.*;import java.util.*;
+public final class KeepAutoExposureNativeChecks {
+ static int n;static void ok(boolean b,String m){n++;if(!b)throw new AssertionError(m);}
+ static KeepAutoExposurePolicy.Stats sample(int color)throws Exception{Bitmap b=Bitmap.createBitmap(800,600,Bitmap.Config.ARGB_8888);b.eraseColor(color);ByteArrayOutputStream o=new ByteArrayOutputStream();b.compress(Bitmap.CompressFormat.JPEG,92,o);b.recycle();byte[] jpeg=o.toByteArray(),copy=jpeg.clone();KeepAutoExposurePolicy.Stats s=KeepAutoExposureAnalyzer.analyze(jpeg);ok(s!=null,"JPEG decoded");ok(s.samples>=64&&s.samples<=25600,"bounded thumbnail");ok(Arrays.equals(jpeg,copy),"hardware JPEG unchanged");return s;}
+ public static int run(Context c)throws Exception{n=0;
+ ok(KeepAutoExposurePolicy.ev(sample(Color.WHITE),10000000,100)<0,"highlight protection");
+ ok(KeepAutoExposurePolicy.ev(sample(Color.rgb(128,128,128)),10000000,100)==0,"normal unchanged");
+ KeepAutoExposurePolicy.Stats dark=sample(Color.rgb(20,20,20));ok(KeepAutoExposurePolicy.ev(dark,10000000,100)>0,"dark boost");ok(KeepAutoExposurePolicy.ev(dark,100000000,100)==0,"slow shutter protected");ok(KeepAutoExposurePolicy.ev(dark,10000000,2000)<=1f/3f,"noise limited");
+ ok(KeepAutoExposurePolicy.ev(sample(Color.BLACK),10000000,100)==0,"black no runaway");ok(KeepAutoExposureAnalyzer.analyze(new byte[]{1,2,3})==null,"malformed fails closed");ok(KeepAutoExposureAnalyzer.analyze(null)==null,"missing fails closed");
+ Bitmap bench=Bitmap.createBitmap(1920,1080,Bitmap.Config.ARGB_8888);bench.eraseColor(Color.rgb(30,30,30));ByteArrayOutputStream stream=new ByteArrayOutputStream();bench.compress(Bitmap.CompressFormat.JPEG,85,stream);bench.recycle();byte[] data=stream.toByteArray();long[] times=new long[20];for(int i=0;i<23;i++){long at=android.os.SystemClock.elapsedRealtimeNanos();ok(KeepAutoExposureAnalyzer.analyze(data)!=null,"benchmark decode");if(i>=3)times[i-3]=android.os.SystemClock.elapsedRealtimeNanos()-at;}Arrays.sort(times);String report="{\"medianMs\":"+(times[10]/1000000.0)+",\"p95Ms\":"+(times[18]/1000000.0)+",\"syntheticWidth\":1920,\"syntheticHeight\":1080,\"iterations\":20,\"cameraOpened\":false}";try(FileOutputStream f=c.openFileOutput("benchmark.json",0)){f.write(report.getBytes("UTF-8"));}
+ SharedPreferences p=c.getSharedPreferences("keep_camera",0);p.edit().clear().putInt("exposure_mode",-1).commit();ok(KeepExposureSettings.mode(c)==0,"old mode migrates to auto");ok(p.getInt("auto_schema",0)==2,"migration recorded");p.edit().putInt("exposure_mode",1).commit();ok(KeepExposureSettings.mode(c)==1,"later manual retained");p.edit().clear().commit();return n;
+ }
+}

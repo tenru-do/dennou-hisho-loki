@@ -1171,10 +1171,11 @@ public final class MainActivity extends Activity {
         for (String action : new String[]{"board", "alight"}) {
             Button button = new Button(this);
             button.setText("board".equals(action) ? "乗車した（電車・バス）" : "降車した（電車・バス）");
-            button.setOnClickListener(v -> android.widget.Toast.makeText(this, advanceMultimodal(action)
-                    ? "選択経路の次の区間を準備中" : "この操作は現在の区間では使えません", android.widget.Toast.LENGTH_SHORT).show());
+            button.setOnClickListener(v -> {if("board".equals(action)){showPhoneBoardingChoices();return;}android.widget.Toast.makeText(this, advanceMultimodal(action)
+                    ? "選択経路の次の区間を準備中" : "この操作は現在の区間では使えません", android.widget.Toast.LENGTH_SHORT).show();});
             mileOptions.addView(button);
         }
+        Button busSearch=new Button(this);busSearch.setText("バス中心で経路を検索");busSearch.setOnClickListener(v->showSharedNavigationRouteChoices(true,true));mileOptions.addView(busSearch);
         mileOptions.setVisibility("transit".equals(navigationMode()) ? View.VISIBLE : View.GONE);
         modes.setOnCheckedChangeListener((group,id) -> {
             View selected=group.findViewById(id); if(selected==null)return;
@@ -1271,7 +1272,7 @@ public final class MainActivity extends Activity {
         toolsPanel.addView(mapsSetup);
         Button navitimeSetup=new Button(this);navitimeSetup.setText("NAVITIME公共交通API設定");navitimeSetup.setOnClickListener(v -> showNavitimeSetup());toolsPanel.addView(navitimeSetup);
         Button pcPair = new Button(this);
-        pcPair.setText("PC接続（60秒間）");
+        pcPair.setText("PCアプリ専用の接続（60秒間）");
         pcPair.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 ensureBridgeToken();
@@ -1376,8 +1377,13 @@ public final class MainActivity extends Activity {
         LinearLayout mediaRecords=PhoneWorkspaceLayout.panel(this);PhoneWorkspaceLayout.add(mediaRecords,photos);PhoneWorkspaceLayout.add(mediaRecords,meetingHealth);generatedImagePanel=new GeneratedImagePanel(this);PhoneWorkspaceLayout.add(mediaRecords,generatedImagePanel.view());generatedVideoPanel=generatedImagePanel.videoPanel;addPhoneFoldSection(recordsPage,"写真・録音・生成した画像",mediaRecords);
 
         LinearLayout settingsPage=PhoneWorkspaceLayout.panel(this);PhoneWorkspaceLayout.heading(this,settingsPage,"設定","接続や動作を調整します。会話・ナビからいつでも戻れます。");
+        LinearLayout tabletConnection=PhoneWorkspaceLayout.panel(this);
+        PhoneWorkspaceLayout.heading(this,tabletConnection,"タブレット・PCとの接続","タブレットのブラウザーで会話・写真・操作を共有できます。同じWi-Fiでも、スマホのテザリング中でも、ここから接続します。");
+        webConsole.setText("タブレット・PCを接続する（QR・再接続）");webConsole.setTextColor(android.graphics.Color.WHITE);webConsole.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(24,85,153)));webConsole.setMinHeight(Math.round(52*getResources().getDisplayMetrics().density));PhoneWorkspaceLayout.add(tabletConnection,webConsole);
+        Button connectedWeb=new Button(this);connectedWeb.setText("接続済みのタブレット・PCを確認");connectedWeb.setOnClickListener(v->new ReliabilityDialog(this).sessions());PhoneWorkspaceLayout.add(tabletConnection,connectedWeb);PhoneWorkspaceLayout.add(settingsPage,tabletConnection);
+        Button readSettings=new Button(this);readSettings.setText("READ：読み取り・回答方針（クイズ優先）");readSettings.setOnClickListener(v->ReadAnswerSettings.show(this));PhoneWorkspaceLayout.add(settingsPage,readSettings);
         Button healthAdvice=new Button(this);healthAdvice.setText("歩数・HEALBEと運動の声かけ");healthAdvice.setOnClickListener(v->HealbeAdviceSettings.show(this));PhoneWorkspaceLayout.add(settingsPage,healthAdvice);
-        LinearLayout connectionSettings=PhoneWorkspaceLayout.panel(this);tethering.setText("スマホのテザリング設定");PhoneWorkspaceLayout.add(settingsPage,tethering);TextView tetherHelp=new TextView(this);tetherHelp.setText("スマホでテザリングをオンにし、グラスのSET → Wi-Fiから接続先を選びます。");tetherHelp.setTextSize(12);tetherHelp.setPadding(4,0,4,10);PhoneWorkspaceLayout.add(settingsPage,tetherHelp);PhoneWorkspaceLayout.add(connectionSettings,webConsole);Button audioState=new Button(this);audioState.setText("音声・Bluetoothの状態");audioState.setOnClickListener(v->AudioRouteStatusDialog.show(this));PhoneWorkspaceLayout.add(connectionSettings,audioState);Button mediaControl=new Button(this);mediaControl.setText("この端末の音楽・ラジオ：30秒送り／戻し");mediaControl.setOnClickListener(v->LocalMediaDialog.show(this));PhoneWorkspaceLayout.add(connectionSettings,mediaControl);PhoneWorkspaceLayout.add(connectionSettings,pronunciation);PhoneWorkspaceLayout.add(connectionSettings,quiet);addPhoneFoldSection(settingsPage,"接続・音声・読み上げ",connectionSettings);
+        LinearLayout connectionSettings=PhoneWorkspaceLayout.panel(this);tethering.setText("スマホのテザリング設定");PhoneWorkspaceLayout.add(settingsPage,tethering);TextView tetherHelp=new TextView(this);tetherHelp.setText("スマホでテザリングをオンにし、グラスのSET → Wi-Fiから接続先を選びます。");tetherHelp.setTextSize(12);tetherHelp.setPadding(4,0,4,10);PhoneWorkspaceLayout.add(settingsPage,tetherHelp);Button audioState=new Button(this);audioState.setText("音声・Bluetoothの状態");audioState.setOnClickListener(v->AudioRouteStatusDialog.show(this));PhoneWorkspaceLayout.add(connectionSettings,audioState);Button mediaControl=new Button(this);mediaControl.setText("この端末の音楽・ラジオ：30秒送り／戻し");mediaControl.setOnClickListener(v->LocalMediaDialog.show(this));PhoneWorkspaceLayout.add(connectionSettings,mediaControl);PhoneWorkspaceLayout.add(connectionSettings,pronunciation);PhoneWorkspaceLayout.add(connectionSettings,quiet);addPhoneFoldSection(settingsPage,"接続・音声・読み上げ",connectionSettings);
         LinearLayout topicPanel=PhoneWorkspaceLayout.panel(this);PhoneWorkspaceLayout.add(topicPanel,radioSwitch);PhoneWorkspaceLayout.add(topicPanel,radioMode);PhoneWorkspaceLayout.add(topicPanel,radioFrequency);PhoneWorkspaceLayout.add(topicPanel,radioHelp);addPhoneFoldSection(settingsPage,"自動で話す（TOPIC）",topicPanel);
         LinearLayout upkeep=PhoneWorkspaceLayout.panel(this);Button adopted=new Button(this);adopted.setText("使える機能・復旧・続きを開く");adopted.setOnClickListener(v->AdoptedControls.show(this));PhoneWorkspaceLayout.add(upkeep,adopted);Button stability=new Button(this);stability.setText("安定稼働・復旧の確認");stability.setOnClickListener(v->StabilityOverview.show(this));PhoneWorkspaceLayout.add(upkeep,stability);for(View v:new View[]{updates,departure,tuning,maintenance,quickMaintenance,reliability,operations,workspace})PhoneWorkspaceLayout.add(upkeep,v);addPhoneFoldSection(settingsPage,"更新・バックアップ・動作確認",upkeep);
         PhoneWorkspaceLayout.detach(toolsPanel);phoneAdvancedContent=toolsPanel;addPhoneFoldSection(settingsPage,"詳細設定（API・接続操作）",toolsPanel);
@@ -1396,7 +1402,7 @@ public final class MainActivity extends Activity {
     }
 
     void homeSpeak(){if(phoneWorkspace!=null)phoneWorkspace.show(0);utilityOpen=false;updateConversationUtilities();commandInput.requestFocus();}
-    void homeAdvanced(){if(phoneWorkspace!=null)phoneWorkspace.show(3);if(phoneAdvancedContent!=null)phoneAdvancedContent.setVisibility(View.VISIBLE);}
+    void homeAdvanced(){if(phoneWorkspace!=null)phoneWorkspace.show(3);PhoneFoldSection section=phoneFoldSections.get(phoneAdvancedContent);if(section!=null)section.setOpen(true);}
     void openGeneratedRecords(){if(generatedImagePanel!=null)generatedImagePanel.list();}
     private PhoneWorkspaceLayout phoneWorkspace;private View phoneAdvancedContent;
     private LinearLayout conversationActions;
@@ -1419,14 +1425,10 @@ public final class MainActivity extends Activity {
             commandInput.bringPointIntoView(commandInput.getSelectionEnd());
     }
 
+    private final java.util.Map<View,PhoneFoldSection> phoneFoldSections=new java.util.IdentityHashMap<>();
     private void addPhoneFoldSection(LinearLayout root,String title,View content) {
-        Button heading=new Button(this);heading.setText(title+" ▾");heading.setAllCaps(false);
-        heading.setContentDescription(title+"：展開");content.setVisibility(View.GONE);
-        heading.setOnClickListener(v->{boolean open=content.getVisibility()!=View.VISIBLE;
-            content.setVisibility(open?View.VISIBLE:View.GONE);heading.setText(title+(open?" ▴":" ▾"));
-            heading.setContentDescription(title+(open?"：折り畳む":"：展開"));});
-        root.addView(heading,new LinearLayout.LayoutParams(-1,-2));
-        root.addView(content,new LinearLayout.LayoutParams(-1,-2));
+        PhoneFoldSection section=new PhoneFoldSection(this,title,PhoneFoldSection.description(title),content);phoneFoldSections.put(content,section);
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=Math.round(12*getResources().getDisplayMetrics().density);root.addView(section,params);
     }
 
     private AlertDialog showNavitimeSetup() {
@@ -1784,20 +1786,27 @@ public final class MainActivity extends Activity {
     private JSONObject sharedNavigationRouteChoices(String destination,String mode,boolean nowOnly)throws Exception {return sharedNavigationRouteChoices(destination,mode,nowOnly,false);}
     private JSONObject sharedNavigationRouteChoices(String destination,String mode,boolean nowOnly,boolean alternative)throws Exception {
         long request=navigationSharedChoicesEpoch.begin();String context=savedNavigationContext();boolean stairs=getSharedPreferences("loki_navigation_controls",0).getBoolean("avoidStairs",false);String point=GoogleNavigationClient.selectedDestinationCoordinates(destination);if(point.isEmpty()){GoogleNavigationClient.destinationCoordinates(this,destination);point=GoogleNavigationClient.selectedDestinationCoordinates(destination);}Location origin=getBestAvailableLocation();if(origin==null||System.currentTimeMillis()-origin.getTime()>180000)throw new Exception("google_current_location_unavailable");
-        synchronized(navigationRouteChoices){navigationSharedChoicesEpoch.require(request);if(stairs!=sharedChoicesStairs||nowOnly){navigationRouteChoices.clear();sharedChoicesOrigin=null;}sharedChoicesStairs=stairs;JSONObject cached=navigationRouteChoices.cached(destination,mode,point,System.currentTimeMillis());Location cachedOrigin=sharedChoicesOrigin;if(cached!=null&&cachedOrigin!=null&&origin.distanceTo(cachedOrigin)<=200)return cached.put("originLatitude",cachedOrigin.getLatitude()).put("originLongitude",cachedOrigin.getLongitude()).put("stairsNotice",NavigationTripReview.stairs(stairs,"transit".equals(mode)&&NavitimeNavigationClient.enabled(this)));}
+        synchronized(navigationRouteChoices){navigationSharedChoicesEpoch.require(request);if(stairs!=sharedChoicesStairs||nowOnly){navigationRouteChoices.clear();sharedChoicesOrigin=null;}sharedChoicesStairs=stairs;JSONObject cached=navigationRouteChoices.cached(destination,mode,point,System.currentTimeMillis());Location cachedOrigin=sharedChoicesOrigin;if(cached!=null&&cachedOrigin!=null&&origin.distanceTo(cachedOrigin)<=200)return cached.put("originLatitude",cachedOrigin.getLatitude()).put("originLongitude",cachedOrigin.getLongitude()).put("stairsNotice",(NavigationTripReview.stairs(stairs,"transit".equals(mode)&&NavitimeNavigationClient.enabled(this))+("transit".equals(mode)&&NavitimeNavigationClient.enabled(this)?"\nこの検索サービスは路線バスを取得できません。バスは「バス中心で探す」を選んでください。":"")));}
         JSONArray choices;long started=System.nanoTime();try{choices="transit".equals(mode)&&NavitimeNavigationClient.enabled(this)?NavitimeNavigationClient.choices(this,origin.getLatitude(),origin.getLongitude(),destination,nowOnly):GoogleNavigationClient.routes(this,origin.getLatitude(),origin.getLongitude(),destination,mode,true);}finally{navigationSmoothMetrics.mark("searchProvider",started);}if(alternative)choices=NavigationAlternativePolicy.requireDistinct(choices,selectedNavigationRoute);
-        synchronized(navigationRouteChoices){navigationSharedChoicesEpoch.require(request);if(!context.equals(savedNavigationContext()))throw new Exception("検索中に案内状態が変わりました。選び直してください");JSONObject published=navigationRouteChoices.publish(destination,mode,point,choices,System.currentTimeMillis());sharedChoicesOrigin=new Location(origin);return published.put("originLatitude",origin.getLatitude()).put("originLongitude",origin.getLongitude()).put("stairsNotice",NavigationTripReview.stairs(stairs,"transit".equals(mode)&&NavitimeNavigationClient.enabled(this)));}
+        synchronized(navigationRouteChoices){navigationSharedChoicesEpoch.require(request);if(!context.equals(savedNavigationContext()))throw new Exception("検索中に案内状態が変わりました。選び直してください");JSONObject published=navigationRouteChoices.publish(destination,mode,point,choices,System.currentTimeMillis());sharedChoicesOrigin=new Location(origin);return published.put("originLatitude",origin.getLatitude()).put("originLongitude",origin.getLongitude()).put("stairsNotice",(NavigationTripReview.stairs(stairs,"transit".equals(mode)&&NavitimeNavigationClient.enabled(this))+("transit".equals(mode)&&NavitimeNavigationClient.enabled(this)?"\nこの検索サービスは路線バスを取得できません。バスは「バス中心で探す」を選んでください。":"")));}
+    }
+    private JSONObject sharedNavigationBusChoices(String destination)throws Exception {
+        Location origin=getBestAvailableLocation();if(origin==null||System.currentTimeMillis()-origin.getTime()>180000)throw new Exception("google_current_location_unavailable");
+        String point=GoogleNavigationClient.selectedDestinationCoordinates(destination);if(point.isEmpty()){GoogleNavigationClient.destinationCoordinates(this,destination);point=GoogleNavigationClient.selectedDestinationCoordinates(destination);}
+        JSONArray routes=GoogleNavigationClient.routes(this,origin.getLatitude(),origin.getLongitude(),destination,"transit",true,true);
+        synchronized(navigationRouteChoices){sharedChoicesOrigin=new Location(origin);return navigationRouteChoices.publish(destination,"transit",point,routes,System.currentTimeMillis()).put("stairsNotice","バス中心のGoogle経路です。路線・乗降場所を確認してください。バスのない候補へ自動変更しません。");}
     }
     private NavigationNativeEnvironment navigationNativeEnvironment;
     private android.app.Activity navigationNativeOwner(){return navigationNativeEnvironment==null?this:navigationNativeEnvironment.dialogs;}
     private void startReviewedNativeNavigation(){if(navigationNativeEnvironment==null)startSelectedGoogleMapsNavigation();else navigationNativeEnvironment.started.run();}
     private void disposeNativeNavigationReview(){cancelSavedNavigationPreview();navigationSavedPreviewJob.close();}
     private void showSharedNavigationRouteChoices() {showSharedNavigationRouteChoices(false);}
-    private void showSharedNavigationRouteChoices(boolean nowOnly) {
-        if(navigationNativeCommitting)return;final String destination=normalizeNavigationDestination(navigationDestinationInput.getText().toString());Object tag=navigationDestinationInput.getTag();final String label=tag instanceof JSONObject?((JSONObject)tag).optString("name",destination):destination,mode=navigationMode();String key="shared|"+label+"|"+mode+"|"+nowOnly;if(key.equals(navigationNativeSearchKey)&&navigationLoadingDialog!=null&&navigationLoadingDialog.isShowing())return;cancelSavedNavigationPreview();navigationNativeSearchKey=key;final long started=System.nanoTime();android.app.ProgressDialog loading=new android.app.ProgressDialog(navigationNativeOwner());loading.setMessage("ロキ共通の経路を確認中…");loading.setCancelable(true);loading.setOnCancelListener(d->cancelSavedNavigationPreview());loading.show();navigationLoadingDialog=loading;watchNativeNavigationPreview(loading,navigationNativeSearchKey);android.view.Choreographer.getInstance().postFrameCallback(frame->navigationSmoothMetrics.mark("actionFrame",started));
-        navigationSavedPreviewJob.submit(()->{if(navigationNativeEnvironment!=null)return navigationNativeEnvironment.request.run("shared",label);if(!label.equals(destination)&&GoogleNavigationClient.selectedDestinationCoordinates(label).isEmpty()){double[] xy=geocodeNavigationDestination(destination);if(xy==null)throw new Exception("navigation_destination_unavailable");Address address=new Address(Locale.JAPAN);address.setLatitude(xy[0]);address.setLongitude(xy[1]);GoogleNavigationClient.rememberDestination(label,address);}return sharedNavigationRouteChoices(label,mode,nowOnly);},(ticket,value,error)->runOnUiThread(()->{
+    private void showSharedNavigationRouteChoices(boolean nowOnly) {showSharedNavigationRouteChoices(nowOnly,false);}
+    private void showSharedNavigationRouteChoices(boolean nowOnly,boolean busOnly) {
+        if(navigationNativeCommitting)return;final String destination=normalizeNavigationDestination(navigationDestinationInput.getText().toString());Object tag=navigationDestinationInput.getTag();final String label=tag instanceof JSONObject?((JSONObject)tag).optString("name",destination):destination,mode=navigationMode();String key="shared|"+label+"|"+mode+"|"+nowOnly+"|"+busOnly;if(key.equals(navigationNativeSearchKey)&&navigationLoadingDialog!=null&&navigationLoadingDialog.isShowing())return;cancelSavedNavigationPreview();navigationNativeSearchKey=key;final long started=System.nanoTime();android.app.ProgressDialog loading=new android.app.ProgressDialog(navigationNativeOwner());loading.setMessage("ロキ共通の経路を確認中…");loading.setCancelable(true);loading.setOnCancelListener(d->cancelSavedNavigationPreview());loading.show();navigationLoadingDialog=loading;watchNativeNavigationPreview(loading,navigationNativeSearchKey);android.view.Choreographer.getInstance().postFrameCallback(frame->navigationSmoothMetrics.mark("actionFrame",started));
+        navigationSavedPreviewJob.submit(()->{if(navigationNativeEnvironment!=null)return navigationNativeEnvironment.request.run("shared",label);if(!label.equals(destination)&&GoogleNavigationClient.selectedDestinationCoordinates(label).isEmpty()){double[] xy=geocodeNavigationDestination(destination);if(xy==null)throw new Exception("navigation_destination_unavailable");Address address=new Address(Locale.JAPAN);address.setLatitude(xy[0]);address.setLongitude(xy[1]);GoogleNavigationClient.rememberDestination(label,address);}return busOnly?sharedNavigationBusChoices(label):sharedNavigationRouteChoices(label,mode,nowOnly);},(ticket,value,error)->runOnUiThread(()->{
           if(!navigationSavedPreviewJob.current(ticket)||isFinishing()||isDestroyed())return;loading.dismiss();if(navigationLoadingDialog==loading)navigationLoadingDialog=null;navigationSmoothMetrics.mark("searchTotal",started);if(error!=null){updateStatus("経路候補を取得できません",error.getMessage());return;}if(!mode.equals(navigationMode())||!destination.equals(normalizeNavigationDestination(navigationDestinationInput.getText().toString()))){cancelSavedNavigationPreview();updateStatus("検索条件が変わりました","新しい条件で候補を取り直してください。案内は開始していません");return;}
-          try{JSONObject response=(JSONObject)value;JSONArray choices=response.getJSONArray("choices");if(choices.length()==0)throw new Exception("経路候補がありません。条件を確認して選び直してください");updateStatus("経路を選んでください","確認するまで新しい案内は開始しません");boolean stairs=getSharedPreferences("loki_navigation_controls",0).getBoolean("avoidStairs",false);String[] labels=new String[choices.length()];for(int i=0;i<labels.length;i++)labels[i]=choices.getJSONObject(i).getString("label");navigationChoicesDialog=new AlertDialog.Builder(navigationNativeOwner()).setTitle("ロキ共通の経路を選択").setItems(labels,(d,which)->{try{if(!navigationSavedPreviewJob.current(ticket))return;String candidateId=choices.getJSONObject(which).getString("id");JSONObject preview=navigationRouteChoices.select(candidateId,label,mode,GoogleNavigationClient.selectedDestinationCoordinates(label),System.currentTimeMillis());java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();navigationConfirmDialog=new AlertDialog.Builder(navigationNativeOwner()).setTitle("出発前に経路を確認").setMessage(NavigationTripReview.text(preview)+"\n"+NavigationTripReview.stairs(stairs,"transit".equals(mode)&&NavitimeNavigationClient.enabled(this))).setPositiveButton("この経路で開始",(a,w)->{try{if(!navigationSavedPreviewJob.current(ticket)||!once.compareAndSet(false,true)||stairs!=getSharedPreferences("loki_navigation_controls",0).getBoolean("avoidStairs",false)||!mode.equals(navigationMode())||!destination.equals(normalizeNavigationDestination(navigationDestinationInput.getText().toString())))throw new Exception("changed");stagedNavigationRoute=navigationRouteChoices.select(candidateId,label,mode,GoogleNavigationClient.selectedDestinationCoordinates(label),System.currentTimeMillis());stagedNavigationDestination=label;navigationDestinationInput.setText(label);startReviewedNativeNavigation();}catch(Exception changed){updateStatus("経路を選び直してください","条件が変わったか、候補の期限が切れました。重複して送信しません。");}}).setNegativeButton("キャンセル",(cancelDialog,cancelButton)->cancelSavedNavigationPreview()).setOnCancelListener(cancelledDialog->cancelSavedNavigationPreview()).show();}catch(Exception expired){updateStatus("経路選択の期限切れ","再検索してください");}}).setNegativeButton("キャンセル",(cancelDialog,cancelButton)->cancelSavedNavigationPreview()).setOnCancelListener(cancelledDialog->cancelSavedNavigationPreview()).show();}catch(Exception invalid){updateStatus("候補を確認できません",invalid.getMessage());}
+          try{JSONObject response=(JSONObject)value;JSONArray choices=response.getJSONArray("choices");if(choices.length()==0)throw new Exception("経路候補がありません。条件を確認して選び直してください");updateStatus("経路を選んでください","確認するまで新しい案内は開始しません");boolean stairs=getSharedPreferences("loki_navigation_controls",0).getBoolean("avoidStairs",false);String[] labels=new String[choices.length()];for(int i=0;i<labels.length;i++)labels[i]=choices.getJSONObject(i).getString("label");navigationChoicesDialog=new AlertDialog.Builder(navigationNativeOwner()).setTitle("ロキ共通の経路を選択").setItems(labels,(d,which)->{try{if(!navigationSavedPreviewJob.current(ticket))return;String candidateId=choices.getJSONObject(which).getString("id");JSONObject preview=navigationRouteChoices.select(candidateId,label,mode,GoogleNavigationClient.selectedDestinationCoordinates(label),System.currentTimeMillis());java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();navigationConfirmDialog=new AlertDialog.Builder(navigationNativeOwner()).setTitle("出発前に経路を確認").setMessage(NavigationTripReview.text(preview)+"\n"+(NavigationTripReview.stairs(stairs,"transit".equals(mode)&&NavitimeNavigationClient.enabled(this))+("transit".equals(mode)&&NavitimeNavigationClient.enabled(this)?"\nこの検索サービスは路線バスを取得できません。バスは「バス中心で探す」を選んでください。":""))).setPositiveButton("この経路で開始",(a,w)->{try{if(!navigationSavedPreviewJob.current(ticket)||!once.compareAndSet(false,true)||stairs!=getSharedPreferences("loki_navigation_controls",0).getBoolean("avoidStairs",false)||!mode.equals(navigationMode())||!destination.equals(normalizeNavigationDestination(navigationDestinationInput.getText().toString())))throw new Exception("changed");stagedNavigationRoute=navigationRouteChoices.select(candidateId,label,mode,GoogleNavigationClient.selectedDestinationCoordinates(label),System.currentTimeMillis());stagedNavigationDestination=label;navigationDestinationInput.setText(label);startReviewedNativeNavigation();}catch(Exception changed){updateStatus("経路を選び直してください","条件が変わったか、候補の期限が切れました。重複して送信しません。");}}).setNegativeButton("キャンセル",(cancelDialog,cancelButton)->cancelSavedNavigationPreview()).setOnCancelListener(cancelledDialog->cancelSavedNavigationPreview()).show();}catch(Exception expired){updateStatus("経路選択の期限切れ","再検索してください");}}).setNegativeButton("キャンセル",(cancelDialog,cancelButton)->cancelSavedNavigationPreview()).setOnCancelListener(cancelledDialog->cancelSavedNavigationPreview()).show();}catch(Exception invalid){updateStatus("候補を確認できません",invalid.getMessage());}
         }));
     }
 
@@ -2231,8 +2240,8 @@ public final class MainActivity extends Activity {
                     if ("transit".equals(mode)) {
                         if (plan == null || !destination.equals(plan.destination)) {
                             plan = new MultimodalJourney(destination, GoogleNavigationClient.destinationCoordinates(MainActivity.this,destination),
-                                    (chosenRoute!=null&&chosenRoute.optBoolean("lokiSavedLeg"))?"walking":getPreferences().getString("transit_access_mode","walking"),
-                                    (chosenRoute!=null&&chosenRoute.optBoolean("lokiSavedLeg"))?"walking":getPreferences().getString("transit_egress_mode","walking"));
+                                    (chosenRoute!=null&&chosenRoute.optBoolean("lokiSavedLeg"))?"walking":(chosenRoute!=null?chosenRoute.optString("lokiAccessMode",getPreferences().getString("transit_access_mode","walking")):getPreferences().getString("transit_access_mode","walking")),
+                                    (chosenRoute!=null&&chosenRoute.optBoolean("lokiSavedLeg"))?"walking":(chosenRoute!=null?chosenRoute.optString("lokiEgressMode",getPreferences().getString("transit_egress_mode","walking")):getPreferences().getString("transit_egress_mode","walking")));
                             plan.stations(fetched.value);
                             plan.startAtBoardingStop(origin.getLatitude(),origin.getLongitude(),origin.hasAccuracy()?origin.getAccuracy():-1,origin.getTime(),System.currentTimeMillis());
                             synchronized (MainActivity.this) {
@@ -3079,6 +3088,7 @@ public final class MainActivity extends Activity {
                 writeJsonResponse(socket, 401, "{\"ok\":false,\"error\":\"unauthorized\"}");
                 return;
             }
+
             if(request.startsWith("GET /stt_prepare ")){speechWarmup.prepare(this);writeJsonResponse(socket,200,"{\"ok\":true}");return;}
             if(request.startsWith("GET /health_gemini ")){writeJsonResponse(socket,200,HealthGeminiSettings.read(this).toString());return;}
             if(request.startsWith("POST /health_gemini ")){try{writeJsonResponse(socket,200,HealthGeminiSettings.save(this,new JSONObject(bodyText)).toString());}catch(Exception invalid){writeJsonResponse(socket,400,"{\"error\":\"invalid_health_gemini_config\"}");}return;}
@@ -3107,6 +3117,7 @@ public final class MainActivity extends Activity {
             }
             if(request.startsWith("GET /operation_status ")){writeJsonResponse(socket,200,OperationOverview.read(this).toString());return;}
             if(request.startsWith("POST /answer_import ")){JSONObject receipt=ImportedAnswers.accept(this,new JSONObject(formValue(bodyText,"record")));writeJsonResponse(socket,200,receipt.toString());if(!receipt.optBoolean("duplicate")){JSONObject imported=new JSONObject(formValue(bodyText,"record"));runOnUiThread(()->{addAiLog(imported.optString("kind")+": "+imported.optString("message"));refreshComposerReceipts();});}return;}
+            if(request.startsWith("GET /read_answer_settings ")){writeJsonResponse(socket,200,ReadAnswerSettings.state(this).toString());return;}
             if(request.startsWith("GET /transfer_policy ")){writeJsonResponse(socket,200,TransferNetwork.state(this).toString());return;}
             if(request.startsWith("POST /conversation_workspace ")){ConversationWorkspace.accept(this,new JSONObject(formValue(bodyText,"state")));ReconnectReview.contact(this,android.os.SystemClock.elapsedRealtime(),queuedWebOrder(this));writeJsonResponse(socket,200,"{\"ok\":true}");return;}
             if(request.startsWith("GET /workspace_command?")){String id=formValue(request.split(" ")[1].split("\\?",2)[1],"id");writeJsonResponse(socket,200,ConversationWorkspace.command(this,id).toString());return;}
@@ -3123,6 +3134,7 @@ public final class MainActivity extends Activity {
                 }
                 writeJsonResponse(socket,200,new JSONObject().put("reference",secretaryReference()).put("items",items).toString());return;
             }
+            if(request.startsWith("GET /memo_reference ")){JSONArray users=new JSONArray();ArrayList<JSONObject> history=readConversationMemory();long now=System.currentTimeMillis();for(int i=history.size()-1;i>=0&&users.length()<30;i--){JSONObject row=history.get(i);long time=row.optLong("time");if(!row.optString("kind").startsWith("ユーザー")||time<=0||now<time||now-time>7200000)continue;String message=row.optString("message");if(message.length()<=3000)users.put(new JSONObject().put("message",message).put("time",time));}writeJsonResponse(socket,200,new JSONObject().put("users",users).toString());return;}
             if(request.startsWith("POST /secretary_inbox_action ")) {
                 JSONObject result;try{result=SecretaryInbox.action(this,new JSONObject(formValue(bodyText,"request")));}catch(Exception e){result=new JSONObject().put("ok",false).put("message","案件の変更を確認できません。受信箱を更新して状態を確認してください。");}
                 writeJsonResponse(socket,200,result.toString());return;
@@ -3205,7 +3217,7 @@ public final class MainActivity extends Activity {
                         if(xy==null)throw new Exception("navigation_destination_unavailable");
                         Address address=new Address(Locale.JAPAN);address.setLatitude(xy[0]);address.setLongitude(xy[1]);GoogleNavigationClient.rememberDestination(label,address);
                     }
-                    writeJsonResponse(socket,200,target.sharedNavigationRouteChoices(label,mode).toString());
+                    writeJsonResponse(socket,200,("1".equals(queryParam(request,"bus"))?target.sharedNavigationBusChoices(label):target.sharedNavigationRouteChoices(label,mode)).toString());
                 }catch(Exception unavailable){writeJsonResponse(socket,200,new JSONObject().put("ok",false).put("error","経路候補を取得できません。現在地・通信・地図API設定を確認してください。").toString());}
                 return;
             }
@@ -3254,6 +3266,8 @@ public final class MainActivity extends Activity {
                                 ack.destination=target.normalizeNavigationDestination(target.navigationDestinationInput.getText().toString());
                                 if(!routeChoiceId.isEmpty()) {
                                     target.stagedNavigationRoute=target.navigationRouteChoices.select(routeChoiceId,ack.destination,mode,GoogleNavigationClient.selectedDestinationCoordinates(ack.destination),System.currentTimeMillis());
+                                    target.stagedNavigationRoute.put("lokiAccessMode","bicycling".equals(queryParam(request,"access"))?"bicycling":"walking")
+                                        .put("lokiEgressMode","bicycling".equals(queryParam(request,"egress"))?"bicycling":"walking");
                                     target.stagedNavigationDestination=ack.destination;
                                 }else if("transit".equals(mode))throw new IllegalStateException("グラスでルート候補を再検索して選択してください");
                                 target.getPreferences().edit().putString(KEY_MAP_ROUTE_MODE,mode).apply();
@@ -4380,6 +4394,8 @@ public final class MainActivity extends Activity {
         editor.apply();
     }
 
+    static ArrayList<String> pendingReviewCommands(Context c){return readPendingCommandsLocked(c.getSharedPreferences(PREFS,0));}
+    static boolean persistReviewCommands(Context c,ArrayList<String> queue){return commitTrackedQueue(c.getSharedPreferences(PREFS,0),queue);}
     static boolean queueImageCommand(Context context,String command) {
         synchronized(MainActivity.class){
             SharedPreferences preferences=context.getSharedPreferences(PREFS,MODE_PRIVATE);
@@ -4424,6 +4440,7 @@ public final class MainActivity extends Activity {
         synchronized(MainActivity.class){SharedPreferences prefs=context.getSharedPreferences(PREFS,MODE_PRIVATE);ArrayList<String> queue=readPendingCommandsLocked(prefs),next=new ArrayList<>();int superseded=0;
             for(String wire:queue){if(wire.equals("__LOKI_PHOTO_SYNC__")||wire.equals("__LOKI_PHOTO_COPY__"))superseded++;else next.add(wire);}
             long now=System.currentTimeMillis();JSONObject request=new JSONObject().put("id",java.util.UUID.randomUUID().toString()).put("mode",move?"move":"copy").put("createdAt",now).put("expiresAt",now+PhotoImportRequests.TTL).put("superseded",superseded);
+            JSONObject previousPhoto=PhotoImportProgress.latestPhoto(ConversationWorkspace.snapshot(context));if(previousPhoto!=null)request.put("previousBatchId",previousPhoto.optString("batchId"));
             JSONArray encoded=new JSONArray();for(String wire:next)encoded.put(wire);String head=next.isEmpty()?"":next.get(0);
             if(!prefs.edit().putString(PhotoImportRequests.KEY,request.toString()).putString(KEY_PENDING_COMMAND_QUEUE,encoded.toString()).putString(KEY_PENDING_COMMAND,head).commit())throw new java.io.IOException("写真取り込みの要求を保存できません");
             pendingCommand=head;CommandNotice.changed();return request;
@@ -5502,6 +5519,8 @@ public final class MainActivity extends Activity {
         if (googleCached != null && googleCached.generation != googleRouteGeneration) googleCached = null;
         MultimodalJourney plan = multimodalJourney;
         if (plan != null && !isNavigationHudSuppressed() && location != null) {
+            int inferred=plan.inferRide(location.getLatitude(),location.getLongitude(),location.hasAccuracy()?location.getAccuracy():-1,location.hasSpeed()?location.getSpeed():Double.NaN,location.getTime(),System.currentTimeMillis());
+            if(inferred>=0&&confirmBoarding(inferred,plan.sessionId)){plan.boardingEstimated=true;googleCached=null;}
             String action=plan.geofence(location.getLatitude(),location.getLongitude(),location.hasAccuracy()?location.getAccuracy():-1,location.getTime(),System.currentTimeMillis());
             if (!action.isEmpty() && advanceMultimodal(action)) googleCached=null;
         }
@@ -5661,6 +5680,7 @@ public final class MainActivity extends Activity {
             return result;
         }
         if (routeFresh && googleCached != null && googleCached.progress != null) {
+            if(plan!=null&&plan.phase==MultimodalJourney.Phase.TRANSIT_LEG&&plan.manualTransitIndex>=0)googleCached.progress.confirmRide(plan.manualTransitIndex);
             JSONObject journeyPayload = googleCached.progress.snapshot(
                     location == null ? Double.NaN : location.getLatitude(),
                     location == null ? Double.NaN : location.getLongitude(),
@@ -5699,7 +5719,7 @@ public final class MainActivity extends Activity {
                             plan.phase==MultimodalJourney.Phase.TRANSIT_LEG?plan.alightingName:plan.destination);
             JSONObject phaseJourney=result.optJSONObject("journey");
             if(phaseJourney!=null) {
-                phaseJourney.put("phase",plan.phase.name()).put("requestedMode",plan.mode())
+                phaseJourney.put("boardingEstimated",plan.boardingEstimated).put("phase",plan.phase.name()).put("requestedMode",plan.mode())
                         .put("waitingToBoard",plan.phase==MultimodalJourney.Phase.BOARDING)
                         .put("walkingFallback",!plan.mode().equals(phaseJourney.optString("effectiveMode",plan.mode())));
                 if(!phaseJourney.optBoolean("positionConfirmed")) {
@@ -6264,6 +6284,10 @@ public final class MainActivity extends Activity {
         return rounded + " m";
     }
 
+    private static int boardingIndex(String value){try{return Integer.parseInt(value);}catch(Exception e){return -1;}}
+    private JSONObject boardingChoices() throws Exception {MultimodalJourney plan=multimodalJourney;return new JSONObject().put("ok",plan!=null).put("trip",plan==null?"":plan.sessionId).put("choices",plan==null?new JSONArray():plan.boardingChoices());}
+    private void showPhoneBoardingChoices(){try{JSONObject response=boardingChoices();final String trip=response.optString("trip");JSONArray choices=response.getJSONArray("choices");if(choices.length()==0){updateStatus("乗車できる区間がありません","現在の経路を確認してください");return;}String[] labels=new String[choices.length()];for(int i=0;i<labels.length;i++)labels[i]=choices.getJSONObject(i).getString("label");new AlertDialog.Builder(this).setTitle("いま乗った電車・バス").setItems(labels,(d,i)->{boolean ok=confirmBoarding(choices.optJSONObject(i).optInt("index",-1),trip);android.widget.Toast.makeText(this,ok?"選択した電車・バスの乗車を反映します":"状態が変わりました。選び直してください",android.widget.Toast.LENGTH_SHORT).show();}).setNegativeButton("戻る",null).show();}catch(Exception e){updateStatus("乗車区間を取得できません","経路を確認してください");}}
+    private synchronized boolean confirmBoarding(int index,String trip){MultimodalJourney plan=multimodalJourney;if(isNavigationHudSuppressed()||plan==null||!plan.sessionId.equals(trip)||!plan.board(index))return false;navigationReferenceCache=googleRouteCache;googleRouteGeneration++;googleRouteCache=null;navigationRouteRetryAfterMs=0;noRouteUntil=0;prepareGoogleNavigationRoute(plan.destination,"transit",false);return true;}
     private synchronized boolean advanceMultimodal(String action) {
         MultimodalJourney plan=multimodalJourney;
         if (isNavigationHudSuppressed() || plan==null || !plan.advance(action)) return false;
@@ -6382,8 +6406,9 @@ public final class MainActivity extends Activity {
             return new JSONObject().put("ok",true).put("message","スマホで候補・経路を確認してください。確認画面を開きました。まだ案内先は変更していません。");
         }
         if(action.matches("pause_guidance|resume_guidance|confirm_arrival|reject_arrival|mark_late")){try{return navigationControl(action);}catch(Exception unavailable){return new JSONObject().put("ok",false).put("message",unavailable.getMessage()==null?"ナビの状態を確認してください":unavailable.getMessage());}}
+        if ("boarding_choices".equals(action)) return boardingChoices();
         if ("board".equals(action) || "alight".equals(action)) {
-            boolean advanced=advanceMultimodal(action);
+            boolean advanced="board".equals(action)?confirmBoarding(boardingIndex(queryParam(request,"leg")),queryParam(request,"trip")):advanceMultimodal(action);
             return new JSONObject().put("ok",advanced).put("message",advanced ? "選択した経路の次の区間を準備中" : "現在の区間では進行できません。経路取得を確認してください。");
         }
         if ("stop".equals(action)) {
@@ -6433,6 +6458,7 @@ public final class MainActivity extends Activity {
     }
 
     private JSONObject stopNavigationFromGlass() throws Exception {
+        NavigationStartAck pending=navigationStartAck;if(pending!=null&&pending.done.getCount()!=0)pending.fail("ナビを停止しました。目的地を選び直してください。");
         glassNavigationReview.invalidate();navigationRouteChoices.clear();stagedNavigationRoute=null;stagedNavigationDestination="";
         NavigationRestState.clear(this);navigationResumingAt=0;
         boolean active=MailNotificationService.recentTransitJson().optBoolean("navigationActive",false);
@@ -6444,11 +6470,12 @@ public final class MainActivity extends Activity {
                     && android.os.SystemClock.elapsedRealtime()<deadline) Thread.sleep(50);
             stopped=!MailNotificationService.hasMapsNavigationExitAction();
         }
-        setNavigationHudSuppressed(true);
-        return new JSONObject().put("ok",true).put("suppressed",true)
+        clearStoredNavigationRoute();navigationRouteRetryAfterMs=0;noRouteUntil=0;navigationArrivalPendingAt=0;navigationArrivalPendingDestination="";
+        TransitLocationTracker.setNavigationActive(false);setNavigationHudSuppressed(true);
+        return new JSONObject().put("ok",true).put("lokiNavigationStopped",true).put("suppressed",true)
                 .put("navigationStopped",stopped).put("message",stopped
                 ? "ナビを停止しました。Googleマップの音声案内も終了しています。"
-                : "グラスの表示は停止しましたが、Googleマップの案内終了を確認できません。スマホでナビを終了してください。");
+                : "ロキの案内を停止し、経路を解除しました。Googleマップ側の案内終了は未確認です。続いている場合はスマホで終了してください。");
     }
 
     private JSONObject buildNavigationHudControlJson(String action) throws Exception {
@@ -6673,8 +6700,8 @@ public final class MainActivity extends Activity {
             }
         }
         long now = System.currentTimeMillis();
-        if (bestWithSpeed != null && now - bestWithSpeed.getTime() <= 120000L
-                && (best == null || best.getTime() - bestWithSpeed.getTime() <= 60000L)) {
+        if (bestWithSpeed != null && now - bestWithSpeed.getTime() <= 15000L
+                && (best == null || best.getTime() - bestWithSpeed.getTime() <= 5000L)) {
             return bestWithSpeed;
         }
         if (best != null && now - best.getTime() <= 900000L) {
@@ -6811,8 +6838,10 @@ public final class MainActivity extends Activity {
                                 return;
                             }
                             Long steps = response.get(StepsRecord.STEPS_COUNT_TOTAL);
-                            long count = steps == null ? 0L : steps.longValue();
+                            if(steps==null)return;
+                            long count = steps.longValue();
                             getPreferences().edit()
+                                    .putLong("health_connect_steps",count).putLong("health_connect_sensor_total",getPreferences().getLong("sensor_step_latest",-1)).putString("health_source","Health Connect")
                                     .putString(KEY_HEALTH_COMPACT, "歩数 " + count)
                                     .putLong(KEY_HEALTH_TIME, System.currentTimeMillis())
                                     .putLong("health_connect_time", System.currentTimeMillis())

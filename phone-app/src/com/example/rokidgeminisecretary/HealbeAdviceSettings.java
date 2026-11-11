@@ -4,6 +4,8 @@ final class HealbeAdviceSettings {
  static void show(Activity c){
   JSONObject energy=HealbeSdkReader.preferred(c,HealbeEnergyStore.snapshot(c));long at=energy.optLong("observedAt");
   String status=at>0?"最後の取得："+new java.text.SimpleDateFormat("M/d H:mm",java.util.Locale.JAPAN).format(new java.util.Date(at))+"\n収支："+energy.optInt("balanceKcal")+" kcal（暫定）":"エネルギー収支は未取得です。";
+  android.content.SharedPreferences steps=c.getSharedPreferences("phone_secretary",0);status+="\n歩数の取得元："+steps.getString("health_source","未確認");
+  String hydration=energy.optString("hydrationState");status+="\nHEALBE水分："+(hydration.equals("LOW")?"不足の通知あり":hydration.equals("NORMAL")?"通常":hydration.equals("CALCULATING")?"計算中":"未取得");
   android.widget.LinearLayout box=new android.widget.LinearLayout(c);box.setOrientation(1);int pad=(int)(16*c.getResources().getDisplayMetrics().density);box.setPadding(pad,pad,pad,pad);android.widget.TextView text=new android.widget.TextView(c);
   text.setText(status+"\n\n画面を開かない取得は、公式SDKの補助アプリへ一度ログインして試せます。ログイン後に実データが取得できるか確認します。画面読み取りはHEALBEの今日の画面を表示したときだけの補助です。\n\n歩数と収支をグラスへ表示し、条件が合えば最短1時間おきに運動の声かけをします。Gemini連動オン時は新しい数値・取得時刻をGoogle Geminiへ送ります。元の画面や通知文は送りません。");box.addView(text);
   android.widget.Button direct=new android.widget.Button(c);direct.setText("HEALBEへ直接ログイン（取得を試す）");direct.setOnClickListener(v->HealbeSdkReader.open(c));box.addView(direct);

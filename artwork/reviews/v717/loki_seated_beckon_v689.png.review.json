@@ -1,0 +1,19 @@
+{
+  "asset": "loki_seated_beckon_v689.png",
+  "assetSha256": "f269697f34c5819c2e43ca89a20101a3c8c428f36c77e6045492ffe897175689",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "columns": 2,
+  "rows": 2,
+  "reviewedFrames": 4,
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "deviceVerified": false,
+  "contactSheet": {
+    "path": "artwork/reviews/v717/loki_seated_beckon_v689.png.contact.png",
+    "sha256": "22e36b841d1aee0ae0420435895ce09cc8f3de69954c60889eb27e42dba493f1"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v717/loki_seated_beckon_v689.png.landmarks.json",
+    "sha256": "0e72b5e0a09584aab880617f4d00dd4d4a8b5d7fd2e5d0ebd6225b56455c01a6"
+  }
+}

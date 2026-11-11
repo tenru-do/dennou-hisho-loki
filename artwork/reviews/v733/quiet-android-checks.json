@@ -1,0 +1,168 @@
+{
+  "at": "2026-11-04T23:48:21.988424+00:00",
+  "quietPoseAssertionsPassed": 347,
+  "restHealth": {
+    "checks": 173,
+    "assets": [
+      {
+        "asset": "loki_approved_sleep_20261102.png",
+        "width": 911,
+        "height": 1727,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.6621284113060428
+      },
+      {
+        "asset": "loki_rest_master_v675.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.844696044921875
+      },
+      {
+        "asset": "loki_rest_motion_v675.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.8262227376302084
+      },
+      {
+        "asset": "loki_rest_wave_v675.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.85137939453125
+      },
+      {
+        "asset": "loki_offduty_pillow_v683.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.8291727701822916
+      },
+      {
+        "asset": "loki_offduty_arms_v683.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "transparentFraction": 0.823822021484375
+      },
+      {
+        "asset": "loki_offduty_chin_v683.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.8162129720052084
+      },
+      {
+        "asset": "loki_offduty_dream_v683.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "transparentFraction": 0.8250935872395834
+      },
+      {
+        "asset": "loki_rest_relaxed_legs_v684.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.8266194661458334
+      },
+      {
+        "asset": "loki_body_overhead_v667.png",
+        "width": 1536,
+        "height": 1024,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.8382975260416666
+      },
+      {
+        "asset": "loki_comfort_read_v678.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.8296101888020834
+      },
+      {
+        "asset": "loki_comfort_side_v678.png",
+        "width": 1024,
+        "height": 1536,
+        "cornerAlpha": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "transparentFraction": 0.7231852213541666
+      }
+    ],
+    "actualImageExported": false
+  },
+  "glassApkSha256": "632e425b3629e391ea853948720e8202d05d993bba3902651535435d53591fcf",
+  "uploadedApkSha256": "632e425b3629e391ea853948720e8202d05d993bba3902651535435d53591fcf",
+  "instrumentationApkSha256": "632e425b3629e391ea853948720e8202d05d993bba3902651535435d53591fcf",
+  "postTestHostApkSha256": "632e425b3629e391ea853948720e8202d05d993bba3902651535435d53591fcf",
+  "instrumentationCode": -1,
+  "sourceRunnerSha256": "b72648197e1db67bf13f78c74c7d6fe9cab2a0a6ff4ee0d592b8693e17ef5226",
+  "actualHealthValuesRead": false,
+  "productionDataAccess": false,
+  "externalAPICalls": 0,
+  "uiAutomationUsed": false,
+  "actualImageExported": false,
+  "selfTargetPackageRemovedVerified": true,
+  "stagingFilesRemovedVerified": true,
+  "totalAssertionsPassed": 520
+}

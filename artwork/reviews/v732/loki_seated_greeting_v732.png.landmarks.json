@@ -1,0 +1,183 @@
+{
+  "kind": "Dedicated adult seated right-hand greeting; generated native transparent alpha preserved",
+  "imageWidth": 1024,
+  "imageHeight": 1536,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        512,
+        768
+      ],
+      "headBounds": [
+        208,
+        12,
+        116,
+        124
+      ],
+      "shoulders": [
+        [
+          174,
+          166
+        ],
+        [
+          338,
+          166
+        ]
+      ],
+      "hip": [
+        260,
+        404
+      ],
+      "knee": [
+        260,
+        422
+      ],
+      "ankle": [
+        260,
+        710
+      ],
+      "visibleAlphaBounds": [
+        163,
+        12,
+        352,
+        755
+      ],
+      "reviewNotes": "Approximate manually inspected landmarks; projected seated thigh length is not a standing femur measurement."
+    },
+    {
+      "index": 1,
+      "cropLTRB": [
+        512,
+        0,
+        1024,
+        768
+      ],
+      "headBounds": [
+        208,
+        12,
+        116,
+        124
+      ],
+      "shoulders": [
+        [
+          174,
+          166
+        ],
+        [
+          338,
+          166
+        ]
+      ],
+      "hip": [
+        260,
+        404
+      ],
+      "knee": [
+        260,
+        422
+      ],
+      "ankle": [
+        260,
+        710
+      ],
+      "visibleAlphaBounds": [
+        132,
+        12,
+        341,
+        755
+      ],
+      "reviewNotes": "Approximate manually inspected landmarks; projected seated thigh length is not a standing femur measurement."
+    },
+    {
+      "index": 2,
+      "cropLTRB": [
+        0,
+        768,
+        512,
+        1536
+      ],
+      "headBounds": [
+        208,
+        12,
+        116,
+        124
+      ],
+      "shoulders": [
+        [
+          174,
+          166
+        ],
+        [
+          338,
+          166
+        ]
+      ],
+      "hip": [
+        260,
+        404
+      ],
+      "knee": [
+        260,
+        422
+      ],
+      "ankle": [
+        260,
+        710
+      ],
+      "visibleAlphaBounds": [
+        128,
+        14,
+        353,
+        755
+      ],
+      "reviewNotes": "Approximate manually inspected landmarks; projected seated thigh length is not a standing femur measurement."
+    },
+    {
+      "index": 3,
+      "cropLTRB": [
+        512,
+        768,
+        1024,
+        1536
+      ],
+      "headBounds": [
+        208,
+        12,
+        116,
+        124
+      ],
+      "shoulders": [
+        [
+          174,
+          166
+        ],
+        [
+          338,
+          166
+        ]
+      ],
+      "hip": [
+        260,
+        404
+      ],
+      "knee": [
+        260,
+        422
+      ],
+      "ankle": [
+        260,
+        710
+      ],
+      "visibleAlphaBounds": [
+        152,
+        14,
+        344,
+        755
+      ],
+      "reviewNotes": "Approximate manually inspected landmarks; projected seated thigh length is not a standing femur measurement."
+    }
+  ]
+}

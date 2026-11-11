@@ -1,0 +1,57 @@
+{
+  "date": "2026-11-04",
+  "scope": "Approved quiet seated poses 0,1,2,7; uniform source-space placement only; no image regeneration or anatomy alteration",
+  "assets": [
+    {
+      "pose": 0,
+      "asset": "loki_approved_seated_thought_20261102.png",
+      "sourceSha256": "2cac328c521145381724bea27cb64150364b85195a5a4eb454c1e848d94c7592",
+      "sourceSize": [
+        1024,
+        1536
+      ],
+      "crown": 18,
+      "footExclusive": 1521,
+      "rasterUnchanged": true
+    },
+    {
+      "pose": 1,
+      "asset": "loki_approved_seated_cross_a_20261102.png",
+      "sourceSha256": "6ea9bb151085b16e45a1949dd75e2b8b88125f707dd3ceedd98c592d840714bf",
+      "sourceSize": [
+        1024,
+        1536
+      ],
+      "crown": 32,
+      "footExclusive": 1534,
+      "rasterUnchanged": true
+    },
+    {
+      "pose": 2,
+      "asset": "loki_approved_seated_cross_b_20261102.png",
+      "sourceSha256": "b2cc8ef4a822095303964eba26d7e40f019de276ba34cdb6d9fadf730d81f39b",
+      "sourceSize": [
+        1024,
+        1536
+      ],
+      "crown": 39,
+      "footExclusive": 1504,
+      "rasterUnchanged": true
+    },
+    {
+      "pose": 7,
+      "asset": "loki_approved_sofa_relaxed_20261102.png",
+      "sourceSha256": "1b07b9c71723bc05cfc6d10df7808ff961c78f96b99de63fc69b33071b7af5b2",
+      "sourceSize": [
+        887,
+        1774
+      ],
+      "crown": 48,
+      "footExclusive": 1703,
+      "rasterUnchanged": true
+    }
+  ],
+  "baseline": "Current approved thinking pose 0 apparent eye spacing",
+  "checks": "236 geometry invariants passed, including image padding, decoder size, crop/head safety and unchanged non-seated rest layout",
+  "previewMethod": "Pillow composition from production Java coordinates; not device capture"
+}

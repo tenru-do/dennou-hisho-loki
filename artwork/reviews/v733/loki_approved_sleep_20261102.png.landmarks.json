@@ -1,0 +1,28 @@
+{
+  "imageWidth": 911,
+  "imageHeight": 1727,
+  "frames": [
+    {
+      "index": 0,
+      "cropLTRB": [
+        0,
+        0,
+        911,
+        1727
+      ],
+      "headBounds": [
+        320,
+        17,
+        300,
+        338
+      ],
+      "visibleAlphaBounds": [
+        92,
+        18,
+        899,
+        1684
+      ],
+      "reviewNotes": "Manually inspected on black; approximate head bounds, not an automatic anatomy certificate."
+    }
+  ]
+}

@@ -2,11 +2,15 @@ package com.example.rokidkeyboardbridge;
 import android.content.Context;import android.graphics.*;import java.io.InputStream;
 /** New registered bust artwork, animated locally; no sensors, network or view timers. */
 final class PortraitExpressionRenderer {
+  private final QuietPosePerformance feedback=new QuietPosePerformance();
+  private final WarmPresencePolicy warmth=new WarmPresencePolicy();boolean warmMoving(long now){return warmth.active(now);}
+ void warmUser(String text,long now){warmth.user(text,now);}
  private final PortraitAttentionMotion attention=new PortraitAttentionMotion();
  final CharacterRapportPolicy rapport=new CharacterRapportPolicy();
  private VirtualContactPolicy.Frame contact=VirtualContactPolicy.Frame.EMPTY;private long contactTime;
  void virtualContact(VirtualContactPolicy.Frame value,long now){contact=value;contactTime=now;}
  boolean virtualMoving(){return VirtualContactPresentation.pulse(contact,System.currentTimeMillis())>0;}
+ private boolean naturalColorAtlas;
  private Bitmap sequenceAtlas;
  private Bitmap atlas,frame,previousFrame;private long frameChangedAt;private int frameCell=-1,previous=-1,ack;
  private long cueAt=-1,changedAt,previewUntil;private int cue,previewCell=-1;
@@ -17,20 +21,22 @@ final class PortraitExpressionRenderer {
  PortraitExpressionRenderer(Context context){
   try(InputStream input=context.getAssets().open("loki_identity_portraits_v686.png")){
    Bitmap raw=BitmapFactory.decodeStream(input);if(raw==null)throw new IllegalStateException("missing portrait atlas");
+   naturalColorAtlas=FullBodyFaceAnimator.naturalColor(raw);
    atlas=FullBodyPortraitInk.render(raw);raw.recycle();
   }catch(Exception error){android.util.Log.e("LokiPortraitLife","New portrait atlas unavailable",error);}
   sequenceAtlas=atlas; // One shared identity, decoded once for both expression libraries.
  }
  void cancelPreview(){previewCell=-1;previewUntil=0;}
  void clearContactCues(){rapport.clear();cueAt=-1;previewUntil=0;previewCell=-1;}
- boolean transitioning(long now){return previousFrame!=null&&now>=frameChangedAt&&now-frameChangedAt<240;}
+ boolean transitioning(long now){return warmth.active(now)||feedback.active(now)||previousFrame!=null&&now>=frameChangedAt&&now-frameChangedAt<240;}
  boolean ready(){return atlas!=null&&!atlas.isRecycled();}
  Bitmap[] retained(){return new Bitmap[]{atlas,frame,sequenceAtlas,previousFrame};}
  void preview(int cell,long now){if(cell>=0&&cell<24){previewCell=cell;previewUntil=now+6000;}}
- void react(long now,boolean touching,int direction){rapport.life.touch(now,direction,CharacterTouchTempo.duration(now),touching);rapport.touch(now);cueAt=now;cue=touching?7:ACK[ack];ack=(ack+1)%ACK.length;if(direction!=0&&!touching)cue=direction%2==0?2:5;}
- void release(){rapport.clear();if(previousFrame!=null&&!previousFrame.isRecycled())previousFrame.recycle();previousFrame=null;if(frame!=null&&!frame.isRecycled())frame.recycle();if(atlas!=null&&!atlas.isRecycled())atlas.recycle();if(sequenceAtlas!=null&&sequenceAtlas!=atlas&&!sequenceAtlas.isRecycled())sequenceAtlas.recycle();frame=atlas=sequenceAtlas=null;frameCell=-1;}
+ void react(long now,boolean touching,int direction){feedback.accepted(now,touching,CharacterContactPoint.resolve("",now),direction);rapport.life.touch(now,direction,CharacterTouchTempo.duration(now),touching);rapport.touch(now);cueAt=now;cue=touching?7:ACK[ack];ack=(ack+1)%ACK.length;if(direction!=0&&!touching)cue=direction%2==0?2:5;}
+ void release(){warmth.clear();rapport.clear();if(previousFrame!=null&&!previousFrame.isRecycled())previousFrame.recycle();previousFrame=null;if(frame!=null&&!frame.isRecycled())frame.recycle();if(atlas!=null&&!atlas.isRecycled())atlas.recycle();if(sequenceAtlas!=null&&sequenceAtlas!=atlas&&!sequenceAtlas.isRecycled())sequenceAtlas.recycle();frame=atlas=sequenceAtlas=null;frameCell=-1;}
  private static float weight(float x,float y,float cx,float cy,float rx,float ry){float dx=(x-cx)/rx,dy=(y-cy)/ry;return Math.max(0,1-dx*dx-dy*dy);}
  boolean draw(Canvas canvas,int width,int height,int expression,int mode,boolean speaking,boolean quiet,long now){
+  feedback.update(mode,CharacterChoreography.phase,quiet?1:CharacterChoreography.scene,null,now);if(quiet)warmth.clear();
   rapport.life.performance.mode(now,mode);attention.mode(mode,now);
   int cell=PortraitExpressionPolicy.cell(expression,mode,now,cueAt,cue,quiet);boolean asking=CharacterChoreography.clarifying(now)&&!quiet&&!speaking;if(asking)cell=1;
   if(cell<0&&expression==8&&contact.visible()&&!quiet)cell=7;
@@ -50,6 +56,12 @@ final class PortraitExpressionRenderer {
    else if(previewCell>=0&&now<previewUntil)sequenceCell=-1;
   }
   if(asking)sequenceCell=15;
+  if(!quiet&&PortraitExpressionPolicy.supports(expression)&&now>=previewUntil&&!contact.visible()&&!rapport.active(now)){
+   if(feedback.ready(now)>0){sequenceCell=-1;cell=5;}
+   else if(CharacterChoreography.phase==CharacterChoreography.THINK){sequenceCell=-1;cell=4;}
+   else if(mode==0&&CharacterChoreography.scene==2&&!feedback.active(now)){sequenceCell=-1;cell=PortraitExpressionPolicy.IDLE[(int)(Math.max(0,now)/16000%PortraitExpressionPolicy.IDLE.length)];}
+  }
+  if(!quiet&&warmth.active(now)&&PortraitExpressionPolicy.supports(expression)&&now>=previewUntil&&!contact.visible()){sequenceCell=-1;cell=warmth.portraitCell(now);}
   int key=sequenceCell>=0?32+sequenceCell:cell;
   if(frameCell!=key||frame==null){if(previousFrame!=null&&!previousFrame.isRecycled())previousFrame.recycle();previousFrame=frame;frameChangedAt=now;Bitmap selected=sequenceCell>=0?sequenceAtlas:atlas;int selectedCell=sequenceCell>=0?sequenceCell:cell;int w=selected.getWidth()/4,h=selected.getHeight()/6;if(sequenceCell>=0)selectedCell+=8;
    src.set(selectedCell%4*w,selectedCell/4*h,(selectedCell%4+1)*w,(selectedCell/4+1)*h);frame=Bitmap.createBitmap(selected,src.left,src.top,w,h);frameCell=key;}
@@ -60,10 +72,11 @@ final class PortraitExpressionRenderer {
   float gazeY=quiet?0:rapport.life.performance.buttonVertical(now)*80;
   float rapportLean=rapport.lean(now,mode,quiet)+(contact.direction==2?-1:1)*.7f*contactPulse,rapportGaze=rapport.gaze(now,mode,quiet);
   float invitation=contact.visible()?0:rapport.life.invitationFor(now,mode,quiet);
+  rapportLean+=warmth.tilt(now,mode,quiet);rapportGaze+=warmth.gaze(now,mode,quiet)*2;
   rapportLean+=invitation*.35f+rapport.life.lean(now,mode,quiet)*35;rapportGaze+=rapport.life.gaze(now,mode,quiet)*80;rapportGaze+=attention.gaze(now,quiet)*80;if(!quiet)rapportGaze+=CharacterChoreography.lead(rapport.life.age(now))*.25f;rapportGaze*=CharacterMotionTuning.eyes();rapportLean*=CharacterMotionTuning.body();
-  pulse*=CharacterMotionTuning.scale();
+  pulse*=CharacterMotionTuning.scale()*(CharacterChoreography.scene==2?.35f:1f);
   float nod=h*((mode==1?.018f:.010f)*pulse*CharacterMotionTuning.face()+rapport.life.nod(now,mode,quiet)+attention.nod(now,quiet)),breath=quiet?0:h*.006f*(rapport.life.performance.breath(now)-.5f)*CharacterMotionTuning.body();
-  float x=(width-w)*.5f,y=(height-h)*.45f+nod+breath;dst.set(x,y,x+w,y+h);
+  float x=(width-w)*.5f,y=(height-h)*.45f+nod+breath+h*.004f*feedback.nod(now);dst.set(x,y,x+w,y+h);
   float blinkPhase=Math.max(0,now)%4700;float blink=blinkPhase<280?.12f+.88f*Math.abs(blinkPhase-140)/140:1;
   blink=1-(1-blink)*CharacterMotionTuning.eyes();
   float talk=speaking?rapport.life.performance.mouth(now)*CharacterMotionTuning.face():0;
@@ -75,7 +88,8 @@ final class PortraitExpressionRenderer {
    for(int eye=0;eye<2;eye++){
     float ex=eye==0?.414f:.607f,ey=.455f;
     float eyeWeight=weight(u,v,ex,ey,.075f,.040f);
-    boolean closed=cell==3||(cell==2&&eye==1);
+    int atlasCell=sequenceCell>=0?sequenceCell+8:cell;
+    boolean closed=PortraitEyePolicy.closed(atlasCell,eye);
     if(!closed)dy+=(v-ey)*(blink-1)*eyeWeight;
     if(!quiet&&!closed)dx+=(.006f*pulse*(cell==4?-1:1)*CharacterMotionTuning.eyes()+.007f*rapportGaze)*eyeWeight;
     if(!quiet&&!closed)dy+=.007f*gazeY*eyeWeight;
@@ -86,12 +100,12 @@ final class PortraitExpressionRenderer {
   }
   int save=canvas.save();canvas.rotate(quiet?0:CharacterMotionTuning.face()*(rapport.life.tilt(now,mode,quiet)+attention.tilt(now,quiet)+2.0f*rapportLean+(cell==4?-2f:cell==5?1.5f:cell==7?-1.5f:1)*pulse),dst.centerX(),dst.bottom);
   paint.setAlpha(Math.round(255*(.80f+.20f*Math.min(1,Math.max(0,now-changedAt)/180f))));
-  float proximity=quiet?0:Math.min(.022f,Math.abs(rapportLean)*.014f*CharacterMotionTuning.approach());canvas.scale(1+proximity,1+proximity,dst.centerX(),dst.bottom);
+  float proximity=quiet?0:Math.min(.022f,Math.abs(rapportLean)*.014f*CharacterMotionTuning.approach());proximity+=warmth.approach(now,mode,quiet);canvas.scale(1+proximity,1+proximity,dst.centerX(),dst.bottom);
   float transition=Math.min(1,Math.max(0,now-frameChangedAt)/240f);
   if(previousFrame!=null){if(transition<1){paint.setAlpha(Math.round(255*(1-transition)));float ph=Math.min(height*.94f,width*.94f*previousFrame.getHeight()/(float)previousFrame.getWidth()),pw=ph*previousFrame.getWidth()/previousFrame.getHeight();transitionRect.set((width-pw)/2,(height-ph)*.45f,(width+pw)/2,(height-ph)*.45f+ph);canvas.drawBitmap(previousFrame,null,transitionRect,paint);}else{previousFrame.recycle();previousFrame=null;}}
   paint.setAlpha(Math.round(255*(previousFrame==null?1:transition)));
   if(CharacterRenderBudget.quality<2)canvas.drawBitmapMesh(frame,24,24,mesh,0,null,0,paint);else canvas.drawBitmap(frame,null,dst,paint);
-  if(speaking&&sequenceCell<0&&cell!=6&&talk>.2f){
+  if(speaking&&!naturalColorAtlas&&sequenceCell<0&&cell!=6&&talk>.2f){
    paint.setColor(Color.rgb(0,18,20));float mx=dst.left+w*.50f,my=dst.top+h*.625f;
    canvas.drawOval(mx-w*.024f,my-h*.006f*talk,mx+w*.024f,my+h*.012f*talk,paint);paint.setColor(Color.WHITE);
   }

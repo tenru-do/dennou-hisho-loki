@@ -70,7 +70,7 @@ final class DailyContextSync implements SensorEventListener, AutoCloseable {
                             if (count == null) throw new IllegalStateException("No Health Connect steps");
                             long now = System.currentTimeMillis();
                             prefs.edit().putString("health_date", day).putString("health_compact", "歩数 " + count)
-                                    .putLong("health_time", now).putLong("health_connect_time", now).apply();
+                                    .putLong("health_time", now).putLong("health_connect_time", now).putLong("health_connect_steps",count).putLong("health_connect_sensor_total",prefs.getLong("sensor_step_latest",-1)).putString("health_source","Health Connect").apply();
                             return true;
                         }, false, LOG);
                     }
@@ -166,11 +166,12 @@ final class DailyContextSync implements SensorEventListener, AutoCloseable {
             long base = prefs.getLong("sensor_step_base", total);
             if (!day.equals(prefs.getString("sensor_step_day", "")) || total < base) base = total;
             SharedPreferences.Editor editor = prefs.edit().putString("sensor_step_day", day)
-                    .putLong("sensor_step_base", base);
+                    .putLong("sensor_step_base", base).putLong("sensor_step_latest",total);
             if (!day.equals(prefs.getString("health_date", ""))
                     || System.currentTimeMillis() - prefs.getLong("health_connect_time", 0L) > 180000L)
-                editor.putString("health_date", day).putString("health_compact", "歩数 " + Math.max(0, total - base))
-                        .putLong("health_time", System.currentTimeMillis());
+                {long estimate=Math.max(0,total-base);String source="端末センサー（起動後の概算）";
+                if(day.equals(prefs.getString("health_date",""))&&prefs.getLong("health_connect_time",0)>0){long anchor=prefs.getLong("health_connect_sensor_total",-1);estimate=StepCountContinuity.estimate(prefs.getLong("health_connect_steps",0),anchor,total,base,true);source="Health Connect＋端末差分（概算）";}
+                editor.putString("health_date",day).putString("health_compact","歩数 "+estimate).putString("health_source",source).putLong("health_time",System.currentTimeMillis());}
             editor.apply();
             return true;
         }, false, LOG);

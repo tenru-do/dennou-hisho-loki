@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "approvedOn": "2026-11-02",
+  "approval": "ユーザー「追加採用」",
+  "items": [
+    {
+      "file": "01-seated-crossed-raised.png",
+      "label": "脚組み・脚位置差分A",
+      "role": "pose-source",
+      "sha256": "07febf88b56d2ef7b0c4a376e3ad210bb18ebf6192eeeffa6088bc6c948c2577",
+      "approved": true,
+      "originalUnchanged": true,
+      "runtimeIntegrated": true,
+      "runtimeVersion": 702
+    },
+    {
+      "file": "02-seated-crossed-lowered.png",
+      "label": "脚組み・脚位置差分B",
+      "role": "pose-source",
+      "sha256": "19603a3b83beeb1f881467588e239fd91cc351fa39b29a111770f13a990c7d91",
+      "approved": true,
+      "originalUnchanged": true,
+      "runtimeIntegrated": true,
+      "runtimeVersion": 702
+    },
+    {
+      "file": "03-seated-single-leg-raised.png",
+      "label": "座位・片脚を上げるポーズ",
+      "role": "pose-source",
+      "sha256": "7924b218c15f9d5f5b71d7b01bc8758b07616e048f5eca42407c7fea432bd44e",
+      "approved": true,
+      "originalUnchanged": true,
+      "runtimeIntegrated": false
+    },
+    {
+      "file": "04-seated-both-legs-raised.png",
+      "label": "座位・両脚を上げるポーズ",
+      "role": "pose-source",
+      "sha256": "c647ddb7f33c336d304634c9e28aa2b2959489bc79f5e3086530d69e29c8922e",
+      "approved": true,
+      "originalUnchanged": true,
+      "runtimeIntegrated": false
+    },
+    {
+      "file": "05-display-preview.png",
+      "label": "表示参考・縮小画像／右上UIあり",
+      "role": "display-reference",
+      "sha256": "b557e186614a84c75a17c84a2eb3554c8ef620c681e23fa9877bac4e9aade3e1",
+      "approved": true,
+      "originalUnchanged": true,
+      "runtimeIntegrated": false
+    }
+  ],
+  "standingReferenceUnchanged": true,
+  "note": "追加ポーズとして承認。体格の全体基準は既存立位原本を維持。画像5は表示参考であり原画の代わりに使わない。APK組み込み・動作化は未実施。",
+  "integrationDetails": "通常の座位・休息6枚の実装。詳細はquiet-poses-runtime-v702.json。"
+}

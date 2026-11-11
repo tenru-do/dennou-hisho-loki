@@ -65,10 +65,10 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/MainActivity.java",
-      "sha256": "365967762d76ccbab7e6bbae413451f59ede27c8b3e5ed10a3aeca017909e892",
+      "sha256": "e7a440347b39901f87a232db0daeca338e8b13f0fbc3551d1583b9a70247702d",
       "start": "    private String buildGeminiPromptCompact(String str, boolean includeHistory)",
       "end": "    private JSONObject fetchOptionalImportedMemory(",
-      "validation": "docs/virtual-contact-v659.md; isolated Android contact/VOICE/state-persistence checks, production prompt/envelope captures with synthetic scene state; user-authorized two Gemini requests HTTP200/STOP, retained hand and released hand verified; no user dialogue/settings/photos or retries."
+      "validation": "2026-11-11 authorized synthetic calendar verification: real current Main prompt/envelope on isolated Android, 43 glass +13 phone checks, outputs/navigation-topic-delivery-v735/bootstrap-native.json. Two authorized Gemini calls HTTP200/STOP: named-calendar reply correctly scoped and no false access denial; general listing omitted ownership, so final general-listing path uses source calendar data directly, verified by actual requestGeminiWithRetry with a non-provider key and no network. No real calendar, conversation, photo or personal settings sent. Provider budget exhausted; no retries."
     },
     {
       "app": "glass",
@@ -188,8 +188,8 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/RestAnimationIntent.java",
-      "sha256": "7ae6d1dbe5195d44e8d6be65189a0228c73f417a716410d01255959c153052be",
-      "validation": "2026-10-27 v677 fresh isolated Android source checks 1783; new local facial controls tested through MainActivity with provider budget zero. Provider payload unchanged. docs/REST-CONVERSATION-v677.md"
+      "sha256": "616bfd506d7f2a3d23136bd6c5caa9e3e21446693bd6b78809d6cb0588705f32",
+      "validation": "2026-11-05 v733: fresh actual Android self-target candidate DEX-first check, 148 assertions. Local display replies for bedding-free knee fallback and fidget only; action/applicability bytecode unchanged from v732 and all other protected provider sections unchanged. Provider budget remains zero, no authentication or production app data. docs/rest-local-reply-v733-device.json. This is not a model response or artwork validation."
     },
     {
       "app": "glass",
@@ -208,6 +208,12 @@
       "path": "glass-app/src/com/example/rokidkeyboardbridge/EnergySampleTime.java",
       "sha256": "8e281e73c2502f10d289d99a1454b9b4574e29a971bc9aefff224e88c7696bb6",
       "validation": "2026-10-29: reviewed synthetic complete payload; fresh isolated Android device check 446 assertions including SDK measurement freshness, missing timestamp rejection and encrypted cache; outputs/sdk-v695-preflight. No external API calls. Historical live evidence is not SDK integration proof."
+    },
+    {
+      "app": "glass",
+      "path": "glass-app/src/com/example/rokidkeyboardbridge/CalendarReadContext.java",
+      "sha256": "a419736bb801592f70b7cc2824bf2931e254f380ec5e8a1e38b40d0eda47372f",
+      "validation": "Same isolated actual Main/payload and authorized provider evidence as v735 calendar prompt; read-only scope, explicit ownership, range inheritance and deterministic listing covered by V735GlassChecks."
     }
   ],
   "extensions": [

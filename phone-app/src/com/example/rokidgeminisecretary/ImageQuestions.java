@@ -54,7 +54,8 @@ final class ImageQuestions {
         for(String line:lines){paint.setTextSize(size);float measured=paint.measureText(line);if(measured>width-pad*2)paint.setTextSize(size*(width-pad*2)/measured);canvas.drawText(line,pad,y,paint);y+=size*1.35f;}
     }
     static File root(Context c){File f=new File(c.getFilesDir(),"image-questions");f.mkdirs();return f;}
-    static synchronized void prune(Context c){File[] files=root(c).listFiles();if(files!=null)for(File f:files)if(System.currentTimeMillis()-f.lastModified()>TTL)f.delete();}
+    static boolean pending(Context c,String id){try{org.json.JSONArray queue=new org.json.JSONArray(c.getSharedPreferences("phone_secretary",0).getString("pending_command_queue","[]"));for(int i=0;i<queue.length();i++){String wire=queue.optString(i);if(wire.startsWith("__LOKI_IMAGE__:")&&id.equals(new JSONObject(wire.substring("__LOKI_IMAGE__:".length())).optString("id")))return true;}return false;}catch(Exception unavailable){return true;}}
+    static synchronized void prune(Context c){File[] files=root(c).listFiles();if(files!=null)for(File f:files)if(f.getName().matches("[a-f0-9-]{36}\\.gcm")&&System.currentTimeMillis()-f.lastModified()>TTL&&!pending(c,f.getName().substring(0,36)))f.delete();}
     static File file(Context c,String id)throws IOException{if(!id.matches("[a-f0-9-]{36}"))throw new IOException("画像IDが無効です");return new File(root(c),id+".gcm");}
     /** Reject malformed requests before recovery writes or image/video generation routing. */
     static void validateInput(String requestId,String question,byte[] jpeg)throws IOException {
@@ -94,7 +95,7 @@ final class ImageQuestions {
         packet.put("queued",true);save(f,packet);
         return new JSONObject().put("queued",true).put("id",id);
     }
-    static synchronized JSONObject read(Context c,String id)throws Exception{File f=file(c,id);if(!f.isFile())throw new IOException("画像がありません。選択して再送してください");JSONObject j=new JSONObject(new String(DeviceSecrets.photos().decrypt(Files.readAllBytes(f.toPath())),java.nio.charset.StandardCharsets.UTF_8));if(j.getLong("expires")<System.currentTimeMillis()){f.delete();throw new IOException("画像の期限が切れました。選択して再送してください");}return j;}
+    static synchronized JSONObject read(Context c,String id)throws Exception{File f=file(c,id);if(!f.isFile())throw new IOException("画像がありません。選択して再送してください");JSONObject j=new JSONObject(new String(DeviceSecrets.photos().decrypt(Files.readAllBytes(f.toPath())),java.nio.charset.StandardCharsets.UTF_8));if(j.getLong("expires")<System.currentTimeMillis()){if(!pending(c,id))f.delete();throw new IOException("画像の期限が切れました。選択して再送してください");}return j;}
     static void save(File f,JSONObject packet)throws Exception{File temp=new File(f.getParentFile(),f.getName()+".tmp");try(FileOutputStream out=new FileOutputStream(temp)){out.write(DeviceSecrets.photos().encrypt(packet.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));out.getFD().sync();}Files.move(temp.toPath(),f.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING);f.setLastModified(packet.getLong("expires")-TTL);}
     static synchronized void complete(Context c,String id)throws Exception{JSONObject j=read(c,id);j.remove("data");j.put("complete",true);save(file(c,id),j);}
 }

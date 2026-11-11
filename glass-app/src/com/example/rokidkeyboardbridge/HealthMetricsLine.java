@@ -10,7 +10,7 @@ final class HealthMetricsLine {
   int balance=energy.optInt("balanceKcal",Integer.MIN_VALUE);String source=energy.optString("source");boolean sdk="HEALBE_SDK".equals(source);long at=sdk?energy.optLong("observedAt"):EnergySampleTime.at(energy);if(sdk&&energy.optLong("measuredAt")<=0)return walking+"  収支 --";
   if(balance< -15000||balance>15000||at<=0||!source.matches("HEALBE_SCREEN|HEALBE_NOTIFICATION|HEALBE_SDK"))return walking+"  収支 --";
   String today=Instant.ofEpochMilli(now).atZone(zone).toLocalDate().toString();
-  if(now<at||!today.equals(energy.optString("date"))||!today.equals(Instant.ofEpochMilli(at).atZone(zone).toLocalDate().toString()))return walking+"  収支 --(日付確認)";
+  if(now<at||!today.equals(energy.optString("date"))||!today.equals(Instant.ofEpochMilli(at).atZone(zone).toLocalDate().toString()))return walking+"  収支 --(日付確認・同期待ち)";
   return walking+"  収支"+(balance>0?"+":"")+balance+"kcal"+(sdk?(now-at>900000?"(同期"+((now-at)/60000)+"分前)":"※(同期"+((now-at)/60000)+"分前)"):(now-at>900000?"("+((now-at)/60000)+"分前)":"※"));
  }
 }

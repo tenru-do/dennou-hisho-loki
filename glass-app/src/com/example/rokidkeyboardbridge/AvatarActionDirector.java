@@ -2,8 +2,8 @@ package com.example.rokidkeyboardbridge;
 /** Latest visual request and actual-render receipt. No provider, persistence or commands. */
 final class AvatarActionDirector {
  static final int STAND=0,SEAT=1,LIE=2,ANY=-1;
- private int drawn=-1;int drawn(){return drawn;}
- private long epoch,at=-1,confirmed=-1,lastFrame=-1,recovered=-30000;private int expected=-1,attempts;private boolean pending,failed;private String request="";
+ private volatile int drawn=-1;int drawn(){return drawn;}
+ private long epoch,at=-1,confirmed=-1,lastFrame=-1,recovered=-30000;private int expected=-1,attempts;private volatile boolean pending,failed;private String request="";
  static boolean stop(String text){String t=RestPoseIntent.normalize(text).replaceFirst("^ロキ[、, :：]*","");return t.matches("(?:動き(?:を|は)?(?:止めて|停止して)|動かないで|その姿勢で止まって|仕草を止めて)[。！!\\s]*");}
  static int posture(String text){int p=EmbodiedScenePolicy.postureCommand(text);return p>=0?p:RestPoseIntent.wantsLie(RestPoseIntent.kind(text))?LIE:ANY;}
  long begin(String text,long now){String t=text==null?"":text;if(t.equals(request)&&pending&&now>=at&&now-at<1500)return epoch;epoch++;attempts=0;request=t;at=now;confirmed=-1;failed=false;pending=true;expected=posture(t);return epoch;}

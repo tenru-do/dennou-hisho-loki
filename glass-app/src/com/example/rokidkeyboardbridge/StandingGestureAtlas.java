@@ -5,7 +5,7 @@ final class StandingGestureAtlas {
  static String asset(int clip){return clip==2||clip==24?"loki_standing_accessory_v685.png":"loki_standing_gestures_v685.png";}
  static float headCenter(int clip,int frame,int width){
   int column=clip==22?new int[]{1,2,3,0}[frame]:frame;
-  float[] centers=clip==2||clip==24?new float[]{250/1536f,615/1536f,980/1536f,1345/1536f}:new float[]{176/1086f,418/1086f,660/1086f,903/1086f};
+  float[] centers=clip==2||clip==24?new float[]{249/1536f,574/1536f,933/1536f,1285/1536f}:new float[]{176/1086f,418/1086f,660/1086f,903/1086f};
   return centers[column]*width-column*width/4;
  }
  static void protectHead(float[] mesh,int columns,int rows,float width,float height,float top,float bottom){

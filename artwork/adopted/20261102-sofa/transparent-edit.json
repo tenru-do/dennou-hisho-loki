@@ -1,0 +1,7 @@
+{
+  "tool": "built-in image_gen",
+  "edit": "Remove background and sofa, preserve adult identity, proportions, clothing and crossed-leg pose; genuine transparent background",
+  "source": "loki-sofa-relaxed.png",
+  "output": "loki-seated-relaxed-transparent.png",
+  "sha256": "5c8da73d29c2d47a32f9683d1473e89ad203960ce4100bbef071529232747e88"
+}

@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "assets": [
+    {
+      "asset": "loki_approved_seated_thought_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_seated_thought_20261102.png",
+      "sha256": "2cac328c521145381724bea27cb64150364b85195a5a4eb454c1e848d94c7592",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_seated_thought_20261102.png",
+        "source": "artwork/reference/loki-user-approved-seated-20261102.png",
+        "sha256": "6fab8af66e029fd0825a00a0d0d04ef6794a6df2e67f52cbfc4113ce58ee43b0",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    },
+    {
+      "asset": "loki_approved_seated_cross_a_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_seated_cross_a_20261102.png",
+      "sha256": "6ea9bb151085b16e45a1949dd75e2b8b88125f707dd3ceedd98c592d840714bf",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_seated_cross_a_20261102.png",
+        "source": "artwork/adopted/20261102-seated-additions/01-seated-crossed-raised.png",
+        "sha256": "07febf88b56d2ef7b0c4a376e3ad210bb18ebf6192eeeffa6088bc6c948c2577",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    },
+    {
+      "asset": "loki_approved_seated_cross_b_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_seated_cross_b_20261102.png",
+      "sha256": "b2cc8ef4a822095303964eba26d7e40f019de276ba34cdb6d9fadf730d81f39b",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_seated_cross_b_20261102.png",
+        "source": "artwork/adopted/20261102-seated-additions/02-seated-crossed-lowered.png",
+        "sha256": "19603a3b83beeb1f881467588e239fd91cc351fa39b29a111770f13a990c7d91",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    },
+    {
+      "asset": "loki_approved_sleep_20261102.png",
+      "source": "artwork/revisions/rest-no-bedding-v733/loki_approved_sleep_20261102.png",
+      "sha256": "8b9451b36225261a4d1a438be43b5b88867785b4d3e50a24a11f59c9f1a29092",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_sleep_20261102.png",
+        "source": "artwork/adopted/20261102-rest-sleep/loki-sleep-overhead.png",
+        "sha256": "9ce97c6898b0e846c9893084beb9196e59e3b2f59144319098f50fc1b7bab9e1",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v733/loki_approved_sleep_20261102.png.review.json"
+    },
+    {
+      "asset": "loki_approved_rest_arms_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_rest_arms_20261102.png",
+      "sha256": "35eccb47898c83fdcf7849654cbb9a1bc31cee1daad24f380d8d50e1e277772a",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_rest_arms_20261102.png",
+        "source": "artwork/adopted/20261102-rest-sleep/loki-rest-arms-relaxed.png",
+        "sha256": "c9e973ca1da7bde49219c021e644f421aee8526f65ca256db14be68024d8204c",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    },
+    {
+      "asset": "loki_approved_rest_hands_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_rest_hands_20261102.png",
+      "sha256": "28b8240a511e24e70a83ac1bbd92e1f796c22bb2d2ffe804cd9bfdc267896bf0",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_rest_hands_20261102.png",
+        "source": "artwork/adopted/20261102-rest-sleep/loki-rest-hands-together.png",
+        "sha256": "56c11cf7abaecfd434e865c18d7476d9659bb36340da3b8c143cdc2cad92d1e6",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    },
+    {
+      "asset": "loki_approved_rest_listening_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_rest_listening_20261102.png",
+      "sha256": "a57b96ca1310ff75bcc3ba360420715e0a9593c70ce95847f86b966623a4a943",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_rest_listening_20261102.png",
+        "source": "artwork/adopted/20261102-rest-sleep/loki-rest-listening.png",
+        "sha256": "a51ef0aea2d0c319fba34f72122b8d17458703e6c8e5ec3aa690be22e3eeca28",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    },
+    {
+      "asset": "loki_approved_sofa_relaxed_20261102.png",
+      "source": "artwork/revisions/color-v712/transparent/loki_approved_sofa_relaxed_20261102.png",
+      "sha256": "1b07b9c71723bc05cfc6d10df7808ff961c78f96b99de63fc69b33071b7af5b2",
+      "originalUnchanged": false,
+      "derivedFrom": {
+        "asset": "loki_approved_sofa_relaxed_20261102.png",
+        "source": "artwork/adopted/20261102-sofa/loki-seated-relaxed-transparent.png",
+        "sha256": "5c8da73d29c2d47a32f9683d1473e89ad203960ce4100bbef071529232747e88",
+        "originalUnchanged": true
+      },
+      "review": "artwork/reviews/v712/quiet-color-review.json"
+    }
+  ],
+  "animation": "local chest micro-motion, original eye/mouth patches, crossfade; no new generated images",
+  "note": "v704：通常の座位・休息のみ。既存6枚にユーザー提供の開眼休息画像を追加。",
+  "scope": "Seven reviewed natural-color derivatives and v733 furniture-free sleep derivative; original sources retained; not full artwork migration"
+}

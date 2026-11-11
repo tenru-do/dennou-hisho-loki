@@ -77,7 +77,7 @@ public final class PhotoRecorderService extends Service {
    long captureStarted=SystemClock.elapsedRealtime(),captureWall=System.currentTimeMillis();byte[] jpeg;MainActivity host=MainActivity.recorderHost.get();
    RecorderPhotoLocation.refresh(host);
    try(AutoCloseable pause=host!=null&&!host.isDestroyed()?host.pauseMascotForCamera():()->{}){
-    jpeg=TopicObservationCapture.recorderPhoto(this,()->stopped);
+    jpeg=TopicObservationCapture.keepPhoto(this,()->stopped);
    }
    if(stopped)break;long captureMs=SystemClock.elapsedRealtime()-captureStarted;long saveStarted=SystemClock.elapsedRealtime();long capturedAt=System.currentTimeMillis();java.io.File saved=archive.save(jpeg,capturedAt);archive.metadata(saved,RecorderPhotoLocation.snapshot(capturedAt));failures=0;android.util.Log.i("LokiRecorderTiming","capture_ms="+captureMs+" save_ms="+(SystemClock.elapsedRealtime()-saveStarted)+" interval_ms="+interval);
    if(!stopped){MainActivity feedbackHost=MainActivity.recorderHost.get();if(feedbackHost!=null)feedbackHost.onKeepPhotoSaved();}
