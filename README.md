@@ -1,6 +1,6 @@
 ## 最新の公開版（アルファ版）
 
-グラス **v697**・スマホ **v303**（変更なし）・任意のHEALBE補助 **v4**。[変更内容・導入方法・検証範囲](docs/releases/healbe-v4.md)、[APKダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/healbe-v4)。
+グラス **v757**・スマホ **v321**・任意のHEALBE補助 **v6**。[変更内容・導入方法・検証範囲](docs/releases/glass-v757.md)、[APKダウンロード](https://github.com/tenru-do/dennou-hisho-loki/releases/tag/glass-v757)。既存の公開配布版と同じ署名です。開発版との署名の違いに注意してください。
 
 ## 最新のソース（2026-11-15）
 
