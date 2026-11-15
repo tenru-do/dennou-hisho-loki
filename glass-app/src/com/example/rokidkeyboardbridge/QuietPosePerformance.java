@@ -21,10 +21,10 @@ final class QuietPosePerformance {
  float gain(){return scene==1?0:scene==2?.35f:1f;}
  float acceptance(long now){return gain()*pulse(now-receivedAt,touch?950:650);}
  float ready(long now){return gain()*pulse(now-readyAt,1300);}
- float nod(long now){return acceptance(now)*(touch&&region==CharacterContactPoint.HAND?.12f:variant==0?.35f:variant==1?.55f:.43f)+ready(now)*.22f;}
+ float nod(long now){return acceptance(now)*(touch&&region==CharacterContactPoint.HAND?.12f:variant==0?.35f:variant==1?.55f:.43f)+ready(now)*.22f+ConversationStageMotion.nod(now,scene==1);}
  float hand(long now){return touch&&region==CharacterContactPoint.HAND?acceptance(now):0;}
  float shoulder(long now){return touch&&region==CharacterContactPoint.SHOULDER?acceptance(now):0;}
- float gazeX(long now){float e=expression(now)==THOUGHT?-.32f:expression(now)==CONCERN?.12f:(float)Math.sin(now/13000.0)*.10f;return e*(emotion==CALM?expressionGain(now):1)+(touch?(direction==1?.24f:direction==2?-.24f:0)*acceptance(now):0);}
+ float gazeX(long now){float e=expression(now)==THOUGHT?-.32f:expression(now)==CONCERN?.12f:(float)Math.sin(now/13000.0)*.10f;return ConversationStageMotion.gaze(now,scene==1)+e*(emotion==CALM?expressionGain(now):1)+(touch?(direction==1?.24f:direction==2?-.24f:0)*acceptance(now):0);}
  float gazeY(){return emotion==THOUGHT?.32f:emotion==CONCERN?.18f:emotion==RELIEF?.1f:0;}
  boolean active(long now){return gain()>0&&(acceptance(now)>0||ready(now)>0||now>=emotionAt&&now-emotionAt<650);}
  boolean mayChange(long now,boolean manual){return manual||mode==0&&scene!=1&&(receivedAt<0||now-receivedAt>=8000)&&(readyAt<0||now-readyAt>=8000);}

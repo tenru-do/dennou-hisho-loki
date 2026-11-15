@@ -1,9 +1,11 @@
 ﻿param([Parameter(Mandatory=$true)][string]$Classes,[Parameter(Mandatory=$true)][string]$Output)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
+& (Join-Path $PSScriptRoot 'Assert-CharacterDistanceCalibration.ps1') -Root $root
 New-Item -ItemType Directory -Force $Output | Out-Null
 $java=Join-Path $env:JAVA_HOME 'bin'
 $tests=@('HeadSafeCropTest','ContextVisualPlanTest','AvatarDirectorTest','CharacterVisualRefinementTest','RestLegRelaxTest','CalendarDispatchBoundaryTest','OffDutyRestTest','MotionScenesTest','CharacterGestureLifeTest','ContextReactionTest','RestNaturalIdleTest','NaturalPosePolicyTest','ComfortPoseTest','RestConversationReactionTest','KneeRestTest','RestAnimationTest','CharacterContinuityTest','RestPoseIntentTest','AvatarPostureContextTest','ShyFidgetMotionTest')
+$tests += 'RestPresenceMotionTest'
 $files=@($tests | ForEach-Object {Join-Path $root "tools/$_.java"})
 $tests += 'StepsExerciseAdviceTest'
 $files += Join-Path $root 'tools/StepsExerciseAdviceTest.java'
@@ -15,6 +17,10 @@ $tests += 'SeatedGreetingAtlasTest'
 $files += Join-Path $root 'tools/SeatedGreetingAtlasTest.java'
 $tests += 'SeatedGreetingGeometryTest'
 $files += Join-Path $root 'tools/SeatedGreetingGeometryTest.java'
+$tests += 'FixedCharacterDistanceTest'
+$files += Join-Path $root 'tools/FixedCharacterDistanceTest.java'
+$files += Join-Path $root 'tools/FullBodyFrameCoverageTest.java'
+$files += Join-Path $root 'tools/FullBodySceneScaleTest.java'
 $tests += 'SeatedAnkleMotionTest'
 $files += Join-Path $root 'tools/SeatedAnkleMotionTest.java'
 $tests += 'SeatedLegWardrobeMeshTest'
@@ -35,6 +41,14 @@ $tests += 'SeatedLegTweenTest'
 $files += Join-Path $root 'tools/SeatedLegTweenTest.java'
 $tests += 'DrapedSeatedMotionTest'
 $files += Join-Path $root 'tools/DrapedSeatedMotionTest.java'
+$tests += 'GreetingPresenceMotionTest'
+$files += Join-Path $root 'tools/GreetingPresenceMotionTest.java'
+$tests += 'ComfortPresenceMotionTest'
+$files += Join-Path $root 'tools/ComfortPresenceMotionTest.java'
+$tests += 'ConversationStageMotionTest'
+$files += Join-Path $root 'tools/ConversationStageMotionTest.java'
+$tests += 'HudResumePolicyTest'
+$files += Join-Path $root 'tools/HudResumePolicyTest.java'
 & "$java/javac.exe" -encoding UTF-8 -cp $Classes -d $Output @files
 if($LASTEXITCODE -ne 0){throw 'Character continuity test compilation failed'}
 foreach($test in $tests){& "$java/java.exe" -cp "$Output;$Classes" "com.example.rokidkeyboardbridge.$test";if($LASTEXITCODE -ne 0){throw "Character regression: $test"}}

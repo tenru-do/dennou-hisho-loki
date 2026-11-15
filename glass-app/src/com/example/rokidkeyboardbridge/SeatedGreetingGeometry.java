@@ -4,8 +4,8 @@ package com.example.rokidkeyboardbridge;
 final class SeatedGreetingGeometry {
  // Source frame width/height; left/right eye centers use the quiet-pose landmark layout.
  // Unused eye-patch fields are zero: these landmarks calibrate geometry only.
- static final float[] FACE={512,768,251,84,0,0,0,0,280,86};
+ static final float[] FACE={512,768,244.172195f,84,0,0,0,0,274.172195f,86};
  static float[] fit(int width,int height,int bitmapWidth,int bitmapHeight){
-  return ApprovedQuietPosePolicy.seatedFit(width,height,bitmapWidth,bitmapHeight,FACE,14,754);
+  return ApprovedQuietPosePolicy.calibratedFit(width,height,FACE,CharacterDistanceCalibration.GESTURE[1][0],14);
  }
 }

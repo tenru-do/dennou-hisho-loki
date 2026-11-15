@@ -78,30 +78,9 @@ public final class SeatedLegMotionPolicyTest {
   check(!p.active()&&!p.waiting(),"Cancel also removes a request that had not started");
  }
  private static void automaticCadence(){
-  SeatedLegMotionPolicy p=new SeatedLegMotionPolicy();
-  p.update(0,true,false,false,false,true);
-  p.update(119999,true,false,false,false,true);
-  check(!p.active(),"Automatic movement waits at least 120 seconds");
-  p.update(120000,true,false,false,false,true);
-  check(p.active()&&p.frame()==0,"Eligible natural idle starts one automatic transition");
-  p.update(127200,true,false,false,false,true);
-  check(!p.active()&&p.frame()==7,"Automatic transition finishes once and holds its endpoint");
-  p.update(247199,true,false,false,false,true);
-  check(!p.active(),"Next automatic motion waits 120 seconds after finishing");
-  p.update(247200,true,false,false,false,true);
-  check(p.active()&&p.frame()==7&&p.nextFrame()==6,"Next automatic motion alternates direction");
-  p.update(247300,true,false,false,false,false);
-  check(!p.active()&&!p.waiting()&&p.frame()==7,"Disabling natural motion cancels automatic work");
-
-  SeatedLegMotionPolicy blocked=new SeatedLegMotionPolicy();
-  check(blocked.request(0,false),"Automatic request can wait for its idle budget");
-  blocked.update(0,true,false,false,false,true);blocked.update(100000,true,false,false,false,true);
-  check(!blocked.active()&&blocked.waiting(),"Queued automatic request cannot bypass the interval");
-  blocked.update(110000,true,true,false,false,true);blocked.update(900000,true,true,false,false,true);
-  blocked.update(1000000,true,false,false,false,true);blocked.update(1119999,true,false,false,false,true);
-  check(!blocked.active(),"Quiet interval resets eligible idle instead of creating an immediate burst");
-  blocked.update(1120000,true,false,false,false,true);
-  check(blocked.active(),"Automatic waiting eventually progresses after a fresh idle interval");
+  long wait=SeatedLegMotionPolicy.AUTOMATIC_INTERVAL;check(wait==45000,"visible ordinary idle cadence is 45 seconds");
+  SeatedLegMotionPolicy p=new SeatedLegMotionPolicy();p.update(0,true,false,false,false,true);p.update(wait-1,true,false,false,false,true);check(!p.active(),"no premature automatic movement");p.update(wait,true,false,false,false,true);check(p.active()&&p.frame()==0,"eligible idle starts once");long end=wait+SeatedLegMotionPolicy.DURATION;p.update(end,true,false,false,false,true);check(!p.active()&&p.frame()==7,"finishes and holds endpoint");p.update(end+wait-1,true,false,false,false,true);check(!p.active(),"new transition waits full idle interval");p.update(end+wait,true,false,false,false,true);check(p.active()&&p.frame()==7&&p.nextFrame()==6,"next cycle reverses");p.update(end+wait+100,true,false,false,false,false);check(!p.active()&&!p.waiting(),"natural off cancels automatic work");
+  SeatedLegMotionPolicy blocked=new SeatedLegMotionPolicy();check(blocked.request(0,false),"automatic request queued");blocked.update(0,true,false,false,false,true);blocked.update(wait-1,true,false,false,false,true);check(!blocked.active()&&blocked.waiting(),"queued automatic does not bypass interval");blocked.update(wait,true,true,false,false,true);blocked.update(900000,true,true,false,false,true);blocked.update(1000000,true,false,false,false,true);blocked.update(1000000+wait-1,true,false,false,false,true);check(!blocked.active(),"quiet restarts eligible idle");blocked.update(1000000+wait,true,false,false,false,true);check(blocked.active(),"fresh idle eventually progresses");
  }
  private static void clockAndPosture(){
   SeatedLegMotionPolicy p=start(1000);update(p,1650);int frame=p.frame();float blend=p.blend();

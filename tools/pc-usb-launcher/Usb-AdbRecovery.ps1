@@ -132,3 +132,24 @@ function Confirm-LokiUsbDevice {
  $recovery=if($RecoveryState.ResetCount -eq 1){'ADBの再接続・1回の再起動後も'}else{'ADBの再接続後も'}
  throw ($recovery+'スマホを確認できませんでした（状態: '+$lastState+'）。'+$lastCommandError+' USBケーブルとスマホの接続許可を確認してください。別の端末への自動切替は行いません。')
 }
+
+# The .NET Framework launcher redirects stderr. ADB/browser descendants must not
+# inherit that original pipe in addition to their own redirected standard handles.
+function Protect-LokiLauncherErrorPipe {
+ if(-not ('LokiUsbHandleIsolation' -as [type])){
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class LokiUsbHandleIsolation {
+ [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr GetStdHandle(int id);
+ [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetHandleInformation(IntPtr handle,uint mask,uint flags);
+ public static void Apply(){
+  IntPtr error=GetStdHandle(-12);
+  if(error!=IntPtr.Zero && error!=new IntPtr(-1) && !SetHandleInformation(error,1,0))
+   throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+ }
+}
+"@
+ }
+ [LokiUsbHandleIsolation]::Apply()
+}

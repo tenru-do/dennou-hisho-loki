@@ -6,6 +6,23 @@ import java.io.*;
 /** User-started camera foreground service; no microphone or Gemini calls. */
 public final class PhotoRecorderService extends Service {
  static volatile PhotoRecorderService active; static volatile String status="";
+ private volatile int savedCount;private volatile long startedAt,lastSavedAt;private volatile boolean failureRecorded;
+ private void recordState(String phase,String reason){KeepCaptureState.record(this,phase,reason,startedAt,savedCount,lastSavedAt,archive==null?getFilesDir().getUsableSpace():archive.root.getUsableSpace());}
+ org.json.JSONObject captureState(){try{return KeepCapturePolicy.safe(new org.json.JSONObject().put("phase",savedCount>0?"RUNNING":"STARTING").put("reason","").put("at",System.currentTimeMillis()).put("startedAt",startedAt).put("saved",savedCount).put("lastSavedAt",lastSavedAt).put("availableBytes",archive==null?getFilesDir().getUsableSpace():archive.root.getUsableSpace()));}catch(Exception e){return new org.json.JSONObject();}}
+ private android.hardware.camera2.CameraManager cameraManager;
+ private android.hardware.camera2.CameraManager.AvailabilityCallback cameraAvailability;
+ private void watchCameraPriority(){
+  cameraManager=(android.hardware.camera2.CameraManager)getSystemService(CAMERA_SERVICE);
+  final String cameraId;
+  try{String[] ids=cameraManager.getCameraIdList();if(ids.length==0)return;cameraId=ids[0];}catch(Exception unavailable){return;}
+  cameraAvailability=new android.hardware.camera2.CameraManager.AvailabilityCallback(){
+   @Override public void onCameraUnavailable(String id){if(cameraId.equals(id)&&CaptureLease.CAMERA.availablePermits()>0)CameraPriority.SHARED.externalUnavailable();}
+   @Override public void onCameraAvailable(String id){if(cameraId.equals(id))CameraPriority.SHARED.externalAvailable(SystemClock.elapsedRealtime());}
+   @Override public void onCameraAccessPrioritiesChanged(){CameraPriority.SHARED.defer(SystemClock.elapsedRealtime(),1500);}
+  };
+  try{cameraManager.registerAvailabilityCallback(cameraAvailability,new Handler(Looper.getMainLooper()));}
+  catch(Exception unavailable){cameraAvailability=null;}
+ }
  private volatile boolean stopped; private Thread worker; private PhotoArchive archive;
  private int interval=5000;private volatile long effectiveInterval=5000;private PowerManager.WakeLock wake;
  private final java.util.concurrent.locks.ReentrantLock imageWork=new java.util.concurrent.locks.ReentrantLock(true);
@@ -41,8 +58,9 @@ public final class PhotoRecorderService extends Service {
  }
  public IBinder onBind(Intent intent){return null;}
  public void onCreate(){super.onCreate();
+  watchCameraPriority();
   try{archive=PhotoArchiveStore.get(this);}
-  catch(Exception e){status=e.getMessage();stopSelf();return;}
+  catch(Exception e){status="写真保存先を開けません";failureRecorded=true;recordState("FAILED","SAVE_ERROR");stopSelf();return;}
   NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);manager.createNotificationChannel(new NotificationChannel("loki_recorder","連続撮影",NotificationManager.IMPORTANCE_LOW));
   wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"loki:recorder");
  }
@@ -56,20 +74,21 @@ public final class PhotoRecorderService extends Service {
   if("keep".equals(intent.getAction())){return START_NOT_STICKY;}
   interval=intent.getIntExtra("interval",5000)==10000?10000:5000;
   startForeground(442,notification());active=this;
-  if(worker==null){wake.acquire();worker=new Thread(this::loop,"LokiPhotoRecorder");worker.start();}
+  if(worker==null){startedAt=System.currentTimeMillis();recordState("STARTING","");wake.acquire();worker=new Thread(this::loop,"LokiPhotoRecorder");worker.start();}
   return START_NOT_STICKY;
  }
  void requestStop(){
   // Cancel first; never wait for archive I/O or camera teardown on the UI thread.
-  stopped=true;status="ユーザー操作で停止";
+  stopped=true;status="ユーザー操作で停止";recordState("STOPPED","USER_STOP");
   Thread running=worker;if(running!=null)running.interrupt();
   stopSelf();
  }
- private void loop(){try{archive.encryptLegacy();}catch(Exception e){status="既存写真の暗号化を完了できません。撮影停止";stopSelf();return;}int failures=0;long next=SystemClock.elapsedRealtime();
+ private void loop(){try{archive.encryptLegacy();}catch(Exception e){status="既存写真の暗号化を完了できません。撮影停止";failureRecorded=true;recordState("FAILED","SAVE_ERROR");stopSelf();return;}int failures=0;long next=SystemClock.elapsedRealtime();
   while(!stopped){try{
    long wait=next-SystemClock.elapsedRealtime();if(wait>0)Thread.sleep(wait);if(stopped)break;int load=ResourceLoad.level(this);effectiveInterval=ResourceLoadPolicy.interval(interval,load);next=SystemClock.elapsedRealtime()+effectiveInterval;if(load>=2){status=ResourceLoad.status;((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).notify(442,notification());continue;}
+   archive.preflightCapture();
    // Other local camera features take priority; missed slots are never queued.
-   if(CaptureLease.CAMERA.availablePermits()==0){status="カメラ使用中・撮影待ち";continue;}
+   if(CaptureLease.CAMERA.availablePermits()==0||CameraPriority.SHARED.keepTicket(SystemClock.elapsedRealtime())<0){status="READ・他アプリの撮影優先：KEEP待機";continue;}
    MeetingRecorderService meeting=MeetingRecorderService.active;if(meeting!=null&&!meeting.reserveCamera()){status="会議録音優先："+meeting.cameraWaitReason();continue;}
    captureWaiting=true;try{imageWork.lockInterruptibly();}finally{captureWaiting=false;}
    try {
@@ -79,16 +98,16 @@ public final class PhotoRecorderService extends Service {
    try(AutoCloseable pause=host!=null&&!host.isDestroyed()?host.pauseMascotForCamera():()->{}){
     jpeg=TopicObservationCapture.keepPhoto(this,()->stopped);
    }
-   if(stopped)break;long captureMs=SystemClock.elapsedRealtime()-captureStarted;long saveStarted=SystemClock.elapsedRealtime();long capturedAt=System.currentTimeMillis();java.io.File saved=archive.save(jpeg,capturedAt);archive.metadata(saved,RecorderPhotoLocation.snapshot(capturedAt));failures=0;android.util.Log.i("LokiRecorderTiming","capture_ms="+captureMs+" save_ms="+(SystemClock.elapsedRealtime()-saveStarted)+" interval_ms="+interval);
+   if(stopped)break;long captureMs=SystemClock.elapsedRealtime()-captureStarted;long saveStarted=SystemClock.elapsedRealtime();long capturedAt=System.currentTimeMillis();java.io.File saved=archive.save(jpeg,capturedAt);savedCount++;lastSavedAt=capturedAt;if(savedCount==1)recordState("RUNNING","");archive.metadata(saved,RecorderPhotoLocation.snapshot(capturedAt));failures=0;android.util.Log.i("LokiRecorderTiming","capture_ms="+captureMs+" save_ms="+(SystemClock.elapsedRealtime()-saveStarted)+" interval_ms="+interval);
    if(!stopped){MainActivity feedbackHost=MainActivity.recorderHost.get();if(feedbackHost!=null)feedbackHost.onKeepPhotoSaved();}
    latestPhoto=saved;latestPhotoAt=captureStarted;latestPhotoWall=captureWall;
    long[] stats=archive.stats();status="REC "+stats[0]+"枚 / "+String.format(java.util.Locale.US,"%.2fGB",stats[1]/1e9)+" / 保護"+stats[2]+"枚"+(ResourceLoad.status.equals("通常負荷")?"":" / "+ResourceLoad.status);
    }finally{imageWork.unlock();}
-  }catch(InterruptedException e){if(stopped)break;status="カメラ使用中・撮影待ち";}
-   catch(IOException e){status=e.getMessage();stopSelf();break;}
-   catch(Exception e){status="撮影失敗（"+(++failures)+"）："+e.getClass().getSimpleName();if(failures>=5){stopSelf();break;}}
+  }catch(InterruptedException e){if(stopped)break;status="READ・他アプリの撮影優先：KEEP待機";}
+   catch(IOException e){status=e.getMessage();failureRecorded=true;recordState("FAILED",archive.root.getUsableSpace()<archive.reserve?"LOW_SPACE":"SAVE_ERROR");stopSelf();break;}
+   catch(Exception e){status="撮影失敗（"+(++failures)+"）："+e.getClass().getSimpleName();if(failures>=5){failureRecorded=true;recordState("FAILED","CAPTURE_ERROR");stopSelf();break;}}
    if(!stopped)((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).notify(442,notification());
   }
  }
- public void onDestroy(){stopped=true;if(active==this)active=null;if(worker!=null)worker.interrupt();if(wake!=null&&wake.isHeld())wake.release();MainActivity host=MainActivity.recorderHost.get();if(host!=null)host.onPhotoRecorderStopped(status);stopForeground(true);super.onDestroy();}
+ public void onDestroy(){if(cameraManager!=null&&cameraAvailability!=null){try{cameraManager.unregisterAvailabilityCallback(cameraAvailability);}catch(Exception ignored){}}CameraPriority.SHARED.resetExternal();if(!failureRecorded)recordState("STOPPED",stopped?"USER_STOP":"");stopped=true;if(active==this)active=null;if(worker!=null)worker.interrupt();if(wake!=null&&wake.isHeld())wake.release();MainActivity host=MainActivity.recorderHost.get();if(host!=null)host.onPhotoRecorderStopped(status);stopForeground(true);super.onDestroy();}
 }

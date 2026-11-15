@@ -21,7 +21,16 @@ public final class SeatedGreetingAtlasTest {
   check(rejected,"Invalid seated clip/frame rejected: "+clip+"/"+frame);
  }
  public static void main(String[] args){
-  check(SeatedGestureAtlas.GREETING.equals("loki_seated_greeting_v732.png"),"Dedicated greeting filename");
+  check(SeatedGestureAtlas.GREETING.equals("loki_seated_greeting_v748.png"),"Dedicated greeting filename");
+  for(int clip:new int[]{0,1}){
+   check(FullBodyEverydayGesture.frame(clip,350)==4,"Lift begins through an actual new drawing");
+   check(FullBodyEverydayGesture.frame(clip,550)==5,"Lift continues through second new drawing");
+   check(FullBodyEverydayGesture.frame(clip,750)==6,"Lift approaches raised hand continuously");
+   check(FullBodyEverydayGesture.frame(clip,3000)==7,"Lowering uses actual return drawing");
+   check(FullBodyEverydayGesture.frame(clip,1400)==2,"Raised arm stays raised between waves");
+   check(FullBodyEverydayGesture.frame(clip,3600)==3,"Return uses the actual lowered-hand cell");
+   check(FullBodyEverydayGesture.frame(clip,4100)==0,"Greeting ends in neutral");
+  }
   check(SeatedGestureAtlas.asset(1).equals(SeatedGestureAtlas.GREETING),"Seated greeting selects only the new artwork");
   for(int clip:new int[]{3,5,7,23,25}){
    String expected=clip==3?"loki_seated_ear_v689.png":clip==7?"loki_seated_beckon_v689.png":"loki_seated_gestures_v687.png";

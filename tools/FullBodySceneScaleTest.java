@@ -2,16 +2,12 @@ package com.example.rokidkeyboardbridge;
 public final class FullBodySceneScaleTest {
  static int checks;static void check(boolean v,String s){if(!v)throw new AssertionError(s);checks++;}
  public static void main(String[]args){
-  for(int[] screen:new int[][]{{240,601},{480,640},{240,320},{320,480}}){int w=screen[0],h=screen[1];float ref=FullBodySceneScalePolicy.reference(w,h);
-   for(int g=0;g<13;g++){int first=365+g*6;float[] f=FullBodyRealisticFeatures.ALL[first];float scale=FullBodyCyberMotion.scale(first,(int)f[0],(int)f[1],w,h);
-    check(scale>0&&Float.isFinite(scale),"cyber scale");check(scale*FullBodySceneScalePolicy.CYBER[g]<=ref*1.001f,"no oversized cyber head");
-    for(int i=first;i<first+6;i++){float[] x=FullBodyRealisticFeatures.ALL[i];float v=FullBodyCyberMotion.scale(i,(int)x[0],(int)x[1],w,h);check(Math.abs(v-scale)<.001,"same scale across six phases");check((FullBodyAnchorPolicy.MAX[i]-FullBodyAnchorPolicy.MIN[i])*scale<=w-5.9,"visible width fits");check(x[1]*scale<=h+.01,"floor/top fit");}
-   }
-   for(int g=0;g<8;g++){float scale=FullBodySceneScalePolicy.dramatic(g,w,h);check(scale*FullBodySceneScalePolicy.DRAMATIC[g]<=ref*1.001,"dramatic head bound");for(int i=0;i<FullBodySceneScalePolicy.BOUNDS[g].length;i++){float[] b=FullBodySceneScalePolicy.BOUNDS[g][i];float left=FullBodySceneScalePolicy.left(g,i,w,scale),top=FullBodySceneScalePolicy.top(g,i,h,scale);check(left+b[0]*scale>=2.99&&left+b[1]*scale<=w-2.99,"dramatic sides fit");check(top+b[2]*scale>=-.01&&Math.abs(top+b[3]*scale-h)<.01,"dramatic floor fit");}}
+  for(int[] screen:new int[][]{{160,640},{240,601},{480,640},{240,320},{320,480}}){int w=screen[0],h=screen[1];float ref=CharacterViewport.eyeSpan(w,h);
+   for(int g=0;g<13;g++)for(int i=365+g*6;i<365+(g+1)*6;i++){float[] f=FullBodyRealisticFeatures.ALL[i];float scale=FullBodyCyberMotion.scale(i,(int)f[0],(int)f[1],w,h);check(Math.abs(scale*CharacterDistanceCalibration.BODY[i]-ref)<.002,"same distance cyber "+i);}
+   for(int g=0;g<8;g++)for(int i=0;i<FullBodyDramaticFeatures.ALL[g].length;i++){float[] f=FullBodyDramaticFeatures.ALL[g][i];float scale=FullBodySceneScalePolicy.dramatic(g,i,w,h),left=FullBodySceneScalePolicy.left(g,i,w,scale),top=FullBodySceneScalePolicy.top(g,i,h,scale);check(Math.abs(scale*CharacterDistanceCalibration.DRAMATIC[g][i]-ref)<.002,"same distance special");check(Math.abs(left+(f[2]+f[8])*.5f*scale-w*.5f)<.002,"face center");check(top+Math.max(0,FullBodySceneScalePolicy.BOUNDS[g][i][2]-2)*scale>=CharacterViewport.headMargin(h)-.002,"crown retained");}
+   for(int i=0;i<FullBodyApprovedFeatures.ALL.length;i++){float[] f=FullBodyApprovedFeatures.ALL[i];float height=FullBodyApprovedScalePolicy.height(i,w,h,1);check(Math.abs(height/f[1]*CharacterDistanceCalibration.APPROVED[i]-ref)<.002,"same distance approved/profile");check(Float.isFinite(height)&&height>0,"finite profile size");}
   }
-  float reference=FullBodySceneScalePolicy.reference(240,601);
-  for(int g=0;g<13;g++){int p=365+g*6;float[] f=FullBodyRealisticFeatures.ALL[p];float actual=FullBodyCyberMotion.scale(p,(int)f[0],(int)f[1],240,601)*FullBodySceneScalePolicy.CYBER[g];check(actual/reference>.74f,"cyber must not shrink to half-size "+g);}
-  for(int g=0;g<8;g++)check(FullBodySceneScalePolicy.dramatic(g,240,601)*FullBodySceneScalePolicy.DRAMATIC[g]/reference>.79f,"legacy must not shrink to half-size "+g);
-  System.out.println("PASS scene calibration "+checks+" shared face units, stable six-phase scale, content fit and floor checks");
+  check(CharacterViewport.eyeSpan(160,640)==CharacterViewport.eyeSpan(480,640),"narrow viewport crops instead of moving camera");
+  System.out.println("PASS "+checks+" shared full-body distance, profile fallback and crown checks");
  }
 }

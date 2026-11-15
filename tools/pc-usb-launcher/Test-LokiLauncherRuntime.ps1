@@ -37,6 +37,7 @@ try {
  [IO.File]::WriteAllBytes($fixtureScript,$sourceBytes)
  [IO.File]::WriteAllText((Join-Path $fixtureRoot 'launcher.local.json'),'{"phoneSerial":"fixture-phone","adb":"fixture-adb","node":"fixture-node"}',(New-Object Text.UTF8Encoding($true)))
  $helperStub=@'
+function Protect-LokiLauncherErrorPipe {}
 function Get-LokiAdbMonotonicMs {
  return [long][Math]::Floor(([Diagnostics.Stopwatch]::GetTimestamp()*1000.0)/[Diagnostics.Stopwatch]::Frequency)
 }

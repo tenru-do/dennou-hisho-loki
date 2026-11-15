@@ -72,6 +72,7 @@ final class PortraitExpressionRenderer {
   float gazeY=quiet?0:rapport.life.performance.buttonVertical(now)*80;
   float rapportLean=rapport.lean(now,mode,quiet)+(contact.direction==2?-1:1)*.7f*contactPulse,rapportGaze=rapport.gaze(now,mode,quiet);
   float invitation=contact.visible()?0:rapport.life.invitationFor(now,mode,quiet);
+  rapportGaze+=ConversationStageMotion.gaze(now,quiet);rapportLean+=ConversationStageMotion.nod(now,quiet);
   rapportLean+=warmth.tilt(now,mode,quiet);rapportGaze+=warmth.gaze(now,mode,quiet)*2;
   rapportLean+=invitation*.35f+rapport.life.lean(now,mode,quiet)*35;rapportGaze+=rapport.life.gaze(now,mode,quiet)*80;rapportGaze+=attention.gaze(now,quiet)*80;if(!quiet)rapportGaze+=CharacterChoreography.lead(rapport.life.age(now))*.25f;rapportGaze*=CharacterMotionTuning.eyes();rapportLean*=CharacterMotionTuning.body();
   pulse*=CharacterMotionTuning.scale()*(CharacterChoreography.scene==2?.35f:1f);

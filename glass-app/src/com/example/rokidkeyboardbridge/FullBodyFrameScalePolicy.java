@@ -448,12 +448,6 @@ final class FullBodyFrameScalePolicy {
 };
  static int first(int pose){return pose<305?(pose<299?293:299):305+(pose-305)/6*6;}
  static float source(int pose,int width,int height){
-  int first=first(pose);int reference=pose>=359?168:4;
-  float[] base=FullBodyRealisticFeatures.ALL[reference];
-  float target=(float)Math.hypot(base[8]-base[2],base[9]-base[3])*FullBodyScalePolicy.scale(reference,(int)base[0],(int)base[1],width,height);
-  float[] spans=new float[6];for(int j=0;j<6;j++){float[] f=FullBodyRealisticFeatures.ALL[first+j];spans[j]=(float)Math.hypot(f[8]-f[2],f[9]-f[3]);}
-  java.util.Arrays.sort(spans);float scale=target/((spans[2]+spans[3])*.5f);
-  // Source family keeps one anatomical scale; viewport clips overflow.
-  return scale;
+  return CharacterViewport.eyeScale(CharacterDistanceCalibration.bodyUnit(pose),width,height);
  }
 }

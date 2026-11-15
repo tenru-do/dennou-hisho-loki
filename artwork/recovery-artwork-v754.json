@@ -1,0 +1,276 @@
+{
+  "referenceFace": [
+    423,
+    130,
+    150,
+    150
+  ],
+  "referenceUnit": 62.64982043,
+  "assets": [
+    {
+      "index": 0,
+      "asset": "recovery-20261114/standing-01.png",
+      "group": "standing",
+      "faceBounds": [
+        448,
+        123,
+        149,
+        149
+      ],
+      "unit": 62.232154960466666,
+      "center": 522.5,
+      "crown": 0,
+      "faceBottom": 0.17708333333333334,
+      "sha256": "c0262d91f00411b89167e27f2478f4189fffc3f10844607e5ba5ce3e6e0d4f94"
+    },
+    {
+      "index": 1,
+      "asset": "recovery-20261114/standing-02.png",
+      "group": "standing",
+      "faceBounds": [
+        452,
+        39,
+        127,
+        127
+      ],
+      "unit": 53.043514630733334,
+      "center": 515.5,
+      "crown": 0,
+      "faceBottom": 0.10807291666666667,
+      "sha256": "680915f35506cf714156e53ac44ea894d571607608ab7771476afd79353537bb"
+    },
+    {
+      "index": 2,
+      "asset": "recovery-20261114/standing-03.png",
+      "group": "standing",
+      "faceBounds": [
+        468,
+        92,
+        128,
+        128
+      ],
+      "unit": 53.46118010026667,
+      "center": 532.0,
+      "crown": 0,
+      "faceBottom": 0.14322916666666666,
+      "sha256": "ed282581ad41162742f6e0002721ffbbfb84be8e59cc3f21fd44744fbdd349ee"
+    },
+    {
+      "index": 3,
+      "asset": "recovery-20261114/standing-04.png",
+      "group": "standing",
+      "faceBounds": [
+        459,
+        109,
+        125,
+        125
+      ],
+      "unit": 52.20818369166667,
+      "center": 521.5,
+      "crown": 0,
+      "faceBottom": 0.15234375,
+      "sha256": "1416a4c8acb565f3fb3a87b85f41d0ac36e92ecffff7a8e757dc6f89b4515eac"
+    },
+    {
+      "index": 4,
+      "asset": "recovery-20261114/standing-05.png",
+      "group": "standing",
+      "faceBounds": [
+        433,
+        91,
+        127,
+        127
+      ],
+      "unit": 53.043514630733334,
+      "center": 496.5,
+      "crown": 0,
+      "faceBottom": 0.14192708333333334,
+      "sha256": "bad911ded33d5b6ff371ade29bb6869dc9e5e95b7a3985b987c4b35989d31b21"
+    },
+    {
+      "index": 5,
+      "asset": "recovery-20261114/standing-06.png",
+      "group": "standing",
+      "faceBounds": [
+        405,
+        77,
+        147,
+        147
+      ],
+      "unit": 61.3968240214,
+      "center": 478.5,
+      "crown": 0,
+      "faceBottom": 0.14583333333333334,
+      "sha256": "4b313c762110fecb14969d5ea278a3e8d741b0d7cc99a94dd59b391bfbfe59fd"
+    },
+    {
+      "index": 6,
+      "asset": "recovery-20261114/standing-07.png",
+      "group": "standing",
+      "faceBounds": [
+        445,
+        99,
+        133,
+        133
+      ],
+      "unit": 55.54950744793333,
+      "center": 511.5,
+      "crown": 0,
+      "faceBottom": 0.15104166666666666,
+      "sha256": "89b3a99ad4d4d3c45acb0dd71dddfc6fc14912c59fb9c6c5e38eee8e45fe3987"
+    },
+    {
+      "index": 7,
+      "asset": "recovery-20261114/standing-08.png",
+      "group": "standing",
+      "faceBounds": [
+        450,
+        85,
+        127,
+        127
+      ],
+      "unit": 53.043514630733334,
+      "center": 513.5,
+      "crown": 0,
+      "faceBottom": 0.13802083333333334,
+      "sha256": "b09494402f3305bddd249599568c71aeb417a4bb2cf4187bee137a7826826220"
+    },
+    {
+      "index": 8,
+      "asset": "recovery-20261114/seated-01.png",
+      "group": "seated",
+      "faceBounds": [
+        429,
+        98,
+        177,
+        177
+      ],
+      "unit": 73.9267881074,
+      "center": 517.5,
+      "crown": 0,
+      "faceBottom": 0.17903645833333334,
+      "sha256": "5deaecffd0a47457673b5169ba6fec67ce3c398171d72c21de686936578e3482"
+    },
+    {
+      "index": 9,
+      "asset": "recovery-20261114/seated-02.png",
+      "group": "seated",
+      "faceBounds": [
+        466,
+        90,
+        158,
+        158
+      ],
+      "unit": 65.99114418626665,
+      "center": 545.0,
+      "crown": 0,
+      "faceBottom": 0.16145833333333334,
+      "sha256": "74cdbb5b1f882b352736c55df69119de4ec76ce7cec842d063aa487c2265f7d4"
+    },
+    {
+      "index": 10,
+      "asset": "recovery-20261114/seated-03.png",
+      "group": "seated",
+      "faceBounds": [
+        449,
+        107,
+        154,
+        154
+      ],
+      "unit": 64.32048230813334,
+      "center": 526.0,
+      "crown": 0,
+      "faceBottom": 0.169921875,
+      "sha256": "2e16ba79dca7f4d46aa68ad1082bc778db49537366acd9a8b3f54805ef399ff5"
+    },
+    {
+      "index": 11,
+      "asset": "recovery-20261114/seated-04.png",
+      "group": "seated",
+      "faceBounds": [
+        441,
+        107,
+        163,
+        163
+      ],
+      "unit": 68.07947153393333,
+      "center": 522.5,
+      "crown": 0,
+      "faceBottom": 0.17578125,
+      "sha256": "5cfdb2f9f7a56338b6b6c174415e478aab2e50154107644ce7f1ae83f26a088d"
+    },
+    {
+      "index": 12,
+      "asset": "recovery-20261114/seated-05.png",
+      "group": "seated",
+      "faceBounds": [
+        414,
+        100,
+        175,
+        175
+      ],
+      "unit": 73.09145716833332,
+      "center": 501.5,
+      "crown": 0,
+      "faceBottom": 0.17903645833333334,
+      "sha256": "11514ebc97b1498949c737404b687909da48866060ed5e465df47bee26678cfc"
+    },
+    {
+      "index": 13,
+      "asset": "recovery-20261114/seated-06.png",
+      "group": "seated",
+      "faceBounds": [
+        433,
+        103,
+        185,
+        185
+      ],
+      "unit": 77.26811186366666,
+      "center": 525.5,
+      "crown": 0,
+      "faceBottom": 0.1875,
+      "sha256": "1ea63be69394397a9a0dd0c2668e4d96f808724659e47ffbca569fd49d33765a"
+    },
+    {
+      "index": 14,
+      "asset": "recovery-20261114/seated-07.png",
+      "group": "seated",
+      "faceBounds": [
+        420,
+        96,
+        171,
+        171
+      ],
+      "unit": 71.4207952902,
+      "center": 505.5,
+      "crown": 0,
+      "faceBottom": 0.173828125,
+      "sha256": "ff4889f47ba3c709747d5f696e48722404c5c1728df2475ec17910edde29a782"
+    },
+    {
+      "index": 15,
+      "asset": "recovery-20261114/seated-08.png",
+      "group": "seated",
+      "faceBounds": [
+        433,
+        100,
+        174,
+        174
+      ],
+      "unit": 72.6737916988,
+      "center": 520.0,
+      "crown": 0,
+      "faceBottom": 0.17838541666666666,
+      "sha256": "e1db19356025942c7244afb082a04167a2657f40f02dc1f901f0c5c3ee2e6636"
+    }
+  ],
+  "version": 754,
+  "reference": "artwork/reference/loki-user-approved-base-20261027.png",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "manualWardrobeAndAnatomyReviewed": true,
+  "method": "Offline face box calibration against approved quiet pose0, same height400 contact sheet; inference is not anatomical proof. No detector in APK. Crown at source y0 is retained.",
+  "comparison": "artwork/reviews/recovery-v754/calibrated-preview.png",
+  "comparisonSha256": "1595055792df883c0868ece5158525545f29698f8e5cbf65b34945a88aac6a83",
+  "excludedNewRecliningAssets": 8,
+  "reason": "upright-looking supine cutouts or changed accessory; retain existing approved resting art"
+}

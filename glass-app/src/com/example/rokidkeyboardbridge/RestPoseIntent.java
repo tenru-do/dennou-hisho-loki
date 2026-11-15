@@ -4,7 +4,8 @@ import java.text.Normalizer;
 final class RestPoseIntent {
  static final int NONE=0,RELAX=1,LIE=2,REPAIR_LIE=3,PROHIBIT_LIE=4;
  static String normalize(String text){String t=text==null?"":Normalizer.normalize(text,Normalizer.Form.NFKC).trim();return t.replace("ねそべ","寝そべ").replace("ねころが","寝転が").replace("ねころん","寝ころん").replace("寛いで","くつろいで");}
- static int kind(String text){String t=normalize(text);if(t.matches("(?s).*(とは|意味|方法|について|彼女|彼が|友人|登場人物|例文|小説|引用|私が|私は|私も|僕が|僕は|自分が|写真|画像|動画|説明|教えて|検索|調べ|探して|天気|ニュース|予定|メール|会議|と言った|と言って).*"))return NONE;
+ static boolean layingAvatar(String t){return t.matches("(?s).*(?:ロキ|あなた|君)を(?:そっと|優しく|ゆっくり|ベッドに|床に|ここに|隣に|横に|仰向けに|うつ伏せに|寝床に)*(?:寝かせ|寝かす|横たえ|横にする|横にして|寝そべらせ).*");}
+ static int kind(String text){String t=normalize(text);boolean laying=layingAvatar(t);if(laying&&!t.matches("(?s).*(とは|意味|方法|について|例文|小説|引用|写真|画像|動画|説明|教えて|検索|調べ|予定|メール|会議|と言った|と言って).*")){if(t.matches("(?s).*(?:寝かせ|寝かさ|横たえ|寝そべらせ).*(?:ないで|なくていい|ほしくない|るな).*"))return PROHIBIT_LIE;if(t.matches("(?s).*(?:寝かせ|寝かす|横たえ|横にする|横にして|寝そべらせ).*"))return LIE;}if(t.matches("(?s).*(とは|意味|方法|について|彼女|彼が|友人|登場人物|例文|小説|引用|私が|私は|私も|僕が|僕は|自分が|写真|画像|動画|説明|教えて|検索|調べ|探して|天気|ニュース|予定|メール|会議|と言った|と言って).*"))return NONE;
  if(t.matches("(?s).*(寝そべ|寝転が|寝転|寝ころ|横にな|横たわ).*(ないで|なくていい|ないように|ほしくない|するな).*"))return PROHIBIT_LIE;
  if(t.matches("(?s).*(寝そべ(?:ら|て|って|れ)|寝転が(?:ら|って)|寝転んで|寝ころんで|横にな(?:ら|って)|横たわ(?:ら|って))ない(?:な|ね|よ|じゃ|んだけど|のだけど|です|ですよ|ぞ|んだ).*"))return REPAIR_LIE;
  if(t.matches("(?s).*(寝そべって|寝転がって|寝転んで|寝ころんで|横になって|横たわって|仰向けになって|うつ伏せになって).*"))return LIE;

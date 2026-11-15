@@ -24,6 +24,14 @@ final class KeepAutoExposurePolicy {
   float limit=exposureNs<=0||iso<=0||exposureNs>33_333_333L||iso>=1600?1f/3f:2f/3f;
   return Math.min(s.median<24?2f/3f:1f/3f,limit);
  }
- static int compensation(float ev,float step,int minimum,int maximum){if(!Float.isFinite(ev)||!Float.isFinite(step)||step<=0||minimum>maximum)return 0;return Math.max(minimum,Math.min(maximum,Math.round(Math.max(-1f,Math.min(2f/3f,ev))/step)));}
+ static float ev(Stats s,long exposureNs,int iso,int hour){
+  float base=ev(s,exposureNs,iso);
+  // Night bias only when measured shadows justify it. Preserve clipping and motion limits.
+  if(hour<0||hour>23||!(hour>=17||hour<7)||s==null||s.samples<64||!Float.isFinite(s.clipped)
+    ||base<0||s.median>=60||s.p90>=170||s.p90<4||s.clipped>=.02f||exposureNs>=100_000_000L)return base;
+  float limit=exposureNs<=0||iso<=0||exposureNs>33_333_333L||iso>=1600?2f/3f:1f;
+  return Math.max(base,Math.min(s.median<30?1f:2f/3f,limit));
+ }
+ static int compensation(float ev,float step,int minimum,int maximum){if(!Float.isFinite(ev)||!Float.isFinite(step)||step<=0||minimum>maximum)return 0;return Math.max(minimum,Math.min(maximum,Math.round(Math.max(-1f,Math.min(1f,ev))/step)));}
  private KeepAutoExposurePolicy(){}
 }

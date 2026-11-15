@@ -1,8 +1,8 @@
 package com.example.rokidkeyboardbridge;
-/** Same mature identity for six seated families. Pose scale remains 0.76 of standing. */
+/** Same mature identity for six seated families. Scale follows the same reviewed camera distance as standing. */
 final class SeatedGestureAtlas {
  static final String ASSET="loki_seated_gestures_v687.png";
- static final String GREETING="loki_seated_greeting_v732.png";
+ static final String GREETING="loki_seated_greeting_v748.png";
  static final String EAR="loki_seated_ear_v689.png";
  static final String BECKON="loki_seated_beckon_v689.png";
  static String asset(int clip){return clip==1?GREETING:clip==3?EAR:clip==7?BECKON:ASSET;}

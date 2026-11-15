@@ -1,0 +1,21 @@
+{
+  "assetSha256": "b4e5d77913218a1ffb43df5d874afd9a2899933c6991d30aa451185365b3f2f9",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "manualWardrobeReviewed": true,
+  "reviewedFrames": 4,
+  "columns": 2,
+  "rows": 2,
+  "scope": "Ordinary standing/seated greeting only; not other poses",
+  "contactSheet": {
+    "path": "artwork/reviews/v748/distance-comparison.png",
+    "sha256": "a761f7041eb3683d96e9d0729fabfd8cd2bed6e3e92a7f544deba54f046539f1"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v748/standing-landmarks.json",
+    "sha256": "e2bce0194cfe98c3392ea43c649987521e3e1c6d11420f0ac4889a78a401dd1f"
+  },
+  "background": "Offline pose-mask initialized GrabCut; alpha only; original RGB and source retained",
+  "wornScreenVerified": false
+}

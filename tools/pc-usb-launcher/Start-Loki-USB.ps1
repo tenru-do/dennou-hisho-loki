@@ -19,6 +19,8 @@ try {
  if($helperBytes.Length -lt 3 -or $helperBytes[0] -ne 0xef -or $helperBytes[1] -ne 0xbb -or $helperBytes[2] -ne 0xbf){throw 'ADB復旧スクリプトはBOM付きUTF-8で保存してください。'}
  $null=[Text.UTF8Encoding]::new($false,$true).GetString($helperBytes,3,$helperBytes.Length-3)
  . $helper
+ $stage='エラー出力の分離'
+ Protect-LokiLauncherErrorPipe
  $launchDeadline=(Get-LokiAdbMonotonicMs)+80000
  $recovery=@{ResetCount=0}
  function Invoke-LokiUsbStep {
@@ -36,6 +38,12 @@ try {
    throw ($Label+'に失敗しました（終了コード '+$result.Code+'）。'+$detail)
   }
   return $result.Output
+ }
+ # Optional, bounded recovery for the verified manufacturer diagnostic logger.
+ $diagnosticGuard=Join-Path $PSScriptRoot 'Glass-DiagnosticGuard.ps1'
+ if(Test-Path -LiteralPath $diagnosticGuard){
+  try{. $diagnosticGuard;$diagnosticResult=Stop-LokiExcessiveGlassDiagnostics -Adb $adb;Write-Host ('グラス診断ログの容量保護: '+$diagnosticResult)}
+  catch{Write-Host 'グラス診断ログの停止は確認できませんでした。スマホの接続処理を続けます。'}
  }
  $stage='スマホのUSB接続確認'
  Confirm-LokiUsbDevice -Adb $adb -Serial $serial -RecoveryState $recovery

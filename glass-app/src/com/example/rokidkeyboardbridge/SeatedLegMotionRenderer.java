@@ -14,7 +14,7 @@ import java.io.InputStream;
 final class SeatedLegMotionRenderer {
  static final String ASSET="loki_seated_leg_transition_v742.png";
  // One manually reviewed source calibration for every frame. Never fit individual feet.
- private static final float[] FACE={362,543,164,60,7,6,2,1,184,62,7,6,2,1,174,80,9,3,2};
+ private static final float[] FACE={362,543,160.5f,62.5f,7,6,2,1,184,67,7,6,2,1,174,80,9,3,2};
  private final SeatedAnkleMotion ankleMotion=new SeatedAnkleMotion();
  private long ankleAge;private boolean ankleAllowed;
  private final View host;
@@ -92,7 +92,7 @@ final class SeatedLegMotionRenderer {
   int current=0;while(current<6&&phase>=SeatedLegWardrobe.PHASES[current+1])current++;
   int next=Math.min(6,current+1);
   float blend=current==next?0:(phase-SeatedLegWardrobe.PHASES[current])/(SeatedLegWardrobe.PHASES[next]-SeatedLegWardrobe.PHASES[current]);
-  float[] box=ApprovedQuietPosePolicy.seatedFit(width,height,frames[current].getWidth(),frames[current].getHeight(),FACE,4,538);
+  float[] box=ApprovedQuietPosePolicy.calibratedFit(width,height,FACE,CharacterDistanceCalibration.LEG,4);
   canvas.drawColor(Color.BLACK);
   float opacityBlend=Math.max(0,Math.min(1,(blend-.85f)/.15f));
   opacityBlend=opacityBlend*opacityBlend*(3-2*opacityBlend);

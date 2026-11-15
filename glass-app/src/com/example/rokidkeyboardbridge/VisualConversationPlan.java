@@ -7,14 +7,15 @@ final class VisualConversationPlan {
  final int kind;final String[] steps;final String reply;final boolean sequence;final int hand,gaze;final float amplitude,speed;
  VisualConversationPlan(int k,String[] s,String r,boolean q,int h,int g,float a,float v){kind=k;steps=s;reply=r;sequence=q;hand=h;gaze=g;amplitude=a;speed=v;}
  static VisualConversationPlan result(int k,String r){return new VisualConversationPlan(k,new String[0],r,false,0,0,1,1);}
- static String clean(String raw){return Normalizer.normalize(raw==null?"":raw,Normalizer.Form.NFKC).trim().replaceFirst("^ロキ[、, :：]*","").replace("ねそべ","寝そべ").replace("すわって","座って").replace("腰掛け","腰かけ").replace("腰をおろ","腰を下ろ");}
+ static String clean(String raw){return Normalizer.normalize(raw==null?"":raw,Normalizer.Form.NFKC).trim().replaceFirst("^ロキ(?![をにはが])[、, :：]*","").replace("ねそべ","寝そべ").replace("すわって","座って").replace("腰掛け","腰かけ").replace("腰をおろ","腰を下ろ");}
  static boolean has(String s,String... words){for(String w:words)if(s.contains(w))return true;return false;}
  static VisualConversationPlan resolve(String raw,int posture,String last){
   String t=clean(raw);if(t.isEmpty()||t.length()>240)return result(PASS,"");
   // Corrections refer to the most recent clause; never run abandoned instructions.
   String[] corrections=t.split("(?:やっぱり|やはり|ではなく|じゃなく|ではなくて)");if(corrections.length>1)t=corrections[corrections.length-1].trim();
   if(t.matches("(?:うん|はい|いいね|ありがとう|その姿勢は楽[?？]?|そのままでいい|了解|そうだね)[。!！?？\\s]*"))return result(HOLD,"");
-  if(t.matches("(?s).*(例文|小説|写真|画像|友人|彼女|彼が|私は|僕は|私が|僕が|と言って|と言った|について|意味|検索|予定|メール|ニュース).*"))return result(HOLD,"");
+  if(t.matches("(?s).*(例文|小説|写真|画像|友人|彼女|彼が|と言って|と言った|について|意味|検索|予定|メール|ニュース).*"))return result(HOLD,"");
+  if(t.matches("(?s).*(私は|僕は|私が|僕が).*")&&!RestPoseIntent.wantsLie(RestPoseIntent.kind(t)))return result(HOLD,"");
   if(has(t,"座っている","寝そべっている","立っている","座ってる","寝そべってる","立ってる"))return result(HOLD,"");
   if(has(t,"昨日","さっきは","以前は")&&!t.matches("(?s).*(座って|寝そべって|立って|腰かけて|横になって)[。！!\\s]*$"))return result(HOLD,"");
   boolean poseWord=has(t,"座","寝そべ","横にな","腰かけ","腰を下ろ","立","くつろ","楽に","手を","向いて","膝","脚","足");

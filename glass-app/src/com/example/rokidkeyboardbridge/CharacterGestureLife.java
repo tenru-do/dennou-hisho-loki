@@ -15,9 +15,7 @@ final class CharacterGestureLife {
  void answer(String text,FullBodyPoseCatalog.Kind semantic,long now){
   if(FullBodyAffectionCue.negative(semantic)){clear();return;}
   String t=text==null?"":text;performance.answer(t);
-  int k=t.matches("(?s).*(訂正|間違|誤り|失礼).*" )?CORRECT:
-   t.matches("(?s).*(右へ|左へ|右側|左側|曲が|道順|進んで).*" )?GUIDE:
-   semantic==FullBodyPoseCatalog.Kind.THINK?THINK:semantic==FullBodyPoseCatalog.Kind.JOY?JOY:semantic==FullBodyPoseCatalog.Kind.EXPLAIN?EXPLAIN:SETTLE;
+  int k=ConversationStageMotion.meaning(t,semantic);
   event(k,now);
  }
  void touch(long now,int dir,long duration,boolean contact){
@@ -28,11 +26,11 @@ final class CharacterGestureLife {
  static float smooth(float x){x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);}
  static float envelope(long age,long duration){return age<0||age>=duration?0:smooth(age/550f)*smooth((duration-age)/1000f);}
  int kind(){return kind;}
- int bodyClip(long now,boolean seated){if(performance.finishing(now))return FullBodyEverydayGesture.clip(seated,2);if(!moving(now)||at<0||now<at||now-at>=DURATION)return -1;int family=selectedFamily;return family<0?-1:FullBodyEverydayGesture.clip(seated,family);}
+ int bodyClip(long now,boolean seated){if(performance.finishing(now))return -1;if(!moving(now)||at<0||now<at||now-at>=DURATION)return -1;int family=selectedFamily;return family<0?-1:FullBodyEverydayGesture.clip(seated,family);}
  long bodyTime(long now){if(performance.finishing(now))return 3900;long age=Math.max(0,now-at);return (long)((kind==GUIDE?age*3/4:kind==JOY?age*11/10:age)*CharacterGestureVariation.pace(variations.variant()));}
  float invitationFor(long now,int mode,boolean quiet){return blocked?0:invitation(now,mode,quiet);}
 
- float amount(long now,int mode,boolean quiet){return quiet||at<0?0:envelope(now-at,DURATION)*CharacterMotionTuning.scale()*(mode==1?.65f:mode==2?.38f:1);}
+ float amount(long now,int mode,boolean quiet){return quiet||at<0?0:envelope(now-at,DURATION)*ConversationStageMotion.waitGain(now)*CharacterMotionTuning.scale()*(mode==1?.65f:mode==2?.38f:1);}
  float touch(long now,boolean quiet){if(quiet||touchAt<0)return 0;long age=now-touchAt;float e=envelope(age,touchKind==1?2200:1500);return e*CharacterMotionTuning.scale()*(touchKind==2?(float)Math.sin(age/95.0)*.65f:touchKind==1?.55f:1);}
  float tilt(long now,int mode,boolean quiet){performance.mode(now,mode);visualMode=mode;visualQuiet=quiet;float a=quiet?0:amount(now,mode,false)*smooth(Math.max(0,now-at-150)/450f)*CharacterMotionTuning.face();float micro=quiet?0:(ConversationMicroMotion.tilt(kind,age(now),sequence)+ConversationMicroMotion.idleTilt(idleAge(now,mode,quiet),idleVariant(now)))*CharacterMotionTuning.face();return limit(micro+a*(kind==CLARIFY?1.8f:kind==THINK?-2.1f:kind==GUIDE?1.4f:kind==JOY?1.6f:kind==LISTEN?-1.1f:.45f)+touch(now,quiet)*(direction==2?-1:1)*CharacterMotionTuning.face()+(quiet?0:performance.buttonTilt(now)),2.85f);}
  static float limit(float value,float max){return Math.max(-max,Math.min(max,value));}
