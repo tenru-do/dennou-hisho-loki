@@ -778,6 +778,26 @@
     {
       "name": "loki_seated_leg_transition_v742.png",
       "sha256": "4f35eeee78065e334f251b23b76af97bd1c47df5ca68d6065209a3e990b56696"
+    },
+    {
+      "name": "loki_standing_greeting_v748.png",
+      "sha256": "b4e5d77913218a1ffb43df5d874afd9a2899933c6991d30aa451185365b3f2f9",
+      "note": "v748 ordinary high-detail greeting, original RGB retained"
+    },
+    {
+      "name": "loki_seated_greeting_v748.png",
+      "sha256": "83bf1c20610c4d95f4a3725494b365ce2a146eeb171acf5a80da08f93df3af3d",
+      "note": "v748 ordinary high-detail greeting, original RGB retained"
+    },
+    {
+      "name": "loki_standing_greeting_bridge_v750.png",
+      "sha256": "462793e172f2f5dc10d59c178cc79b1986905ea03deee7f73424e5b4742e9cd9",
+      "note": "builtin imagegen normal greeting in-betweens; alpha only processed offline"
+    },
+    {
+      "name": "loki_seated_greeting_bridge_v750.png",
+      "sha256": "3d033d00b1c018acbdf26e3efd751bca2b2b21f098865bc1ded031a5a451a62e",
+      "note": "builtin imagegen normal greeting in-betweens; alpha only processed offline"
     }
   ],
   "runtimeMonochromeMigrationComplete": true,

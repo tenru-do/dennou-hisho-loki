@@ -478,6 +478,30 @@
       "sha256": "4f35eeee78065e334f251b23b76af97bd1c47df5ca68d6065209a3e990b56696",
       "evidence": "artwork/reviews/seated-motion-v742/review.json",
       "evidenceSha256": "aaf1b971ae4c0bb02cc5e1a437b894f938105b891c3bfa8f7fc3ce6fa03fad6e"
+    },
+    {
+      "name": "loki_standing_greeting_v748.png",
+      "sha256": "b4e5d77913218a1ffb43df5d874afd9a2899933c6991d30aa451185365b3f2f9",
+      "evidence": "artwork/reviews/v748/standing-review.json",
+      "evidenceSha256": "98f5e63818f378dbda9a4d2f96b289e989d07c43684b11fe62cfd777e95830a4"
+    },
+    {
+      "name": "loki_seated_greeting_v748.png",
+      "sha256": "83bf1c20610c4d95f4a3725494b365ce2a146eeb171acf5a80da08f93df3af3d",
+      "evidence": "artwork/reviews/v748/seated-review.json",
+      "evidenceSha256": "2377205484c15d2924678a011547ffcccc7cf9c97a190fdf00c9f489eea0bc3d"
+    },
+    {
+      "name": "loki_standing_greeting_bridge_v750.png",
+      "sha256": "462793e172f2f5dc10d59c178cc79b1986905ea03deee7f73424e5b4742e9cd9",
+      "evidence": "artwork/reviews/v750/standing-review.json",
+      "evidenceSha256": "e401692cfe31ae390f5d199bc2f1059024696e2b14273575b50c80bd7c17361d"
+    },
+    {
+      "name": "loki_seated_greeting_bridge_v750.png",
+      "sha256": "3d033d00b1c018acbdf26e3efd751bca2b2b21f098865bc1ded031a5a451a62e",
+      "evidence": "artwork/reviews/v750/seated-review.json",
+      "evidenceSha256": "1e2ebaab7304bd4910e1030a3f8b265bec5b29ad4df5bcc2521aec6f07c14271"
     }
   ]
 }

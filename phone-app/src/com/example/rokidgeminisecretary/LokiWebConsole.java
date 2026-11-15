@@ -257,6 +257,7 @@ final class LokiWebConsole {
             if(method.equals("POST")&&path.equals("/web/api/answer-correction-save")){json(socket,200,AnswerCorrections.submit(owner,new JSONObject(body)));return true;}
             if(method.equals("GET")&&path.equals("/web/api/answer-corrections")){json(socket,200,new JSONObject().put("items",AnswerCorrections.list(owner)));return true;}
             if(method.equals("POST")&&path.equals("/web/api/image-queue-resume")){json(socket,200,QueuedImageReview.resume(owner,new JSONObject(body).getString("key")));return true;}
+            if(method.equals("POST")&&path.equals("/web/api/reconnect-approve-batch")){json(socket,200,ReconnectReview.approveBatch(owner,new JSONObject(body).getJSONArray("keys")));return true;}
             if(method.equals("POST")&&path.equals("/web/api/reconnect-approve")){json(socket,200,ReconnectReview.approve(owner,new JSONObject(body).getString("key")));return true;}
             if(method.equals("GET")&&path.equals("/web/api/transfer-network")){json(socket,200,TransferNetwork.state(owner));return true;}
             if(method.equals("POST")&&path.equals("/web/api/transfer-network")){TransferNetwork.save(owner,new JSONObject(body).getString("mode"));json(socket,200,TransferNetwork.state(owner));return true;}

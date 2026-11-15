@@ -1,0 +1,75 @@
+{
+  "imageWidth": 1024,
+  "imageHeight": 1536,
+  "frames": [
+    {
+      "cropLTRB": [
+        0,
+        0,
+        512,
+        768
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 50.7395905606339,
+      "sourceCenter": 263.20828318595886,
+      "rgbUnchanged": true
+    },
+    {
+      "cropLTRB": [
+        512,
+        0,
+        1024,
+        768
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 50.703808191781505,
+      "sourceCenter": 263.3588194847107,
+      "rgbUnchanged": true
+    },
+    {
+      "cropLTRB": [
+        0,
+        768,
+        512,
+        1536
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 50.94081431153373,
+      "sourceCenter": 263.2684415578842,
+      "rgbUnchanged": true
+    },
+    {
+      "cropLTRB": [
+        512,
+        768,
+        1024,
+        1536
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 51.27251549941936,
+      "sourceCenter": 263.5389566421509,
+      "rgbUnchanged": true
+    }
+  ],
+  "camera": "unchanged v745 reference; same family unit and fixed center as v748"
+}

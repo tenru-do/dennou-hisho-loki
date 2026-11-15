@@ -22,7 +22,8 @@ final class ApprovedFaceRenderer {
     void rapportUser(String text,long now){warmCommand(text,now);if(expressions!=null)expressions.rapport.user(text,now);}
     void rapportAnswer(String text,FullBodyPoseCatalog.Kind kind,long now){if(expressions!=null)expressions.rapport.answer(text,kind,now);}
     boolean waitingForReaction(long now){return expressions!=null&&expressions.rapport.waiting(now);}
-    void previewConversationGesture(int kind,long now){if(expressions!=null)expressions.rapport.life.event(kind,now,true);}
+    void previewConversationGesture(int kind,long now){previewConversationGesture(kind,now,true);}
+    void previewConversationGesture(int kind,long now,boolean explicit){if(expressions!=null)expressions.rapport.life.event(kind,now,explicit);}
     void previewRapport(long now){if(kisses!=null)kisses.clearPreview();if(expressions!=null)expressions.rapport.preview(now);}
     boolean needsFastFrames(long now){return (expressions!=null&&(expressions.warmMoving(now)||expressions.rapport.active(now)||expressions.rapport.life.moving(now)||expressions.virtualMoving()||expressions.transitioning(now)))||kisses!=null&&kisses.needsFastFrames(now);}
     boolean hasLifePortraits(){return expressions!=null&&expressions.ready();}

@@ -72,7 +72,7 @@ final class FullBodyFaceAnimator {
  private void eyeMotion(Canvas c,Bitmap source,float[]f,int offset,float closed){
   if(colorTexture){
    // Retain the realistic lashes/shading rather than drawing a generic black lid.
-   patch(c,source,f,f[offset],f[offset+1],f[offset+2]*.58f,Math.max(1,f[offset+2]*.22f),f[offset+3],1-.32f*closed);return;
+   c.save();c.translate(gaze*f[offset+2]*.07f,gazeY*f[offset+2]*.04f);patch(c,source,f,f[offset],f[offset+1],f[offset+2]*.58f,Math.max(1,f[offset+2]*.22f),f[offset+3],1-.32f*closed);c.restore();return;
   }
   if(f[offset+5]>0){eye(c,source,f,offset,closed);return;}
   // Closed lids tighten briefly; never invent an iris over a closed/occluded eye.

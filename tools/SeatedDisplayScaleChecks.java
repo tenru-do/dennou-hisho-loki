@@ -17,7 +17,7 @@ public final class SeatedDisplayScaleChecks {
     float[] box=ApprovedQuietPosePolicy.fit(id,size[0],size[1],iw,ih);
     float scale=box[2]/iw;
     near(scale,box[3]/ih,"uniform proportions");
-    float span=(float)Math.hypot(f[8]-f[2],f[9]-f[3])*scale;
+    float span=CharacterDistanceCalibration.QUIET[id]*scale;
     if(target<0)target=span;else near(span,target,"same seated apparent distance");
     near(span,CharacterViewport.eyeSpan(size[0],size[1]),"seated distance matches ordinary standing");
     near(box[0]+(f[2]+f[8])*.5f*scale,size[0]*.5f,"face centered");
@@ -27,10 +27,10 @@ public final class SeatedDisplayScaleChecks {
     near(decoded[1]+f[3]/f[1]*(ih/2)*decoded[3]/(ih/2),box[1]+f[3]*scale,"downsample preserves vertical placement");
     // Adding transparent right/bottom padding must not shrink the same anatomy.
     float[] padded=f.clone();padded[0]+=400;padded[1]+=500;
-    float[] extra=ApprovedQuietPosePolicy.seatedFit(size[0],size[1],iw+400,ih+500,padded,crown,foot);
+    float[] extra=ApprovedQuietPosePolicy.calibratedFit(size[0],size[1],padded,CharacterDistanceCalibration.QUIET[id],crown);
     near(extra[2]/(iw+400),scale,"transparent canvas cannot shrink body");
     near(extra[0],box[0],"padding does not shift face");
-    float[] lowFoot=ApprovedQuietPosePolicy.seatedFit(size[0],size[1],iw,ih,f,crown,foot+10000);
+    float[] lowFoot=ApprovedQuietPosePolicy.calibratedFit(size[0],size[1],f,CharacterDistanceCalibration.QUIET[id],crown);
     near(lowFoot[2]/iw,scale,"low foot cannot shrink body");
     check(lowFoot[1]+crown*scale>=CharacterViewport.headMargin(size[1])-.02f,"overflow keeps head");
     check(lowFoot[1]+(foot+10000)*scale>size[1],"feet may crop at stable scale");
@@ -39,7 +39,7 @@ public final class SeatedDisplayScaleChecks {
     float[] f=ApprovedQuietPosePolicy.FACE[id];
     float[] a=ApprovedQuietPosePolicy.fit(id,size[0],size[1],(int)f[0],(int)f[1]);
     float scale=a[2]/f[0];
-    near(CharacterViewport.eyes(f)*scale,CharacterViewport.eyeSpan(size[0],size[1]),"resting distance matches standing");
+    near(CharacterDistanceCalibration.QUIET[id]*scale,CharacterViewport.eyeSpan(size[0],size[1]),"resting distance matches standing");
     near(scale,a[3]/f[1],"resting uniform scale");
     near(a[0]+(f[2]+f[8])*.5f*scale,size[0]*.5f,"resting face stays centered");
     near(a[1],CharacterViewport.headMargin(size[1]),"resting source top retained");

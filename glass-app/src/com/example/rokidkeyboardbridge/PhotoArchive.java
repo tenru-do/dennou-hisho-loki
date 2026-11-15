@@ -13,7 +13,7 @@ final class PhotoArchive {
   if(!root.isDirectory()&&!root.mkdirs())throw new IOException("写真保存先を作成できません");
   File state=new File(root,"keep-until.txt");if(state.exists())keepUntil=Long.parseLong(new String(Files.readAllBytes(state.toPath()),java.nio.charset.StandardCharsets.US_ASCII).trim());
  }
- private File[] photos(){File[] files=root.listFiles(f->f.isFile()&&f.getName().matches("[0-9]{13}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.jpg(?:\\.gcm)?"));if(files==null)return new File[0];Arrays.sort(files,Comparator.comparing(File::getName));return files;}
+ private File[] photos(){File[] files=root.listFiles(f->f.isFile()&&f.getName().matches("[0-9]{13}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.jpg(?:\\.gcm)?"));if(files==null)throw new IllegalStateException("写真保存先を読み取れません。0枚とは判定しません");Arrays.sort(files,Comparator.comparing(File::getName));return files;}
  private long time(File f){return Long.parseLong(f.getName().substring(0,13));}
  private File marker(File f){return new File(root,f.getName()+".keep");}
  synchronized long[] stats(){long count=0,bytes=0,kept=0;for(File f:photos()){count++;bytes+=f.length();if(marker(f).exists())kept++;}return new long[]{count,bytes,kept};}
@@ -23,6 +23,8 @@ final class PhotoArchive {
   int count=0;for(File f:photos())if(time(f)>=now-BEFORE&&time(f)<=now){if(!marker(f).exists()&&!marker(f).createNewFile())throw new IOException("保護に失敗");count++;}return count;
  }
  synchronized File[] entries(){return photos();}
+ synchronized void preflightCapture()throws IOException{if(root.getUsableSpace()<reserve&&photos().length==0)throw new IOException("保存容量不足：撮影を開始できません（空き1GB以上が必要）");}
+
  synchronized void metadata(File file,byte[] value)throws IOException{
   if(!file.getCanonicalFile().getParentFile().equals(root.getCanonicalFile())||value.length>4096||cipher==null)throw new IOException("invalid metadata");
   try{File target=new File(root,file.getName()+".meta.gcm"),tmp=new File(root,file.getName()+".meta.tmp");Files.write(tmp.toPath(),cipher.encrypt(value));Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);}catch(Exception e){throw new IOException("metadata save failed",e);}

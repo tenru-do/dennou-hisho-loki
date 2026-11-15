@@ -32,8 +32,9 @@ final class FullBodySceneScalePolicy {
  0.02408854f,
  0.04112715f
 };
- static float reference(int w,int h){float[] f=FullBodyRealisticFeatures.ALL[4];return (float)Math.hypot(f[8]-f[2],f[9]-f[3])*FullBodyScalePolicy.scale(4,(int)f[0],(int)f[1],w,h);}
- static float dramatic(int group,int w,int h){return reference(w,h)/DRAMATIC[group];}
- static float left(int group,int frame,int w,float scale){float[] b=BOUNDS[group][frame],f=FullBodyDramaticFeatures.ALL[group][frame];float x=w*.355f-f[14]*scale;return x;}
- static float top(int group,int frame,int h,float scale){return CharacterViewport.top(h-BOUNDS[group][frame][3]*scale,BOUNDS[group][frame][2],scale,h);}
+ static float reference(int w,int h){return CharacterViewport.eyeSpan(w,h);}
+ static float dramatic(int group,int w,int h){return dramatic(group,0,w,h);}
+ static float dramatic(int group,int frame,int w,int h){return CharacterViewport.eyeScale(CharacterDistanceCalibration.DRAMATIC[group][frame],w,h);}
+ static float left(int group,int frame,int w,float scale){float[] f=FullBodyDramaticFeatures.ALL[group][frame];return CharacterViewport.left(w,(f[2]+f[8])*.5f,scale);}
+ static float top(int group,int frame,int h,float scale){return CharacterViewport.headMargin(h)-Math.max(0,BOUNDS[group][frame][2]-2)*scale;}
 }

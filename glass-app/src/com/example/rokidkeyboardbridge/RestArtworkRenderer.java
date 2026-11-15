@@ -2,6 +2,7 @@ package com.example.rokidkeyboardbridge;
 import android.graphics.*;import android.view.View;import java.io.InputStream;
 /** Cached corrected rest artwork; finite keyframes, small breathing/blink mesh and fixed-body facial patches. */
 final class RestArtworkRenderer {
+ private boolean presence=true;void presence(boolean value){presence=value;if(comfort!=null)comfort.presence(value);}
  static final String MASTER="loki_rest_master_v675.png",MOTION="loki_rest_motion_v675.png",FACES="loki_rest_faces_v675.png",WAVE="loki_rest_wave_v675.png",CONVERSATION="loki_rest_conversation_faces_v677.png";
  // The old knee atlas contains bedding. Keep the finite state/face timeline,
  // but draw the reviewed ordinary master instead of loading that legacy image.
@@ -9,7 +10,7 @@ final class RestArtworkRenderer {
  private int reactionKind,reactionDirection;private long reactionAge;void reaction(int kind,int direction,long age){reactionKind=kind;reactionDirection=direction;reactionAge=age;}
  private final View host;private Bitmap[] bodies,faces;private boolean loading;private int generation;private long retryAfter;
  private final Paint paint=new Paint(3);private final float[] mesh=new float[17*33*2],faceMesh=new float[13*13*2];private final float[] fidgetBase=new float[17*33*2];private int activeMotion;private long activeAge;private int face,previousFace;private long faceAt;
- private ComfortPoseRenderer comfort;private ComfortPoseRenderer comfort(){if(comfort==null)comfort=new ComfortPoseRenderer(host);return comfort;}
+ private ComfortPoseRenderer comfort;private ComfortPoseRenderer comfort(){if(comfort==null)comfort=new ComfortPoseRenderer(host);comfort.presence(presence);return comfort;}
  boolean readyForMotion(int motion){return ComfortPoseIntent.active(motion)?comfort!=null&&comfort.ready(motion-8):ready();}
  void request(int motion){if(ComfortPoseIntent.active(motion))comfort().request(motion-8);else request();}
  RestArtworkRenderer(View host){this.host=host;}

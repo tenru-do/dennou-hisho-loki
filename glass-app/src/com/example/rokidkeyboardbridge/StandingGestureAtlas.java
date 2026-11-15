@@ -2,8 +2,9 @@ package com.example.rokidkeyboardbridge;
 /** Reviewed standing-only replacement; seated clips retain their dedicated artwork. */
 final class StandingGestureAtlas {
  static boolean supports(int clip){return clip==0||clip==2||clip==4||clip==6||clip==22||clip==24;}
- static String asset(int clip){return clip==2||clip==24?"loki_standing_accessory_v685.png":"loki_standing_gestures_v685.png";}
+ static String asset(int clip){if(clip==0)return "loki_standing_greeting_v748.png";return clip==2||clip==24?"loki_standing_accessory_v685.png":"loki_standing_gestures_v685.png";}
  static float headCenter(int clip,int frame,int width){
+  if(clip==0)return CharacterDistanceCalibration.gestureCenter(0,frame,width*3/4);
   int column=clip==22?new int[]{1,2,3,0}[frame]:frame;
   float[] centers=clip==2||clip==24?new float[]{249/1536f,574/1536f,933/1536f,1285/1536f}:new float[]{176/1086f,418/1086f,660/1086f,903/1086f};
   return centers[column]*width-column*width/4;
@@ -16,6 +17,7 @@ final class StandingGestureAtlas {
  }
  static int[] bounds(int clip,int frame,int width,int height){
   if(!supports(clip)||frame<0||frame>3)throw new IllegalArgumentException("standing atlas region");
+  if(clip==0)return new int[]{frame%2*width/2,frame/2*height/2,(frame%2+1)*width/2,(frame/2+1)*height/2};
   int rows=clip==2||clip==24?2:4;
   int row=clip==0?3:clip==4?1:clip==6?2:clip==24?1:0;
   int column=clip==22?new int[]{1,2,3,0}[frame]:frame;

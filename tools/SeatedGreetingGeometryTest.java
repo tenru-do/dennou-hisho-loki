@@ -8,7 +8,7 @@ public final class SeatedGreetingGeometryTest {
   check(Math.abs(actual-expected)<.001f,message+": "+actual+" != "+expected);
  }
  private static float eyeSpan(float[] box,float[] face){
-  return (float)Math.hypot((face[8]-face[2])*box[2]/face[0],(face[9]-face[3])*box[3]/face[1]);
+  return box[2]/face[0]*(face==SeatedGreetingGeometry.FACE?CharacterDistanceCalibration.GESTURE[1][0]:CharacterDistanceCalibration.QUIET[0]);
  }
  public static void main(String[] args){
   float[] face=SeatedGreetingGeometry.FACE;

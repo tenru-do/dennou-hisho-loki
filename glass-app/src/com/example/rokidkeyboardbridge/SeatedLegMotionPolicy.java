@@ -7,7 +7,7 @@ package com.example.rokidkeyboardbridge;
  */
 final class SeatedLegMotionPolicy {
  static final int RIGHT=0,LEFT=1,NEUTRAL=2,FRAMES=8;
- static final long DURATION=7200,AUTOMATIC_INTERVAL=120000,FADE=240;
+ static final long DURATION=7200,AUTOMATIC_INTERVAL=45000,FADE=240;
  private static final long[] STEP_MS={700,900,1000,1050,950,950,1650};
  private int side=RIGHT,fromFrame=0,targetFrame=7,pendingTarget=7;
  private long duration=DURATION;
@@ -30,7 +30,7 @@ final class SeatedLegMotionPolicy {
  /**
   * Uses only nondecreasing caller uptime. Quiet/held/speaking pauses retain the
   * current frame and do not consume playback time. Automatic motion requires
-  * 120 seconds of uninterrupted eligible idle time, including queued auto work.
+  * 45 seconds of uninterrupted eligible idle time, including queued auto work.
   */
  void update(long now,boolean seated,boolean quiet,boolean held,boolean speaking,boolean natural){
   if(now<0)return;

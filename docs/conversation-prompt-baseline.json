@@ -176,8 +176,8 @@
     {
       "app": "glass",
       "path": "glass-app/src/com/example/rokidkeyboardbridge/RestPoseIntent.java",
-      "sha256": "69fc73fe6cb9c7f0033cb565645c6b91658171ff141ef0cda8f8bafd47052f9a",
-      "validation": "2026-10-27: fresh isolated device check 1218; provider-free display replies, negative and third-party guards. docs/REST-DISPLAY-v672.md"
+      "sha256": "b098eb178d5817bdc5f655a607a1ddbabfc61e1f41541f0211ac89c686c2c1a3",
+      "validation": "2026-11-12: fresh isolated Android device check 54 with current RestPoseIntent and VisualConversationPlan sources, actual FullBodyMascotView dispatch/state and MainActivity.createConversationAnswer, provider budget zero; local lying acknowledgements and complete added context reviewed, exclusions retained; no external API. docs/REST-QUEUE-v746-v320.md"
     },
     {
       "app": "glass",

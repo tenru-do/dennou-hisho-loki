@@ -52,6 +52,13 @@ final class PhotoImportProgress {
                 : phase.equals("INTERRUPTED") ? "取り込み中断" : "結果未確認";
         String label = (fresh ? "" : "前回確認した状態（現在の進行は未確認）：") + status
                 + " ／ スマホ保存確認 " + confirmed + "枚 ／ 対象 " + total + "枚 ／ 残り未確認 " + remaining + "枚";
+        if (phase.equals("COMPLETED") && total == 0) {
+            phase = "EMPTY";
+            label = (fresh ? "" : "前回確認した状態（現在は未確認）：")
+                    + "取り込み対象0枚：グラスで転送可能な写真を確認できませんでした。写真の保存・取り込み成功を示すものではありません。KEEPの停止理由と空き容量を確認してください。";
+        }
+        JSONObject capture = workspace.optJSONObject("capture");
+        if (capture != null && capture.optJSONObject("keep") != null) label += " ／ " + KeepCapturePolicy.label(capture.getJSONObject("keep"));
         if (retained > 0) label += " ／ 削除状態の照合 " + retained + "枚（コピー枚数には含めません）";
         if (safe.optLong("failed") > 0) label += " ／ 失敗 " + safe.getLong("failed") + "枚";
         if (safe.optLong("deferred") > 0) label += " ／ 別処理待ち " + safe.getLong("deferred") + "枚";

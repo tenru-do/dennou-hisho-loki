@@ -106,9 +106,13 @@ final class TopicObservationCapture {
             wav.putShort((short) 2).putShort((short) 16).put(new byte[]{'d','a','t','a'}).putInt(data.length).put(data);
             return wav.array();
     }
-    static byte[] recorderPhoto(Context context, BooleanSupplier cancelled) throws Exception {return photo(context,cancelled,true);}
+    static byte[] recorderPhoto(Context context, BooleanSupplier cancelled) throws Exception {
+        try(CameraPriority.ReadRequest priority=CameraPriority.SHARED.read()) { return photo(context,cancelled,true); }
+    }
     static byte[] keepPhoto(Context context, BooleanSupplier cancelled) throws Exception {
-        return photo(context,cancelled,true,KeepExposureSettings.mode(context),true);
+        long ticket=CameraPriority.SHARED.keepTicket(SystemClock.elapsedRealtime());
+        if(ticket<0)throw new InterruptedException("KEEP yields camera");
+        return photo(context,()->cancelled.getAsBoolean()||CameraPriority.SHARED.yieldKeep(ticket,SystemClock.elapsedRealtime()),true,KeepExposureSettings.mode(context),true);
     }
     private static byte[] photo(Context context, BooleanSupplier cancelled) throws Exception {
         return photo(context,()->cancelled.getAsBoolean()||PhotoRecorderService.active!=null,false);
@@ -213,17 +217,23 @@ final class TopicObservationCapture {
                                 public void onConfigureFailed(android.hardware.camera2.CameraCaptureSession configured){session[0]=configured;configured.close();failure[0]=new IllegalStateException("TOPIC capture session unavailable");done.countDown();}
                             },cameraHandler);}catch(Throwable error){failure[0]=error;done.countDown();}
                         }
-                        public void onDisconnected(android.hardware.camera2.CameraDevice camera){device[0]=camera;openCompleted.countDown();camera.close();failure[0]=new IllegalStateException("TOPIC camera disconnected");done.countDown();}
-                        public void onError(android.hardware.camera2.CameraDevice camera,int error){device[0]=camera;openCompleted.countDown();camera.close();failure[0]=new IllegalStateException("TOPIC camera error "+error);done.countDown();}
+                        public void onDisconnected(android.hardware.camera2.CameraDevice camera){device[0]=camera;openCompleted.countDown();camera.close();if(keep)CameraPriority.SHARED.defer(SystemClock.elapsedRealtime(),5000);failure[0]=keep?new InterruptedException("KEEP camera preempted"):new IllegalStateException("TOPIC camera disconnected");done.countDown();}
+                        public void onError(android.hardware.camera2.CameraDevice camera,int error){device[0]=camera;openCompleted.countDown();camera.close();boolean contention=error==ERROR_CAMERA_IN_USE||error==ERROR_MAX_CAMERAS_IN_USE;
+                            if(keep&&contention)CameraPriority.SHARED.defer(SystemClock.elapsedRealtime(),5000);
+                            failure[0]=keep&&contention?new InterruptedException("KEEP yields external camera"):new IllegalStateException("TOPIC camera error "+error);done.countDown();}
                         public void onClosed(android.hardware.camera2.CameraDevice camera){deviceClosed.countDown();android.util.Log.i("TopicCamera","CameraDevice onClosed");}
                     },cameraHandler);
-                }catch(Throwable error){failure[0]=error;openCompleted.countDown();deviceClosed.countDown();done.countDown();}
+                }catch(Throwable error){
+                    if(keep&&error instanceof android.hardware.camera2.CameraAccessException&&(((android.hardware.camera2.CameraAccessException)error).getReason()==android.hardware.camera2.CameraAccessException.CAMERA_IN_USE||((android.hardware.camera2.CameraAccessException)error).getReason()==android.hardware.camera2.CameraAccessException.MAX_CAMERAS_IN_USE)){
+                        CameraPriority.SHARED.defer(SystemClock.elapsedRealtime(),5000);failure[0]=new InterruptedException("KEEP yields external camera");
+                    }else failure[0]=error;
+                    openCompleted.countDown();deviceClosed.countDown();done.countDown();}
             });
             long until=SystemClock.elapsedRealtime()+8000L;
             while(!cancelled.getAsBoolean()&&SystemClock.elapsedRealtime()<until&&!done.await(100,TimeUnit.MILLISECONDS)){}
             if(cancelled.getAsBoolean())throw new InterruptedException("TOPIC camera cancelled");
             if(jpeg[0]==null&&autoReference.get()!=null){jpeg[0]=autoReference.get();android.util.Log.w("LokiRecorderExposure","adaptive correction unconfirmed; keeping original metered JPEG");}
-            if(jpeg[0]==null)throw new IllegalStateException("TOPIC camera unavailable",failure[0]);
+            if(jpeg[0]==null){if(failure[0] instanceof InterruptedException)throw (InterruptedException)failure[0];throw new IllegalStateException("TOPIC camera unavailable",failure[0]);}
             // Recorder keeps the hardware JPEG and its orientation metadata. Avoid
             // full-resolution decode/rotate/re-encode allocations beside the HUD.
             if(recorder)return jpeg[0];

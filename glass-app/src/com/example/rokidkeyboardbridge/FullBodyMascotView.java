@@ -16,7 +16,7 @@ public final class FullBodyMascotView extends View {
     private ApprovedQuietPoseRenderer approvedQuietArtwork;
     private int quietArtworkChoice=-1;private boolean visualHeld;private int contactRegion=CharacterContactPoint.SHOULDER;
     private boolean previousNaturalSetting;
-    public void previewQuietArtwork(int index){if(!ApprovedQuietPosePolicy.valid(index)||restQuiet())return;cancelSeatedLegMotion();if(index==quietArtworkChoice){reactToButton(android.os.SystemClock.uptimeMillis(),false,false);return;}AppearanceState before=new AppearanceState();setUserContext(ApprovedQuietPosePolicy.seatedIndex(index)?"座って":"ねそべって");previousAppearance=before;visualFence.changed();visualHeld=false;quietArtworkChoice=index;requestImage();reconcileMotion();invalidate();}
+    public void previewQuietArtwork(int index){clearRecoveryArtwork();if(!ApprovedQuietPosePolicy.valid(index)||restQuiet())return;cancelSeatedLegMotion();if(index==quietArtworkChoice){reactToButton(android.os.SystemClock.uptimeMillis(),false,false);return;}AppearanceState before=new AppearanceState();setUserContext(ApprovedQuietPosePolicy.seatedIndex(index)?"座って":"ねそべって");previousAppearance=before;visualFence.changed();visualHeld=false;quietArtworkChoice=index;requestImage();reconcileMotion();invalidate();}
     private ApprovedQuietPoseRenderer approvedQuietArtwork(){if(CharacterMotionTuning.naturalPoses&&!previousNaturalSetting){quietArtworkChoice=-1;visualHeld=false;}previousNaturalSetting=CharacterMotionTuning.naturalPoses;if(approvedQuietArtwork==null)approvedQuietArtwork=new ApprovedQuietPoseRenderer(this);approvedQuietArtwork.state(mode,speechStance.kind(),android.os.SystemClock.uptimeMillis());approvedQuietArtwork.manual(quietArtworkChoice>=0);approvedQuietArtwork.held(visualHeld);approvedQuietArtwork.natural(CharacterMotionTuning.naturalPoses&&naturalPoses.enabled());approvedQuietArtwork.warmth(warmth);return approvedQuietArtwork;}
     private boolean seatedLegMotionPending(){return approvedQuietArtwork!=null&&(approvedQuietArtwork.legMotionActive()||approvedQuietArtwork.legMotionWaiting());}
     private void cancelSeatedLegMotion(){if(approvedQuietArtwork!=null)approvedQuietArtwork.cancelLegChange(android.os.SystemClock.uptimeMillis());}
@@ -42,13 +42,17 @@ public final class FullBodyMascotView extends View {
     private VisualConversationPlan interpretVisual(String t){if(t!=null&&t.matches("(?:いつもの姿勢にして|好きな姿勢にして)[。！!]*")&&getContext().getSharedPreferences("character_motion",0).contains("preferred_posture")){int p=getContext().getSharedPreferences("character_motion",0).getInt("preferred_posture",0);t=p==2?"ねそべって":p==1?"座って":"立って";}return VisualConversationPlan.resolve(t,currentVisualPosture(),lastVisualCommand);}
     public String localVisualReply(String text,boolean quiet){int warm=WarmPresencePolicy.command(text);if(warm>0)return quiet?"ナビ・録音中は演出を控えます。":WarmPresencePolicy.reply(warm);if(VisualControlPolicy.diagnose(text))return "画像名・姿勢・切替段階だけを端末内に記録します。";if(VisualControlPolicy.hold(text))return "今の姿勢のまま動きを止めます。";if(VisualControlPolicy.undo(text))return previousAppearance==null?"戻せる見た目がありません。":quiet?"ナビや録音の終了後に戻せます。":"一つ前の姿勢・表情・向きへ戻します。";int simple=VisualControlPolicy.simplePosture(text);if(simple>=0&&simple==currentVisualPosture()&&visualAction.drawn()==simple&&!visualAction.pending()&&android.os.SystemClock.uptimeMillis()-visualAction.lastFrame()<2000)return "すでにその姿勢です。このまま応じます。";if("今の不具合を記録".equals(text))return "会話本文や写真を含めず、表示診断を端末内に記録します。";VisualConversationPlan p=interpretVisual(text);if(p.kind==VisualConversationPlan.PASS)return localVisualReplyRaw(text,quiet);if(p.kind==VisualConversationPlan.HOLD)return p.reply;if(quiet)return "ナビや録音の表示中です。終了してから姿勢を指定してください。";if(!p.reply.isEmpty())return p.reply;if(RestPoseIntent.kind(text)==RestPoseIntent.REPAIR_LIE)return localVisualReplyRaw(text,false);return localVisualReplyRaw(p.steps.length==0?text:p.steps[0],false);}
     public void setSpeechContext(String prompt){userContext=prompt==null?"":prompt;}
+    private RecoveryExerciseRenderer recoveryArtwork;private int recoverySelection=-1,recoveryStrength=1;
+    public void previewRecoveryArtwork(int id,int strength){if(!RecoveryExercisePolicy.valid(id)||restQuiet())return;setUserContext(RecoveryExercisePolicy.posture(id)==2?"ねそべって":RecoveryExercisePolicy.posture(id)==1?"座って":"立って");visualHeld=false;recoverySelection=id;recoveryStrength=Math.max(0,Math.min(2,strength));if(recoveryArtwork==null)recoveryArtwork=new RecoveryExerciseRenderer(this);recoveryArtwork.request(id);reconcileMotion();invalidate();}
+    public void clearRecoveryArtwork(){recoverySelection=-1;if(recoveryArtwork!=null)recoveryArtwork.release();invalidate();}
     public void setUserContext(String prompt){
+        if(VisualControlPolicy.changesVisual(prompt)||AvatarActionDirector.stop(prompt))clearRecoveryArtwork();
         if(restQuiet())warmth.clear();else warmth.user(prompt,android.os.SystemClock.uptimeMillis());
         if(VisualControlPolicy.diagnose(prompt)){saveVisualDiagnostic();return;}
         if(VisualControlPolicy.undo(prompt)){if(!restQuiet())undoAppearance();else visualReason("ナビ・録音の表示を優先中");return;}
         if(VisualControlPolicy.hold(prompt)){visualFence.changed();stopVisualMotion();visualReason("姿勢を固定中");return;}
         int same=VisualControlPolicy.simplePosture(prompt);if(same>=0&&same==currentVisualPosture()&&visualAction.drawn()==same&&!visualAction.pending()&&android.os.SystemClock.uptimeMillis()-visualAction.lastFrame()<2000){reactToButton(android.os.SystemClock.uptimeMillis(),false,false);visualLedger.event("ALREADY_IN_POSTURE");return;}
-        if(VisualControlPolicy.changesVisual(prompt)&&!restQuiet()){previousAppearance=new AppearanceState();visualHeld=false;visualFence.changed();visualReason="";}
+        if(VisualControlPolicy.changesVisual(prompt)&&!restQuiet()){previousAppearance=new AppearanceState();visualHeld=false;visualFence.changed();visualReason="";cancelSeatedLegMotion();postureBridge.cancel();if(everydayGestures!=null)everydayGestures.clearPreview();rapport.clear();buttonReaction.clear();visualLedger.event("ACTION_INTERRUPTED_BY_NEW_INTENT");}
 
         if(planApplying){applyVisualContext(prompt);return;}
         long now=android.os.SystemClock.uptimeMillis();
@@ -89,11 +93,11 @@ public final class FullBodyMascotView extends View {
     public void contactLocation(int region,float x,long now){contactRegion=region;buttonReaction.region(region);attention((x-.5f)*2,CharacterContactPoint.vertical(region,false)-.5f,now);}
     private final NaturalPosePolicy naturalPoses=new NaturalPosePolicy();private RestArtworkRenderer naturalArtwork;
     private void clearNaturalArtwork(){if(naturalArtwork!=null){naturalArtwork.release();naturalArtwork=null;}}
-    private boolean drawRestLayer(Canvas c,RestArtworkRenderer r,int motion,int face,long age,long now,boolean speaking,int alpha){if(alpha<=0||!r.readyForMotion(motion))return false;r.reaction(restReactions.kind(now),restReactions.direction(),restReactions.age(now));int save=alpha<255?c.saveLayerAlpha(0,0,getWidth(),getHeight(),alpha):c.save();c.drawColor(Color.BLACK);boolean drawn=r.draw(c,getWidth(),getHeight(),motion,face,age,now,speaking);c.restoreToCount(save);if(drawn)visualAction.frame(motion==8||motion==11?AvatarActionDirector.SEAT:AvatarActionDirector.LIE,now);return drawn;}
+    private boolean drawRestLayer(Canvas c,RestArtworkRenderer r,int motion,int face,long age,long now,boolean speaking,int alpha){if(alpha<=0||!r.readyForMotion(motion))return false;r.presence(hostResumed&&!visualHeld&&!restQuiet()&&CharacterMotionTuning.naturalPoses&&CharacterRenderBudget.quality<2);r.reaction(restReactions.kind(now),restReactions.direction(),restReactions.age(now));int save=alpha<255?c.saveLayerAlpha(0,0,getWidth(),getHeight(),alpha):c.save();c.drawColor(Color.BLACK);boolean drawn=r.draw(c,getWidth(),getHeight(),motion,face,age,now,speaking);c.restoreToCount(save);if(drawn)visualAction.frame(motion==8||motion==11?AvatarActionDirector.SEAT:AvatarActionDirector.LIE,now);return drawn;}
     public String visualStatus(){long now=android.os.SystemClock.uptimeMillis();String action=visualAction.label(now);String preparation=approvedQuietArtwork==null?"":approvedQuietArtwork.preparationReason(now);return !action.isEmpty()?action:!preparation.isEmpty()?preparation:!visualReason.isEmpty()&&now>=visualReasonAt&&now-visualReasonAt<3000?visualReason:"";}
     public String visualDiagnostics(){return "姿勢："+(embodied.correctedRest()?"寝姿":seatedContact()?"座位":"立位")+"\n表示："+visualStatus()+"\n採用画像："+(approvedQuietArtwork==null?"未読込":approvedQuietArtwork.diagnostics(android.os.SystemClock.uptimeMillis()))+"\n表示リビジョン："+visualFence.revision()+"\n描画負荷："+CharacterRenderBudget.quality+"（0通常・1簡略・2静止寄り）\n"+visualLedger.summary()+"\n保存済み未対応件数："+getContext().getSharedPreferences("visual_diagnostics",0).getInt("unsupported",0)+"（立位／座位／寝姿／その他）"+java.util.Arrays.toString(new int[]{getContext().getSharedPreferences("visual_diagnostics",0).getInt("unsupported_0",0),getContext().getSharedPreferences("visual_diagnostics",0).getInt("unsupported_1",0),getContext().getSharedPreferences("visual_diagnostics",0).getInt("unsupported_2",0),getContext().getSharedPreferences("visual_diagnostics",0).getInt("unsupported_3",0)});}
     public void recoverVisual(){cancelScenario();recoverVisual(true);}
-    private void recoverVisual(boolean manual){if(approvedQuietArtwork!=null){approvedQuietArtwork.release();approvedQuietArtwork=null;}long now=android.os.SystemClock.uptimeMillis();if(manual)visualAction.begin(embodied.correctedRest()?"ねそべって":seatedContact()?"座って":"立って",now);visualAction.retry(now,manual);generation++;loading=idleLoading=false;loaded=-1;seatedFrames=idleFrames=motionFrames=transitionFrames=null;transitionCache[0]=transitionCache[1]=null;postureBridge.release();if(everydayGestures!=null){everydayGestures.release();everydayGestures=null;}if(restArtwork!=null){restArtwork.release();restArtwork=null;}clearNaturalArtwork();requestImage();if(embodied.correctedRest())restArtwork().request(embodied.restMotion(now));reconcileMotion();invalidate();}
+    private void recoverVisual(boolean manual){invalidPose=-1;invalidPoseRetry=0;if(approvedQuietArtwork!=null){approvedQuietArtwork.release();approvedQuietArtwork=null;}long now=android.os.SystemClock.uptimeMillis();if(manual)visualAction.begin(embodied.correctedRest()?"ねそべって":seatedContact()?"座って":"立って",now);visualAction.retry(now,manual);generation++;loading=idleLoading=false;loaded=-1;seatedFrames=idleFrames=motionFrames=transitionFrames=null;transitionCache[0]=transitionCache[1]=null;postureBridge.release();if(everydayGestures!=null){everydayGestures.release();everydayGestures=null;}if(restArtwork!=null){restArtwork.release();restArtwork=null;}clearNaturalArtwork();requestImage();if(embodied.correctedRest())restArtwork().request(embodied.restMotion(now));reconcileMotion();invalidate();}
     public void stopVisualMotion(){warmth.clear();visualHeld=true;cancelSeatedLegMotion();if(approvedQuietArtwork!=null){int p=approvedQuietArtwork.selectedIndex();if(p>=0&&((ApprovedQuietPosePolicy.seatedIndex(p)&&currentVisualPosture()==1)||(!ApprovedQuietPosePolicy.seatedIndex(p)&&currentVisualPosture()==2)))quietArtworkChoice=p;}visualPlanEpoch++;deferredSteps=null;long now=android.os.SystemClock.uptimeMillis();visualPreviewEpoch++;if(scenarioSaved!=null){embodied.restorePreview(scenarioSaved,now);scenarioSaved=null;}visualAction.stop(now);postureBridge.cancel();if(everydayGestures!=null)everydayGestures.clearPreview();naturalPoses.pause(now);embodied.stopMotion(now);buttonReaction.clear();rapport.clear();restReactions.clear();affectionCue.clear();invalidate();}
     public void runVisualScenario(){if(restQuiet()||mode!=0)return;if(scenarioSaved!=null)embodied.restorePreview(scenarioSaved,android.os.SystemClock.uptimeMillis());final long ticket=++visualPreviewEpoch;scenarioSaved=embodied.capturePreview();scenarioSavedCommand=lastVisualCommand;scenarioSavedGain=CharacterMotionTuning.intentGain;scenarioSavedSpeed=CharacterMotionTuning.intentSpeed;String[] commands={"座って","説明の仕草","手を振って","立って"};for(int i=0;i<commands.length;i++){final int step=i;postDelayed(()->{if(ticket!=visualPreviewEpoch||restQuiet())return;scriptedVisualStep=true;try{if(step==1)previewConversationGesture(CharacterGestureLife.EXPLAIN,android.os.SystemClock.uptimeMillis());else setUserContext(commands[step]);}finally{scriptedVisualStep=false;}},i*2600L);}postDelayed(()->{if(ticket!=visualPreviewEpoch)return;restoreScenario(android.os.SystemClock.uptimeMillis());visualAction.stop(android.os.SystemClock.uptimeMillis());requestImage();invalidate();},11000);}
 
@@ -108,19 +112,20 @@ public final class FullBodyMascotView extends View {
     private final CharacterRapportPolicy rapport=new CharacterRapportPolicy();
     public void cancelContactGestures(){embodied.clearScene();affectionCue.clear();rapport.clear();if(everydayGestures!=null)everydayGestures.clearPreview();invalidate();}
     public boolean waitingForReaction(long now){return rapport.waiting(now);}
-    public void previewConversationGesture(int kind,long now){cancelSeatedLegMotion();rapport.life.event(kind,now,true);reconcileMotion();invalidate();}
+    public void previewConversationGesture(int kind,long now){previewConversationGesture(kind,now,true);}
+    public void previewConversationGesture(int kind,long now,boolean explicit){cancelSeatedLegMotion();if(embodied.correctedRest()){restReactions.answer(kind==CharacterGestureLife.JOY?FullBodyPoseCatalog.Kind.JOY:kind==CharacterGestureLife.THINK?FullBodyPoseCatalog.Kind.THINK:kind==CharacterGestureLife.EXPLAIN?FullBodyPoseCatalog.Kind.EXPLAIN:FullBodyPoseCatalog.Kind.NEUTRAL,now);requestImage();reconcileMotion();invalidate();return;}rapport.life.event(kind,now,explicit);reconcileMotion();invalidate();}
     public void previewRapport(){cancelSeatedLegMotion();rapport.preview(android.os.SystemClock.uptimeMillis());reconcileMotion();invalidate();}
     private final FullBodyAffectionCue affectionCue=new FullBodyAffectionCue();
     private final EmbodiedScenePolicy embodied=new EmbodiedScenePolicy();
     private FullBodyGestureRenderer everyday(){if(everydayGestures==null)everydayGestures=new FullBodyGestureRenderer(this);return everydayGestures;}
-    public void previewEmbodied(int kind,int pose){cancelSeatedLegMotion();visualHeld=false;visualFence.changed();previousAppearance=new AppearanceState();cancelScenario();EmbodiedScenePolicy.Snapshot before=embodied.capture();endConversation();if(everydayGestures!=null)everydayGestures.clearPreview();previewPose=-1;approvedMotionPreview=-1;embodied.preview(kind,pose,android.os.SystemClock.uptimeMillis());embodied.rememberManual(before);lastVisualCommand=currentVisualPosture()==2?"ねそべって":currentVisualPosture()==1?"座って":"立って";visualPlanEpoch++;deferredSteps=null;requestImage();reconcileMotion();invalidate();}
+    public void previewEmbodied(int kind,int pose){clearRecoveryArtwork();cancelSeatedLegMotion();visualHeld=false;visualFence.changed();previousAppearance=new AppearanceState();cancelScenario();EmbodiedScenePolicy.Snapshot before=embodied.capture();endConversation();if(everydayGestures!=null)everydayGestures.clearPreview();previewPose=-1;approvedMotionPreview=-1;embodied.preview(kind,pose,android.os.SystemClock.uptimeMillis());embodied.rememberManual(before);lastVisualCommand=currentVisualPosture()==2?"ねそべって":currentVisualPosture()==1?"座って":"立って";visualPlanEpoch++;deferredSteps=null;requestImage();reconcileMotion();invalidate();}
     public void previewShyFidget(){setUserContext("照れて身をよじって");requestImage();reconcileMotion();invalidate();}
     public void previewRelaxed(int pose,int expression){previewEmbodied(EmbodiedScenePolicy.RELAXED,pose);embodied.expression(expression);invalidate();}
-    public void previewEverydayGesture(int family){cancelSeatedLegMotion();if(family>=0&&family<=12){previousAppearance=new AppearanceState();visualFence.changed();visualHeld=false;}cancelScenario();EmbodiedScenePolicy.Snapshot before=embodied.capture();visualPlanEpoch++;deferredSteps=null;noticePosture=null;String command=family==0?"手を振って":family==1?"イヤリングを触って":family==2?"手を差し出して":family==3?"手招きして":"";if(!command.isEmpty()){embodied.user(command,android.os.SystemClock.uptimeMillis());embodied.rememberManual(before);lastVisualCommand=command;}gestureRecency.note(FullBodyEverydayGesture.clip(FullBodyMotionPolicy.isSeated(loaded),family),android.os.SystemClock.uptimeMillis());everyday().preview(FullBodyMotionPolicy.isSeated(loaded),family,android.os.SystemClock.uptimeMillis());reconcileMotion();invalidate();}
+    public void previewEverydayGesture(int family){clearRecoveryArtwork();cancelSeatedLegMotion();if(family>=0&&family<=12){previousAppearance=new AppearanceState();visualFence.changed();visualHeld=false;}cancelScenario();EmbodiedScenePolicy.Snapshot before=embodied.capture();visualPlanEpoch++;deferredSteps=null;noticePosture=null;String command=family==0?"手を振って":family==1?"イヤリングを触って":family==2?"手を差し出して":family==3?"手招きして":"";if(!command.isEmpty()){embodied.user(command,android.os.SystemClock.uptimeMillis());embodied.rememberManual(before);lastVisualCommand=command;}gestureRecency.note(FullBodyEverydayGesture.clip(FullBodyMotionPolicy.isSeated(loaded),family),android.os.SystemClock.uptimeMillis());everyday().preview(FullBodyMotionPolicy.isSeated(loaded),family,android.os.SystemClock.uptimeMillis());reconcileMotion();invalidate();}
     private boolean everydayAllowed(long now){
         boolean quiet=getContext() instanceof MainActivity&&((MainActivity)getContext()).quietCharacterVisuals();
         boolean explicitPreview=mode==0&&everydayGestures!=null&&everydayGestures.active(now);
-        return !quiet&&!visualHeld&&(explicitPreview||(previewPose<0&&dramaticPreview<0&&approvedMotionPreview<0&&!performing(now)&&!pickingPen(now)
+        return !quiet&&!visualHeld&&(explicitPreview||ConversationStageMotion.optional(now,false)&&(previewPose<0&&dramaticPreview<0&&approvedMotionPreview<0&&!performing(now)&&!pickingPen(now)
             &&!heavyBreathActive&&!rearStopActive&&!unwellActive
             &&FullBodyEverydayGesture.allowed(mode,continuity.holds(now),speechStance.kind())));
     }
@@ -130,9 +135,10 @@ public final class FullBodyMascotView extends View {
         public void reactToSwipe(long now,boolean contact,int direction){if(approvedQuietArtwork!=null)approvedQuietArtwork.accepted(now,contact,contactRegion,direction);restTouch(now,contact,direction);buttonReaction.swipe(now,contact,direction);rapport.life.touch(now,direction,CharacterTouchTempo.duration(now),contact);rapport.touch(now);invalidate();}
     private final CharacterHeadGuard viewportHeadGuard=new CharacterHeadGuard();
     @Override public void draw(Canvas canvas){
-        long now=android.os.SystemClock.uptimeMillis();rapport.life.performance.mode(now,mode);float gaze=rapport.life.gaze(now,mode,false)*90f,voice=rapport.life.performance.mouth(now),gazeY=rapport.life.performance.buttonVertical(now)*90;faceAnimator.attention(gaze,gazeY,voice);for(FullBodyFaceAnimator f:attachedFaces)f.attention(gaze,gazeY,voice);for(FullBodyFaceAnimator f:dramaticFaces)f.attention(gaze,gazeY,voice);for(FullBodyFaceAnimator f:approvedFaces)f.attention(gaze,gazeY,voice);int saved=canvas.save();
+        long now=android.os.SystemClock.uptimeMillis();rapport.life.performance.mode(now,mode);float gaze=ConversationStageMotion.gaze(now,restQuiet())+rapport.life.gaze(now,mode,false)*90f,voice=rapport.life.performance.mouth(now),gazeY=rapport.life.performance.buttonVertical(now)*90;faceAnimator.attention(gaze,gazeY,voice);for(FullBodyFaceAnimator f:attachedFaces)f.attention(gaze,gazeY,voice);for(FullBodyFaceAnimator f:dramaticFaces)f.attention(gaze,gazeY,voice);for(FullBodyFaceAnimator f:approvedFaces)f.attention(gaze,gazeY,voice);int saved=canvas.save();
         long renderStarted=System.nanoTime();
-        try{viewportHeadGuard.begin(canvas);canvas.clipRect(0,0,getWidth(),getHeight());if(visualMirror){canvas.translate(getWidth(),0);canvas.scale(-1,1);}buttonReaction.apply(canvas,getWidth(),getHeight(),now);boolean quiet=restQuiet();if(quiet)warmth.clear();float proximity=warmth.approach(now,mode,quiet);if(proximity>0)canvas.scale(1+proximity,1+proximity,getWidth()*.5f,getHeight()*.15f);viewportHeadGuard.apply(canvas,getWidth(),getHeight());super.draw(canvas);}catch(RuntimeException|OutOfMemoryError broken){visualAction.fail(now);postureBridge.cancel();}finally{CharacterRenderBudget.sample(now,System.nanoTime()-renderStarted);if(!visualAction.pending()&&!visualAction.failed())visualLedger.rendered(visualAction.drawn(),now);canvas.restoreToCount(saved);}
+        try{viewportHeadGuard.begin(canvas);canvas.clipRect(0,0,getWidth(),getHeight());if(visualMirror){canvas.translate(getWidth(),0);canvas.scale(-1,1);}buttonReaction.apply(canvas,getWidth(),getHeight(),now);boolean quiet=restQuiet();if(quiet)warmth.clear();float proximity=warmth.approach(now,mode,quiet);// Fixed camera distance: keep the expression cue without camera zoom.
+viewportHeadGuard.apply(canvas,getWidth(),getHeight());super.draw(canvas);}catch(RuntimeException|OutOfMemoryError broken){visualAction.fail(now);postureBridge.cancel();}finally{CharacterRenderBudget.sample(now,System.nanoTime()-renderStarted);if(!visualAction.pending()&&!visualAction.failed())visualLedger.rendered(visualAction.drawn(),now);canvas.restoreToCount(saved);}
         if(buttonReaction.active(now)&&hostResumed&&isShown())postInvalidateDelayed(33);
     }
 
@@ -290,7 +296,7 @@ public final class FullBodyMascotView extends View {
     }
     private void drawDramaticBreathFrame(Canvas canvas,int index,float alpha,boolean add,long elapsed){
         Bitmap frame=dramaticFrames[index];if(frame==null||frame.isRecycled()||alpha<=0)return;
-        float sourceScale=FullBodySceneScalePolicy.dramatic(dramaticLoaded,getWidth(),getHeight());
+        float sourceScale=FullBodySceneScalePolicy.dramatic(dramaticLoaded,index,getWidth(),getHeight());
         float scale=sourceScale*FullBodyDramaticFeatures.ALL[dramaticLoaded][index][1]/frame.getHeight();
         float[] sourceFace=FullBodyDramaticFeatures.ALL[dramaticLoaded][index];
         float x=CharacterViewport.left(getWidth(),(sourceFace[2]+sourceFace[8])*.5f,sourceScale);
@@ -305,7 +311,7 @@ public final class FullBodyMascotView extends View {
         situationEffects.draw(canvas,frame,features,elapsed,effectiveEffects());
         canvas.restoreToCount(saved);layerPaint.setAlpha(255);layerPaint.setXfermode(null);
     }
-    public void setPreviewPose(int id){if(id>=0){previousAppearance=new AppearanceState();visualFence.changed();visualHeld=false;}cancelScenario();EmbodiedScenePolicy.Snapshot before=embodied.capture();visualPlanEpoch++;deferredSteps=null;noticePosture=null;endConversation();dramaticPreview=-1;approvedMotionPreview=-1;previewPose=id<0?-1:Math.min(180,id);if(previewPose>=0){lastVisualCommand=FullBodyMotionPolicy.isSeated(previewPose)?"座って":"立って";embodied.user(lastVisualCommand,android.os.SystemClock.uptimeMillis());embodied.rememberManual(before);}requestImage();reconcileMotion();}
+    public void setPreviewPose(int id){clearRecoveryArtwork();if(id>=0){previousAppearance=new AppearanceState();visualFence.changed();visualHeld=false;}cancelScenario();EmbodiedScenePolicy.Snapshot before=embodied.capture();visualPlanEpoch++;deferredSteps=null;noticePosture=null;endConversation();dramaticPreview=-1;approvedMotionPreview=-1;previewPose=id<0?-1:Math.min(180,id);if(previewPose>=0){lastVisualCommand=FullBodyMotionPolicy.isSeated(previewPose)?"座って":"立って";embodied.user(lastVisualCommand,android.os.SystemClock.uptimeMillis());embodied.rememberManual(before);}requestImage();reconcileMotion();}
     public void setApprovedMotionPreview(int kind){if(kind>=0&&kind<=2){previousAppearance=new AppearanceState();visualFence.changed();visualHeld=false;}
         endConversation();
         if(kind<0||kind>2){setPreviewPose(-1);return;}
@@ -423,13 +429,13 @@ public final class FullBodyMascotView extends View {
     }
     private void drawRearHoldFrame(Canvas canvas,int index,float opacity,boolean add){
         if(opacity<=0)return;Bitmap frame=rearHoldFrames[index];float[] b=FullBodyRearHoldPolicy.BOUNDS[index];
-        float scale=FullBodyRearHoldPolicy.bodyHeight(getWidth(),getHeight())/(b[3]-b[2]);
+        float scale=CharacterViewport.eyeScale(CharacterDistanceCalibration.REAR[index],getWidth(),getHeight());
         // The far eye is occluded in this profile; use the reviewed visible eye.
         float x=CharacterViewport.left(getWidth(),FullBodyRearFaceFeatures.ALL[index][2],scale);
         // Keep the calibrated anchor; the viewport crops any overflow.
         layerPaint.setAlpha(Math.round(opacity*255));layerPaint.setXfermode(add?additive:null);
         int saved=canvas.saveLayer(0,0,getWidth(),getHeight(),layerPaint);
-        canvas.translate(x,CharacterViewport.top(getHeight()-b[3]*scale,b[2],scale,getHeight()));canvas.scale(scale,scale);
+        canvas.translate(x,CharacterViewport.headMargin(getHeight())-b[2]*scale);canvas.scale(scale,scale);
         legacyMorphScale=scale;frameLayers++;
         drawLivingBitmap(canvas,frame,FullBodyRearFaceFeatures.ALL[index]);
         long now=android.os.SystemClock.uptimeMillis();dramaticFaces[index].drawFeatures(canvas,frame,FullBodyRearFaceFeatures.ALL[index],now,mode==2,true);situationEffects.draw(canvas,frame,FullBodyRearFaceFeatures.ALL[index],now,effectiveEffects());canvas.restoreToCount(saved);layerPaint.setAlpha(255);layerPaint.setXfermode(null);
@@ -700,7 +706,7 @@ public final class FullBodyMascotView extends View {
             invalidate();
             long now=android.os.SystemClock.uptimeMillis();
             if(visualAction.recovery(now))recoverVisual(false);
-            boolean moving=warmth.active(now)||approvedQuietArtwork!=null&&approvedQuietArtwork.transitioning(now)||postureBridge.active(now)||previousBitmap!=null||transitionFrames!=null||buttonReaction.active(now)||embodied.moving(now)||restReactions.moving(now)||naturalPoses.moving(now)
+            boolean moving=recoverySelection>=0&&recoveryStrength>0&&!visualHeld||warmth.active(now)||approvedQuietArtwork!=null&&approvedQuietArtwork.transitioning(now)||postureBridge.active(now)||previousBitmap!=null||transitionFrames!=null||buttonReaction.active(now)||embodied.moving(now)||restReactions.moving(now)||naturalPoses.moving(now)
                 ||rapport.life.moving(now)||dramaticPreview>=0||performing(now)||pickingPen(now)
                 ||everydayGestures!=null&&(everydayGestures.active(now)||everydayGestures.transitioning(now));
             postDelayed(this, CharacterFrameCadence.delay(mode==2,moving,mode==1));
@@ -716,12 +722,12 @@ public final class FullBodyMascotView extends View {
         if(!embodied.stable()&&!continuity.engaged(now)&&dramaticAuto)endConversation();
         mode=value;if(approvedQuietArtwork!=null)approvedQuietArtwork.state(value,speechStance.kind(),now);if(speechFinished&&deferredSteps!=null){String[] next=deferredSteps;deferredSteps=null;if(now<=deferredUntil&&!restQuiet())runVisualSteps(next,false,visualPlanEpoch);}naturalPoses.mode(value,now,naturalBusy());if(value!=0)clearNaturalArtwork();if(embodied.correctedRest()&&!restQuiet())restReactions.mode(value,now,restVisualTurn);requestImage();reconcileMotion();
     }
-    public void setHostResumed(boolean value) { hostResumed = value;if(!value&&approvedQuietArtwork!=null){approvedQuietArtwork.release();approvedQuietArtwork=null;}if(!value){visualPlanEpoch++;deferredSteps=null;embodied.stopMotion(android.os.SystemClock.uptimeMillis());postureBridge.cancel();if(everydayGestures!=null)everydayGestures.clearPreview();}naturalPoses.pause(android.os.SystemClock.uptimeMillis());clearNaturalArtwork();reconcileMotion(); }
+    public void setHostResumed(boolean value) { hostResumed = value;if(!value&&recoveryArtwork!=null)recoveryArtwork.release();if(!value&&approvedQuietArtwork!=null){approvedQuietArtwork.release();approvedQuietArtwork=null;}if(!value){visualPlanEpoch++;deferredSteps=null;embodied.stopMotion(android.os.SystemClock.uptimeMillis());postureBridge.cancel();if(everydayGestures!=null)everydayGestures.clearPreview();}naturalPoses.pause(android.os.SystemClock.uptimeMillis());clearNaturalArtwork();reconcileMotion(); }
     private void reconcileMotion() {
         if (motionTick == null) return;
         removeCallbacks(motionTick);
         if (hostResumed && isShown() && getWindowVisibility() == View.VISIBLE
-                && (bitmap!=null||dramaticPreview>=0)) post(motionTick);
+                && (bitmap!=null||dramaticPreview>=0||recoverySelection>=0)) post(motionTick);
     }
 
     public FullBodyMascotView(Context context) { super(context);CharacterMotionPreferences.load(context);previousNaturalSetting=CharacterMotionTuning.naturalPoses;naturalPoses.enabled(CharacterMotionTuning.naturalPoses); setBackgroundColor(Color.BLACK); }
@@ -732,7 +738,10 @@ public final class FullBodyMascotView extends View {
         reconcileMotion();
     }
 
+    private int invalidPose=-1;private long invalidPoseRetry;
+    private boolean safeDecoded(Bitmap b,int pose){if(b==null||b.isRecycled())return false;float[] f=FullBodyFaceAnimator.features(pose);if(f==null||!CharacterArtworkSafety.geometry(b.getWidth(),b.getHeight(),f[0],f[1],(f[2]+f[8])*.5f,Math.max(0,FullBodyFrameScalePolicy.BOUNDS[pose][2]-2),CharacterDistanceCalibration.BODY[pose]))return false;int visible=0;for(int y=0;y<24;y++)for(int x=0;x<16;x++){int pixel=b.getPixel(x*(b.getWidth()-1)/15,y*(b.getHeight()-1)/23);if((pixel>>>24)>32&&Math.max((pixel>>16)&255,Math.max((pixel>>8)&255,pixel&255))>24)visible++;}return visible>=3;}
     private void requestImage() {
+        if(requestedPose()==invalidPose&&android.os.SystemClock.uptimeMillis()<invalidPoseRetry)return;
         if (!isShown() || getWidth() <= 0 || loading || idleLoading || loaded == requestedPose()) return;
         final int id = requestedPose(), token = generation;final long visualTicket=visualAction.epoch();
         final int targetHeight = Math.max(1, getHeight());
@@ -749,7 +758,7 @@ public final class FullBodyMascotView extends View {
             final Bitmap[] seatSteps=id==168 ? (cachedSeated!=null?cachedSeated:decodeSeatedFrames()) : null;
             final Bitmap[] bodySteps=id>=169?decodeMotionFrames(id>=175):null;
             Bitmap result = bodySteps!=null?bodySteps[(id-169)%6]:seatSteps!=null ? seatSteps[0] : decode(id, targetHeight);
-            if (result == null && id != 0) result = decode(0, targetHeight);
+            boolean fallback=!safeDecoded(result,id);if(fallback)result=decode(4,targetHeight);final int actualId=fallback?4:id;final boolean safeFallback=fallback;
             final Bitmap image = result;
             final Bitmap[] steps = kind==0 ? null : (cached!=null ? cached : kind==4?decodeGroup(new int[]{hub},1):kind==3?decodeGroup(FullBodyPoseLinks.frames(link),1):decodeTransition(kind));
             post(() -> {
@@ -764,12 +773,14 @@ public final class FullBodyMascotView extends View {
                     previousBitmap=lastDrawnBitmap!=null?lastDrawnBitmap:bitmap;previousPose=lastDrawnBitmap!=null?lastDrawnPose:loaded;blendStarted=android.os.SystemClock.uptimeMillis();
                     previousFraction=lastDrawnBitmap!=null?lastDrawnFraction:FullBodyMotionPolicy.bodyHeightFraction(loaded);
                     blendDuration=FullBodyBlendPolicy.POSE_MS;
+                    if(!safeDecoded(image,actualId)){invalidPose=id;invalidPoseRetry=android.os.SystemClock.uptimeMillis()+60000;visualReason("画像の寸法・校正値を確認できません。前の表示を維持します");return;}
+                    if(safeFallback){if(bodySteps!=null)for(Bitmap b:bodySteps)if(b!=null&&!b.isRecycled())b.recycle();if(seatSteps!=null&&seatSteps!=cachedSeated)for(Bitmap b:seatSteps)if(b!=null&&!b.isRecycled())b.recycle();if(steps!=null&&steps!=cached)for(Bitmap b:steps)if(b!=null&&!b.isRecycled())b.recycle();invalidPose=id;invalidPoseRetry=android.os.SystemClock.uptimeMillis()+60000;visualReason("画像の校正を確認できず、確認済みの立位へ戻しました");}
                     bitmap = image;
-                    motionFrames=bodySteps;
-                    if(seatSteps!=null){seatedFrames=seatSteps;if(cachedSeated==null||from<0||!FullBodyMotionPolicy.isSeated(from))seatedStarted=android.os.SystemClock.uptimeMillis();}
-                    loaded = id;
+                    motionFrames=safeFallback?null:bodySteps;
+                    if(seatSteps!=null&&!safeFallback){seatedFrames=seatSteps;if(cachedSeated==null||from<0||!FullBodyMotionPolicy.isSeated(from))seatedStarted=android.os.SystemClock.uptimeMillis();}
+                    loaded = actualId;
                     reactions.committed(android.os.SystemClock.uptimeMillis());
-                    if(steps!=null){
+                    if(steps!=null&&!safeFallback){
                         if(kind==3){cachedLink=link;linkFrames=steps;}else if(kind!=4)transitionCache[kind-1]=steps;
                         transitionFrames=steps;transitionIds=kind==4?new int[]{hub}:kind==3?FullBodyPoseLinks.frames(link):null;transitionKind=kind;transitionFirst=kind==3?FullBodyPoseLinks.firstFrame(link):kind==1?186:192;
                         transitionReverse=kind==4?false:kind==3?FullBodyPoseLinks.reverse(link,from):FullBodyTransitionPolicy.reverse(kind,from,id);
@@ -876,6 +887,8 @@ public final class FullBodyMascotView extends View {
         long everydayNow=android.os.SystemClock.uptimeMillis();naturalPoses.enabled(CharacterMotionTuning.naturalPoses);
         VirtualContactPolicy.Frame contact=getContext() instanceof MainActivity?((MainActivity)getContext()).virtualContactFrame():VirtualContactPolicy.Frame.EMPTY;
         boolean contactQuiet=getContext() instanceof MainActivity&&((MainActivity)getContext()).quietCharacterVisuals();
+        if(recoverySelection>=0&&!contactQuiet){if(recoveryArtwork==null)recoveryArtwork=new RecoveryExerciseRenderer(this);if(recoveryArtwork.draw(canvas,getWidth(),getHeight(),recoverySelection,everydayNow,recoveryStrength,hostResumed&&!visualHeld&&breathingEnabled&&CharacterMotionTuning.body()>0&&CharacterRenderBudget.quality<2)){visualAction.frame(RecoveryExercisePolicy.posture(recoverySelection),everydayNow);return;}}
+
         if(approvedQuietArtwork!=null&&(embodied.correctedRest()||!seatedContact()||quietArtworkChoice>=0||previewPose>=0||dramaticPreview>=0||approvedMotionPreview>=0))cancelSeatedLegMotion();
         boolean legMotion=seatedLegMotionPending();
         if(contactQuiet)restReactions.clear();
@@ -1149,7 +1162,7 @@ public final class FullBodyMascotView extends View {
         float[] sourceFace=FullBodyRealisticFeatures.ALL[pose];
         float left=CharacterViewport.left(getWidth(),(sourceFace[2]+sourceFace[8])*.5f*frame.getWidth()/sourceFace[0],scale);
         float crown=Math.max(0,FullBodyFrameScalePolicy.BOUNDS[pose][2]-2)*frame.getWidth()/FullBodyRealisticFeatures.ALL[pose][0];
-        float top=CharacterViewport.top((pose==168||pose>=181&&pose<=185)?CharacterViewport.headMargin(getHeight())-crown*scale:getHeight()-height,crown,scale,getHeight());
+        float top=CharacterViewport.headMargin(getHeight())-crown*scale;
         destination.set(left,top,left+width,top+height);
         paint.setAlpha(255);
         int local=canvas.save();canvas.translate(left,top);canvas.scale(scale,scale);
@@ -1199,6 +1212,7 @@ public final class FullBodyMascotView extends View {
     }
     @Override protected void onDetachedFromWindow() { release(); super.onDetachedFromWindow(); }
     private void release() {
+        if(recoveryArtwork!=null)recoveryArtwork.release();
         if(approvedQuietArtwork!=null){approvedQuietArtwork.release();approvedQuietArtwork=null;}
         warmth.clear();postureBridge.release();rapport.clear();affectionCue.clear();
         if(everydayGestures!=null){everydayGestures.release();everydayGestures=null;}if(restArtwork!=null){restArtwork.release();restArtwork=null;}

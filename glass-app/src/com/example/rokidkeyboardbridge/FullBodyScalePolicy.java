@@ -449,17 +449,11 @@ final class FullBodyScalePolicy {
  private static int cachedWidth=-1,cachedHeight=-1;private static float cachedSpan;
  static float commonSpan(int width,int height){
   if(width==cachedWidth&&height==cachedHeight)return cachedSpan;
-  // The usual standing pose determines apparent distance, never an outlier image.
-  float[] reference=FullBodyRealisticFeatures.ALL[4];
-  float target=HEAD_SPAN[4]*Math.min(width/reference[0],height/reference[1]);
+  float target=CharacterViewport.standingHead(width,height);
   cachedWidth=width;cachedHeight=height;cachedSpan=target;return cachedSpan;
  }
  static float scale(int pose,int bitmapWidth,int bitmapHeight,int width,int height){
   float[] f=FullBodyRealisticFeatures.ALL[pose];
-  if(pose==168||pose>=181&&pose<=185)return CharacterViewport.eyeScale(CharacterViewport.eyes(f),width,height)*f[0]/bitmapWidth;
-  if(FullBodyCyberMotion.groupForPose(pose)>=0)return FullBodyCyberMotion.scale(pose,bitmapWidth,bitmapHeight,width,height);
-  if(pose>=293&&pose<=364)return FullBodyFrameScalePolicy.source(pose,width,height)*f[0]/bitmapWidth;
-  float normalizedSpan=HEAD_SPAN[pose]*bitmapWidth/f[0];
-  return commonSpan(width,height)/normalizedSpan;
+  return CharacterViewport.eyeScale(CharacterDistanceCalibration.bodyUnit(pose),width,height)*f[0]/bitmapWidth;
  }
 }

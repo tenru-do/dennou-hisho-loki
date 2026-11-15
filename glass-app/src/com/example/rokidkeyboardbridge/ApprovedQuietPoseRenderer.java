@@ -10,7 +10,7 @@ final class ApprovedQuietPoseRenderer {
  private WarmPresencePolicy warmth;void warmth(WarmPresencePolicy value){warmth=value;}
  private Bitmap current,previous,prefetched;private int selected=-1,previousIndex=-1,prefetchedIndex=-1,wanted=-1,generation;private boolean loading,manual,held;private long changedAt,retryAt,prefetchRetryAt,loadAt;private int retryIndex=-1;
  ApprovedQuietPoseRenderer(View host){this.host=host;}
- boolean transitioning(long now){return previous!=null&&now-changedAt<1250||performance.active(now)||legArtwork!=null&&legArtwork.moving();}
+ boolean transitioning(long now){return natural&&!held&&RestPresenceMotion.active(now)||previous!=null&&now-changedAt<1250||performance.active(now)||legArtwork!=null&&legArtwork.moving();}
  void accepted(long now,boolean contact){performance.accepted(now,contact);host.invalidate();}
  void accepted(long now,boolean contact,int point,int direction){performance.accepted(now,contact,point,direction);host.invalidate();}
  void state(int mode,FullBodyPoseCatalog.Kind kind,long now){presentationMode=mode;presentationScene=CharacterChoreography.scene;performance.update(mode,CharacterChoreography.phase,presentationScene,kind,now);}
@@ -66,6 +66,7 @@ final class ApprovedQuietPoseRenderer {
     SeatedPresenceMotion.fill(mesh,16,32,b.getWidth(),b.getHeight(),faceBottom,presence);
     if(natural)DrapedSeatedMotion.apply(mesh,16,32,b.getWidth(),b.getHeight(),index,now,gain);
    }
+   if(natural&&!held)RestPresenceMotion.apply(mesh,16,32,b.getWidth(),b.getHeight(),faceBottom,now,gain,ApprovedQuietPosePolicy.seatedIndex(index));
    c.drawBitmapMesh(b,16,32,mesh,0,null,0,paint);
   }else c.drawBitmap(b,0,0,paint);
   if(animate&&index==selected&&ApprovedQuietPosePolicy.awake(index)){float warm=warmth==null?0:warmth.smile(now,speaking?2:0,false);int expression=performance.expression(now);boolean receptive=expression==QuietPosePerformance.CALM||expression==QuietPosePerformance.JOY||expression==QuietPosePerformance.RELIEF;face.attention(performance.gazeX(now)*performance.gain()+(warmth==null?0:warmth.gaze(now,speaking?2:0,false)),performance.gazeY()*performance.gain(),speaking?.45f:0);int faceSave=c.save();if(index<3)c.translate(presence[0]*b.getWidth(),presence[1]*b.getHeight());face.drawQuietFeatures(c,b,f,now,speaking,receptive&&warm>0?QuietPosePerformance.JOY:expression,receptive?Math.max(warm,performance.expressionGain(now)):performance.expressionGain(now));c.restoreToCount(faceSave);}
@@ -86,5 +87,6 @@ final class ApprovedQuietPoseRenderer {
   else{if(previous!=null&&(!animate||age>=1250)){previous.recycle();previous=null;}image(c,current,selected,width,height,now,255,animate,speaking,0,QuietPosePerformance.settle(age));}
   prefetch(now);return true;
  }
+ void renderPreview(Canvas c,Bitmap b,int index,int w,int h,long now,boolean animate){image(c,b,index,w,h,now,255,animate,false,0,0);}
  void release(){generation++;loading=false;selected=previousIndex=prefetchedIndex=wanted=-1;retryAt=prefetchRetryAt=0;retryIndex=-1;if(legArtwork!=null){legArtwork.release();legArtwork=null;}face.clear();if(current!=null)current.recycle();if(previous!=null)previous.recycle();if(prefetched!=null)prefetched.recycle();current=previous=prefetched=null;}
 }

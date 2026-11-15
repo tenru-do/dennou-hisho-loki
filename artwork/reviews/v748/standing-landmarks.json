@@ -1,0 +1,84 @@
+{
+  "imageWidth": 1024,
+  "imageHeight": 1536,
+  "frames": [
+    {
+      "cropLTRB": [
+        0,
+        0,
+        512,
+        768
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 50.094235649117174,
+      "sourceCenter": 263.5699611902237,
+      "sourceUnit": 25.020986470142834,
+      "sharedUnit": 25.028238149909303,
+      "sourceRgbUnchanged": true
+    },
+    {
+      "cropLTRB": [
+        512,
+        0,
+        1024,
+        768
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 49.89114790784245,
+      "sourceCenter": 263.724610209465,
+      "sourceUnit": 24.91954853899484,
+      "sharedUnit": 25.028238149909303,
+      "sourceRgbUnchanged": true
+    },
+    {
+      "cropLTRB": [
+        0,
+        768,
+        512,
+        1536
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 50.210386681421795,
+      "sourceCenter": 263.69469821453094,
+      "sourceUnit": 25.079001396813116,
+      "sharedUnit": 25.028238149909303,
+      "sourceRgbUnchanged": true
+    },
+    {
+      "cropLTRB": [
+        512,
+        768,
+        1024,
+        1536
+      ],
+      "headBounds": [
+        210,
+        14,
+        96,
+        110
+      ],
+      "sourceSkull": 50.12327266214676,
+      "sourceCenter": 263.41508865356445,
+      "sourceUnit": 25.03548982967577,
+      "sharedUnit": 25.028238149909303,
+      "sourceRgbUnchanged": true
+    }
+  ],
+  "scaleMethod": "offline 3D cheekbone span; common family median; unchanged v745 camera reference",
+  "familyUnit": 25.028238149909303
+}

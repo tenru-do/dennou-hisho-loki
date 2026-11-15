@@ -14,6 +14,7 @@ $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/ro
 $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/SeatedGestureAtlas.java'))
 $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/SeatedLegMotionRenderer.java'))
 $renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/ApprovedFaceRenderer.java'))
+$renderer+=[IO.File]::ReadAllText((Join-Path $root 'glass-app/src/com/example/rokidkeyboardbridge/GreetingBridgeAtlas.java'))
 $names=@([regex]::Matches($renderer,'"(loki_[a-zA-Z0-9_]+\.png)"') | ForEach-Object {$_.Groups[1].Value} | Sort-Object -Unique)
 foreach($name in $names){
  $entry=@($review.assets | Where-Object {$_.name -eq $name})

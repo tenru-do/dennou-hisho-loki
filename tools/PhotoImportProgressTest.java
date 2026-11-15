@@ -55,6 +55,16 @@ public final class PhotoImportProgressTest {
         check(PhotoImportProgress.view(workspace(other), request(), NOW).isNull("total"), "meeting counts never leak into KEEP");
         JSONObject empty = row("COMPLETED", 0, 0).put("expected", 0);
         check(PhotoImportProgress.view(workspace(empty), request(), NOW).getBoolean("totalKnown"), "known empty differs from unknown");
+        JSONObject emptyView = PhotoImportProgress.view(workspace(empty), request(), NOW);
+        check(emptyView.getString("state").equals("EMPTY") && !emptyView.getBoolean("active"), "zero source is not a successful import");
+        check(!emptyView.getString("label").contains("処理完了") && emptyView.getString("label").contains("保存・取り込み成功を示すものではありません"), "empty gives capture diagnosis");
+        JSONObject keep = new JSONObject().put("phase","FAILED").put("reason","LOW_SPACE").put("saved",0).put("at",NOW).put("availableBytes",900000000).put("image","private-fixture");
+        JSONObject diagnosed = PhotoImportProgress.view(workspace(empty).put("capture",new JSONObject().put("keep",keep)),request(),NOW);
+        check(diagnosed.getString("label").contains("空き容量不足") && diagnosed.getString("label").contains("保存成功 0枚"), "capture failure survives empty import");
+        check(!diagnosed.toString().contains("private-fixture"), "capture images never exposed");
+        JSONObject clean=KeepCapturePolicy.safe(keep.put("saved",-1).put("reason","private-fixture"));
+        check(clean.getInt("saved")==0 && clean.getString("reason").isEmpty() && !clean.has("image"), "capture metadata is bounded and allowlisted");
+        check(!PhotoImportProgress.view(workspace(empty).put("connected",false),request(),NOW).getBoolean("fresh"), "empty stale result stays stale");
         for (String phase : new String[]{"FAILED", "INTERRUPTED", "PARTIAL"}) {
             JSONObject result = PhotoImportProgress.view(workspace(row(phase, 3, 0)), request(), NOW);
             check(!result.getBoolean("active") && result.getLong("remaining") == 7, phase + " retains unresolved count");

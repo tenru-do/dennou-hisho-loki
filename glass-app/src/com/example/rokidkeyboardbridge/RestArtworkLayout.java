@@ -9,7 +9,7 @@ final class RestArtworkLayout {
  // Use one neutral eye unit per source family; turning/closing the eyes in
  // adjacent motion frames must not make the body zoom in and out.
  static float eyeSpan(int frame,int height){return (frame<9?19.2f:24.5f)*height/GEOMETRY[frame][5];}
- static float scale(int frame,int imageHeight,int width,int height){return CharacterViewport.eyeScale(eyeSpan(frame,imageHeight),width,height);}
+ static float scale(int frame,int imageHeight,int width,int height){return CharacterViewport.eyeScale(CharacterDistanceCalibration.REST[frame]*imageHeight/CharacterDistanceCalibration.REST_HEIGHT[frame],width,height);}
  static float coordinate(int frame,int component,int width,int height){int[] g=GEOMETRY[frame];return g[component]*(component==0||component==3?width/(float)g[4]:height/(float)g[5]);}
  static int[] face(int expression){return expression==0?new int[]{228,46,288,102}:new int[]{expression==1||expression==3?252:206,50,expression==1||expression==3?312:266,106};}
  private RestArtworkLayout(){}

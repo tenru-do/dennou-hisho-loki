@@ -6,6 +6,7 @@ if($Release){
 }
 $root=Split-Path $PSScriptRoot -Parent
 if($App -eq 'glass'){& "$PSScriptRoot/Assert-CharacterArtwork.ps1"}
+if($App -eq 'glass'){& "$PSScriptRoot/Assert-RecoveryArtwork.ps1"}
 if($App -eq 'glass'){& "$PSScriptRoot/Assert-ColorMigration.ps1"}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/Assert-ConversationPromptBaseline.ps1" -App $App}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/generate-loki-self-profile.ps1"}
@@ -63,6 +64,7 @@ $ErrorActionPreference='Stop'
 foreach($entry in $output){Write-Output ([string]$entry)}
 if($exitCode -ne 0){throw "Android compilation failed: $exitCode"}
 if($App -eq 'glass'){& "$PSScriptRoot/Test-CharacterContinuity.ps1" -Classes $classes -Output "$build/character-tests"}
+if($App -eq 'glass'){& "$PSScriptRoot/Test-CameraPriority.ps1" -Classes $classes -Output "$build/camera-priority-tests"}
 if($App -eq 'phone'){& "$PSScriptRoot/Test-NewsSpeech.ps1" -Classes $classes -Output "$build/news-tests"}
 & "$env:JAVA_HOME/bin/jar.exe" cf "$build/program.jar" -C "$build/classes" .
 Check-Exit

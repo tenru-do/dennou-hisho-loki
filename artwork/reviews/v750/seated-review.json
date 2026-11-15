@@ -1,0 +1,19 @@
+{
+  "assetSha256": "3d033d00b1c018acbdf26e3efd751bca2b2b21f098865bc1ded031a5a451a62e",
+  "referenceSha256": "be33445ba047f2230e2fe3648982f08aa503b72f07bbcebc2e75b0a5a4aa9a92",
+  "manualIdentityReviewed": true,
+  "manualAnatomyReviewed": true,
+  "manualWardrobeReviewed": true,
+  "reviewedFrames": 4,
+  "columns": 2,
+  "rows": 2,
+  "contactSheet": {
+    "path": "artwork/reviews/v750/comparison.png",
+    "sha256": "26fba39085e80b95d54e8e7e5d0347cc1416efbe18ce3e1f6c0f2af83814210f"
+  },
+  "landmarks": {
+    "path": "artwork/reviews/v750/seated-landmarks.json",
+    "sha256": "c97b8f8e3b84bc5b1e813d102fc41a5c8c07cdda202b87b696c8de3d07d559fa"
+  },
+  "scope": "Normal greeting lift and lower intermediate drawings. Existing neutral/wave cells retained."
+}

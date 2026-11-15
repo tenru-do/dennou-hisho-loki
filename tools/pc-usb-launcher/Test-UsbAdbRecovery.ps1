@@ -51,6 +51,9 @@ class LokiUsbNativeFixture {
 try {
  Add-Type -TypeDefinition $fixtureSource -OutputAssembly $fixture -OutputType ConsoleApplication
  $result=Invoke-LokiAdb -Adb $fixture -Command @('capture')
+ if($result.Code -eq 127 -and $result.Error -match 'Application Control policy has blocked'){
+  Write-Output 'SKIP compiled native fixture: Windows Application Control rejected this test executable. Virtual recovery and signed-host pipe tests remain separate.'
+ }else{
  Check ($result.Code -eq 7 -and $result.Output -ceq 'native stdout 日本語 ✓ 🚀' -and $result.Error -ceq 'native stderr 日本語 ✓') 'UTF-8 stdout/stderr must survive independently of CP932 under ErrorActionPreference Stop'
  Check ($result.Stage -eq 'completed' -and -not $result.TimedOut) 'nonzero native exit is structured, not a PowerShell exception'
  $arguments=@('', 'two words', '"quoted"', 'C:\trailing\', 'a\"b', '& | < > $ %', '日本語')
@@ -78,6 +81,7 @@ try {
  $result=Invoke-LokiAdb -Adb $fixture -Command @('capture') -TimeoutMs 0
  Check ($result.Code -eq 124 -and $result.Stage -eq 'process-timeout') 'no remaining budget must not start a command'
  Write-Output 'PASS real Windows PowerShell 5.1 native fixture: stderr, quoting, launch error, process and stream deadlines'
+ }
 }finally{
  # A finite 1.6-second pipe holder can outlive its deliberately timed-out parent. Only delete our fixture.
  $resolvedFixture=[IO.Path]::GetFullPath($fixtureRoot)

@@ -12,7 +12,7 @@ final class ComfortPoseGeometry {
  static float originX(int pose,int width,float scale){return CharacterViewport.left(width,(EYES[pose][0]+EYES[pose][2])*.5f,scale);}
  static float originY(int pose,int height,float scale){return CharacterViewport.headMargin(height)-Math.max(0,FACE[pose][1]-FACE[pose][3]*.8f)*scale;}
  static float eyeSpan(int pose){float[] f=EYES[pose];return (float)Math.hypot(f[2]-f[0],f[3]-f[1]);}
- static float scale(int pose,int width,int height){return CharacterViewport.eyeScale(eyeSpan(pose),width,height);}
+ static float scale(int pose,int width,int height){return CharacterViewport.eyeScale(CharacterDistanceCalibration.COMFORT[pose],width,height);}
  static long duration(int pose){return pose==7?5200:2800;}
  static float entry(int pose,long age){if(pose<4)return envelope(age);long duration=duration(pose);if(age<=0||age>=duration)return 0;float fade=(float)Math.sin(Math.PI*age/duration);return fade*fade*(.65f+.35f*(float)Math.sin(age/130.0));}
  static int expression(int face){return face==5||face==6?1:face==7?2:face==2||face==3||face==4||face==8||face==9?3:0;}
@@ -20,5 +20,16 @@ final class ComfortPoseGeometry {
  static int[] crop(int pose,int variant){int[] f=FACE[pose];int x=f[0],y=f[1];if(pose==1&&variant>=2)y-=28;if(pose==2&&variant>=2)y-=4;if(pose==6&&variant%2==1)x-=25;return new int[]{(variant%2)*width(pose)+x,(variant/2)*height(pose)+y,f[2],f[3]};}
  static float envelope(long age){if(age<=0||age>=2800)return 0;float v=(float)Math.sin(Math.PI*age/2800f);return v*v;}
  static void animate(float[] mesh,int cols,int rows,int pose,long age,int reaction,long reactionAge,float gain){int[] f=FACE[pose];float e=Math.max(entry(pose,age),RestInteractionMotion.envelope(reactionAge)*(reaction>0?1:0))*Math.max(0,Math.min(1,gain));if(e==0)return;float cx=f[0]+f[2]*.5f,cy=f[1]+f[3]+48;for(int row=0;row<=rows;row++)for(int col=0;col<=cols;col++){float x=width(pose)*(float)col/cols,y=height(pose)*(float)row/rows,weight=Math.max(0,1-Math.abs(x-cx)/115f)*Math.max(0,1-Math.abs(y-cy)/90f);int k=(row*(cols+1)+col)*2;mesh[k]+=(pose>=4?3.2f*(float)Math.sin(age/160.0):1.7f)*e*weight*(pose==3?1:-1);mesh[k+1]+=(pose>=4?1.6f:.9f)*e*weight;}}
+ // Entry is finite, but an ordinary resting body must not become a still image afterwards.
+ static void presence(float[] mesh,int cols,int rows,int pose,long now,float gain){
+  if(gain<=0)return;gain=Math.min(1,gain);int[] f=FACE[pose];float cx=f[0]+f[2]*.5f,cy=Math.min(height(pose)-50,f[1]+f[3]+65);
+  float breath=(float)Math.sin(Math.floorMod(now,5600L)*2*Math.PI/5600);
+  for(int row=1;row<rows;row++)for(int col=1;col<cols;col++){
+   float x=width(pose)*col/(float)cols,y=height(pose)*row/(float)rows;
+   if(y<=f[1]+f[3]+20)continue;
+   float u=(x-cx)/90,v=(y-cy)/65,q=Math.max(0,1-u*u-v*v);q*=q;
+   mesh[(row*(cols+1)+col)*2+1]-=1.15f*breath*q*gain;
+  }
+ }
  private ComfortPoseGeometry(){}
 }

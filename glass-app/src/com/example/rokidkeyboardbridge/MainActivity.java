@@ -291,7 +291,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String workspaceCommandId="",workspaceCommandStatus="",workspaceCommandPhase="UNCONFIRMED";private long workspaceSyncAt;private final java.util.concurrent.atomic.AtomicBoolean workspaceBusy=new java.util.concurrent.atomic.AtomicBoolean();
     private void observationRecognition(String source,String phase,String text){try{observationRecognition=new JSONObject().put("source",source).put("phase",phase).put("text",text==null?"":text).put("at",System.currentTimeMillis());}catch(Exception ignored){}}
     private JSONObject assistantActivitySnapshot(){try{boolean speaking=nativeSpeechSession.active(android.os.SystemClock.elapsedRealtime())||(radioPlayback!=null&&radioPlayback.isSpeaking());String reason=ambientPausedForNavigation?"NAVIGATION":!activityForeground?"BACKGROUND":topicStopRequested?"STOPPING":topicMenuDepth>0?"MENU":pendingUserConversation()||editingUserDraft()?"USER_TURN":"";return new JSONObject().put("at",System.currentTimeMillis()).put("voice",AssistantActivityState.phase(voiceLoopMode,voiceRecording,speechRecognizerActive,voiceLoopMode&&geminiRequestActive,speaking&&voiceLoopMode,false)).put("topic",AssistantActivityState.phase(radioModeEnabled,radioObservationActive,false,radioTopicPending,radioPlayback!=null&&radioPlayback.isSpeaking(),!reason.isEmpty())).put("pauseReason",reason);}catch(Exception e){return new JSONObject();}}
-    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{try{drainAnswerOutbox();}catch(Exception pending){}JSONObject state=new JSONObject().put("wearPause",new JSONObject().put("status",wearPause.label()).put("removed",wearPause.removed()).put("known",!wearPause.label().contains("未取得"))).put("visualControl",fullBodyImage==null?new JSONObject():fullBodyImage.visualControlState()).put("answerSync",AnswerOutbox.summary(this)).put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("pronunciation",PronunciationDictionary.status(this)).put("installation",InstallationIdentity.snapshot(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("stabilityNavigation",stabilityNavigationEchoSnapshot()).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("latency",ConversationLatency.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
+    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{try{drainAnswerOutbox();}catch(Exception pending){}JSONObject state=new JSONObject().put("wearPause",new JSONObject().put("status",wearPause.label()).put("removed",wearPause.removed()).put("known",!wearPause.label().contains("未取得"))).put("visualControl",fullBodyImage==null?new JSONObject():fullBodyImage.visualControlState()).put("answerSync",AnswerOutbox.summary(this)).put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("pronunciation",PronunciationDictionary.status(this)).put("installation",InstallationIdentity.snapshot(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("stabilityNavigation",stabilityNavigationEchoSnapshot()).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("latency",ConversationLatency.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("keep",KeepCaptureState.snapshot(this)).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
     private final ConversationPlaybackState conversationPlayback=new ConversationPlaybackState();
     private String conversationSpeechArm="",latencySpeechId="";
     private final SpeechQuickKey speechQuickKey=new SpeechQuickKey();
@@ -1227,10 +1227,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if(lightweightStartup){
             startupTopicBlocked=true;startupNavigationBlocked=true;
             getPreferences().edit().putBoolean(KEY_AMBIENT_ENABLED,false).commit();
-            getSharedPreferences("navigation_display",MODE_PRIVATE).edit()
-                    .putBoolean("full_body_mode",false).putBoolean("lower_half",true)
-                    .putBoolean("upper_half",false).putBoolean("large_map",false)
-                    .putBoolean("overview",false).commit();
+            // Preserve the last display area, character mode and map size. Startup safety does not reset presentation.
             PhotoRecorderService running=PhotoRecorderService.active;
             if(running!=null)running.requestStop();
             else stopService(new Intent(this,PhotoRecorderService.class));
@@ -1373,10 +1370,11 @@ public final class MainActivity extends Activity implements SensorEventListener 
             setGlanceHudVisible(true);
         } else if (resumedAfterPause) {
             showControlsTemporarily();
-            armSafeDefaultFocus(1400L);
+
         } else {
             setGlanceHudVisible(false);
         }
+        if(resumedAfterPause)armSafeDefaultFocus(1400L);
         updateNavigationScreenPolicy();
         if(mapNavigationActive&&!navigationHudSuppressed){setGlanceHudVisible(true);if(navigationPanel!=null)navigationPanel.setVisibility(View.VISIBLE);pollPhoneTransitAsync();}
     }
@@ -1686,7 +1684,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void focusSafeDefault() {
-        if(imageReadButton!=null&&imageReadButton.isShown()&&imageReadButton.isEnabled()&&imageReadButton.requestFocus())return;
+        if(HudResumePolicy.preferAmbient(ambientMode,pendingAmbientStart)&&morningButton!=null&&morningButton.isShown()&&morningButton.isEnabled()&&morningButton.requestFocusFromTouch())return;
+        if(imageReadButton!=null&&imageReadButton.isShown()&&imageReadButton.isEnabled()&&imageReadButton.requestFocusFromTouch())return;
         if(buttonPanel!=null)for(int i=0;i<buttonPanel.getChildCount();i++){
             View child=buttonPanel.getChildAt(i);
             if(child instanceof Button&&child.isShown()&&child.isEnabled()&&child.isFocusable()&&child.requestFocus())return;
@@ -2105,6 +2104,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
             @Override
             public void onClick(View view) {
                 MainActivity.this.showControlsTemporarily();
+                if(System.currentTimeMillis()<MainActivity.this.selectGuardUntil){MainActivity.this.focusSafeDefault();return;}
+                if(MainActivity.this.ambientMode||MainActivity.this.pendingAmbientStart){MainActivity.this.setAmbientMode(false);MainActivity.this.focusSafeDefault();return;}
                 MainActivity.this.pauseAmbientForUserAction(30000L);
                 if (MainActivity.this.topicRunning()) MainActivity.this.stopTopicFromButton();
                 else MainActivity.this.showTopicMenu();
@@ -2475,16 +2476,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
         setScreenBrightness(0.0f);
         if (isFullBodySelected()) setGlanceHudVisible(true);
         hideKeyboard();
-        if (this.imageReadButton != null) {
-            this.imageReadButton.requestFocus();
-        }
+        focusSafeDefault();
         this.handler.postDelayed(new Runnable() { // from class: com.example.rokidkeyboardbridge.MainActivity.20
             @Override // java.lang.Runnable
             public void run() {
                 MainActivity.this.hideKeyboard();
-                if (MainActivity.this.imageReadButton != null) {
-                    MainActivity.this.imageReadButton.requestFocusFromTouch();
-                }
+                MainActivity.this.focusSafeDefault();
             }
         }, 250L);
         this.input.setOnClickListener(new View.OnClickListener() { // from class: com.example.rokidkeyboardbridge.MainActivity.21
@@ -2533,6 +2530,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private int[] visualSavedPadding;
     private FullBodyMascotView fullBodyImage;
     private TextView fullBodyStatus;
+    private TextView fullBodyInfo;
+    private ScrollView fullBodyInfoScroll;
     private String fullBodyConnectionStatus="";
     private long operationStatusAt;
     private String operationStatusText="";
@@ -2564,6 +2563,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         int width = hudRoot.getWidth();
         int height = hudRoot.getHeight();
         if (width <= 0 || height <= 0) return;
+        applyFullBodyInformation(width,height);
         if (width == visualLayoutWidth && height == visualLayoutHeight) {
             navigationPanel.setVisibility(View.GONE);
             if (navigationOverviewScroll != null) navigationOverviewScroll.setVisibility(View.GONE);
@@ -2575,7 +2575,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         int half = width / 2;
         int top = dp(2);
         int controlsHeight = dp(20);
-        hudContent.setPadding(half + dp(6), top, dp(6), controlsHeight + dp(92));
+        // The dedicated information band reserves the top of the comment column.
+        applyFullBodyInformation(width,height);
         buttonPanel.setLayoutParams(new FrameLayout.LayoutParams(-1, controlsHeight, android.view.Gravity.BOTTOM));
         buttonPanel.bringToFront();
         info.setVisibility(View.GONE);
@@ -2597,18 +2598,30 @@ public final class MainActivity extends Activity implements SensorEventListener 
         fullBodyImage.setHostResumed(mascotHostResumed);
         mascotView.setVisibility(View.GONE);
         buttonPanel.bringToFront();
-        FrameLayout.LayoutParams clock = new FrameLayout.LayoutParams(Math.max(1, half - dp(12)), dp(24), android.view.Gravity.BOTTOM | android.view.Gravity.RIGHT);
-        clock.rightMargin = dp(6);
-        clock.bottomMargin = controlsHeight;
-        navigationClock.setLayoutParams(clock);
-        navigationClock.setVisibility(View.VISIBLE);
+        navigationClock.setVisibility(View.GONE); // Date/time/battery come from the same information as face mode.
         if(fullBodyStatus==null){fullBodyStatus=new TextView(this);fullBodyStatus.setTextColor(Color.WHITE);fullBodyStatus.setTextSize(11);fullBodyStatus.setMaxLines(2);fullBodyStatus.setEllipsize(android.text.TextUtils.TruncateAt.END);hudRoot.addView(fullBodyStatus);}
         FrameLayout.LayoutParams diagnostics=new FrameLayout.LayoutParams(Math.max(1,half-dp(12)),android.view.ViewGroup.LayoutParams.WRAP_CONTENT,android.view.Gravity.BOTTOM|android.view.Gravity.RIGHT);
-        diagnostics.rightMargin=dp(6);diagnostics.bottomMargin=controlsHeight+dp(24);fullBodyStatus.setIncludeFontPadding(false);fullBodyStatus.setPadding(0,0,0,0);fullBodyStatus.setLayoutParams(diagnostics);fullBodyStatus.setVisibility(View.GONE);refreshFullBodyStatus();
+        diagnostics.rightMargin=dp(6);diagnostics.bottomMargin=controlsHeight+dp(2);fullBodyStatus.setIncludeFontPadding(false);fullBodyStatus.setPadding(0,0,0,0);fullBodyStatus.setLayoutParams(diagnostics);fullBodyStatus.setVisibility(View.GONE);refreshFullBodyStatus();
+    }
+
+    private void applyFullBodyInformation(int width,int height){
+        if(info==null||hudRoot==null||hudContent==null)return;
+        if(fullBodyInfoScroll==null){
+            fullBodyInfoScroll=new ScrollView(this);fullBodyInfoScroll.setFillViewport(false);fullBodyInfoScroll.setSmoothScrollingEnabled(false);fullBodyInfoScroll.setVerticalScrollBarEnabled(true);fullBodyInfoScroll.setBackgroundColor(Color.BLACK);
+            fullBodyInfo=new TextView(this);fullBodyInfo.setTextColor(info.getCurrentTextColor());HealthHudTypography.apply(fullBodyInfo);fullBodyInfo.setGravity(android.view.Gravity.TOP|android.view.Gravity.LEFT);fullBodyInfoScroll.addView(fullBodyInfo,new ScrollView.LayoutParams(-1,-2));hudRoot.addView(fullBodyInfoScroll);
+        }
+        int half=width/2,controls=dp(20),footer=dp(30),top=dp(2),gap=dp(6);
+        int band=FullBodyInfoLayout.band(height,dp(72),dp(108),controls,footer,dp(32),top,gap);
+        FrameLayout.LayoutParams box=new FrameLayout.LayoutParams(Math.max(1,half-dp(12)),band,android.view.Gravity.TOP|android.view.Gravity.RIGHT);box.topMargin=top;box.rightMargin=dp(6);fullBodyInfoScroll.setLayoutParams(box);
+        fullBodyInfoScroll.setVisibility(View.VISIBLE);fullBodyInfoScroll.bringToFront();
+        if(!android.text.TextUtils.equals(fullBodyInfo.getText(),info.getText()))fullBodyInfo.setText(info.getText());
+        hudContent.setPadding(half+dp(6),top+band+gap,dp(6),controls+footer);
+        if(navigationClock!=null)navigationClock.setVisibility(View.GONE);
     }
 
     private void refreshFullBodyStatus(){
         syncCharacterStage();
+        if(fullBodyInfo!=null&&info!=null&&!android.text.TextUtils.equals(fullBodyInfo.getText(),info.getText()))fullBodyInfo.setText(info.getText());
         if(fullBodyStatus==null)return;
         fullBodyStatus.setVisibility(isFullBodyMode()&&glanceHudVisible?View.VISIBLE:View.GONE);
         String current=status==null?"":status.getText().toString();
@@ -2623,8 +2636,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private int lastCharacterPhase=-1;private long buttonVisualEpoch,visualScenarioEpoch;
     private void syncCharacterStage(){
-        long now=SystemClock.uptimeMillis();CharacterChoreography.update(mapNavigationActive||navigationPanel!=null&&navigationPanel.getVisibility()==View.VISIBLE,voiceRecording,speechRecognizerActive||continuousVoiceInput!=null&&continuousVoiceInput.recognizing(),geminiRequestActive,mascotMode==2,now);
-        int phase=CharacterChoreography.phase;if(phase==lastCharacterPhase)return;lastCharacterPhase=phase;int gesture=phase==CharacterChoreography.LISTEN?CharacterGestureLife.LISTEN:phase==CharacterChoreography.THINK?CharacterGestureLife.THINK:-1;if(gesture>=0){if(fullBodyImage!=null)fullBodyImage.previewConversationGesture(gesture,now);if(mascotView!=null&&mascotView.approvedFaceRenderer!=null)mascotView.approvedFaceRenderer.previewConversationGesture(gesture,now);}
+        long now=SystemClock.uptimeMillis();ConversationStageMotion.transport(isNetworkReady());CharacterChoreography.update(mapNavigationActive||navigationPanel!=null&&navigationPanel.getVisibility()==View.VISIBLE,voiceRecording,speechRecognizerActive||continuousVoiceInput!=null&&continuousVoiceInput.recognizing(),geminiRequestActive,mascotMode==2,now);
+        int phase=CharacterChoreography.phase;if(phase==lastCharacterPhase)return;lastCharacterPhase=phase;int gesture=phase==CharacterChoreography.LISTEN?CharacterGestureLife.LISTEN:phase==CharacterChoreography.THINK?CharacterGestureLife.THINK:-1;if(gesture>=0){if(fullBodyImage!=null)fullBodyImage.previewConversationGesture(gesture,now,false);if(mascotView!=null&&mascotView.approvedFaceRenderer!=null)mascotView.approvedFaceRenderer.previewConversationGesture(gesture,now,false);}
     }
     String visualEnvironmentSummary(){return "\nNET："+(isNetworkReady()?"接続あり（スマホ到達は別確認）":"未接続")+" / ナビ："+mapNavigationActive+" / AI待機："+geminiRequestActive+" / マイク："+(voiceRecording||speechRecognizerActive)+" / 描画負荷："+CharacterRenderBudget.quality;}
     private void stopVoiceForPower(){voiceRecognitionGeneration++;voiceLoopMode=false;if(continuousVoiceInput!=null){continuousVoiceInput.cancel();continuousVoiceInput=null;}releaseSpeechRecognizer();setVoiceRecording(false);clearPendingVoiceTranscripts();if(voiceButton!=null)voiceButton.setText("VOICE");setMascotMode(0);setConversationActive(false);setStatus("音声入力を停止しました。録音内容は送信しません",Color.CYAN);}
@@ -2647,6 +2660,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         visualSavedLayouts.clear();
         visualSavedVisibility.clear();
         if (fullBodyImage != null) fullBodyImage.setVisibility(View.GONE);
+        if (fullBodyInfoScroll != null) fullBodyInfoScroll.setVisibility(View.GONE);
         if (fullBodyStatus != null) fullBodyStatus.setVisibility(View.GONE);
     }
 
@@ -2669,9 +2683,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
             if(mascotView!=null){showControlsTemporarily();if(index>=15&&mascotView.approvedFaceRenderer!=null){mascotView.approvedFaceRenderer.previewSequence(index-15,SystemClock.uptimeMillis());mascotView.invalidate();}else mascotView.previewPortrait(index);}
         });
     }
+    private void showRecoveryArtworkMenu(){
+        if(!isFullBodySelected()){setStatus("全身モードへ切り替えてください",Color.YELLOW);return;}
+        if(quietCharacterVisuals()||geminiRequestActive||voiceRecording||mascotMode!=0){setStatus("会話・ナビ・録音の終了後に選べます",Color.YELLOW);return;}
+        String[] names=new String[RecoveryExercisePolicy.COUNT+1];names[0]="通常の姿へ戻す";for(int i=0;i<RecoveryExercisePolicy.COUNT;i++)names[i+1]=RecoveryExercisePolicy.label(i);
+        NavigationChoiceDialog.show(this,"運動後の姿（寝姿は既存画像）",names,-1,(d,choice)->{if(choice==0){if(fullBodyImage!=null)fullBodyImage.clearRecoveryArtwork();return;}final int id=choice-1;NavigationChoiceDialog.show(this,"呼吸の動き（表情画像はそのまま）",new String[]{"静止","通常","強め"},1,(x,strength)->{if(!quietCharacterVisuals()&&fullBodyImage!=null){showControlsTemporarily();fullBodyImage.previewRecoveryArtwork(id,strength);}});});
+    }
     private void showMotionPreference(){
-        NavigationChoiceDialog.show(this,"動きの豊かさ・親密な仕草",new String[]{"控えめ","自然","豊か","親密な仕草の頻度","会話の仕草を確認","目・顔・体・接近の強さ","触れたときの振動","直前の設定を戻す","場面ごとの動き","表示診断・画像の再読み込み","動作の連続確認","姿勢の好みを確認・リセット","採用画像の座位・休息を選ぶ","視線・距離感の演出"},CharacterMotionTuning.level,(dialog,index)->{
-            if(index==13){NavigationChoiceDialog.show(this,"視線・距離感の演出",new String[]{"オフ","控えめ","自然","豊か"},CharacterMotionTuning.warmth,(d,v)->{if(!CharacterMotionPreferences.saveWarmth(this,v)){setStatus("演出設定を保存できません",Color.YELLOW);return;}if(v==0){if(fullBodyImage!=null)fullBodyImage.warmCommand("親密な演出を止めて");if(mascotView!=null&&mascotView.approvedFaceRenderer!=null)mascotView.approvedFaceRenderer.warmCommand("親密な演出を止めて",android.os.SystemClock.uptimeMillis());}setStatus("視線・距離感の設定を保存しました",Color.CYAN);});return;}
+        NavigationChoiceDialog.show(this,"動きの豊かさ・親密な仕草",new String[]{"控えめ","自然","豊か","親密な仕草の頻度","会話の仕草を確認","目・顔・体・接近の強さ","触れたときの振動","直前の設定を戻す","場面ごとの動き","表示診断・画像の再読み込み","動作の連続確認","姿勢の好みを確認・リセット","採用画像の座位・休息を選ぶ","視線・距離感の演出","普通の仕草の頻度","画像・動作を一覧で確認","運動後の姿・呼吸"},CharacterMotionTuning.level,(dialog,index)->{
+            if(index==16){showRecoveryArtworkMenu();return;}
+            if(index==15){if(quietCharacterVisuals()||geminiRequestActive||voiceRecording){setStatus("会話・ナビ・録音の終了後に確認できます",Color.YELLOW);return;}CharacterPreviewGallery.show(this);return;}if(index==14){NavigationChoiceDialog.show(this,"普通の仕草の頻度（大きさとは別）",new String[]{"落ち着いた","標準","よく動く"},CharacterMotionTuning.frequency,(d,v)->{if(!CharacterMotionPreferences.saveFrequency(this,v))setStatus("頻度を保存できません",Color.YELLOW);});return;}if(index==13){NavigationChoiceDialog.show(this,"視線・距離感の演出",new String[]{"オフ","控えめ","自然","豊か"},CharacterMotionTuning.warmth,(d,v)->{if(!CharacterMotionPreferences.saveWarmth(this,v)){setStatus("演出設定を保存できません",Color.YELLOW);return;}if(v==0){if(fullBodyImage!=null)fullBodyImage.warmCommand("親密な演出を止めて");if(mascotView!=null&&mascotView.approvedFaceRenderer!=null)mascotView.approvedFaceRenderer.warmCommand("親密な演出を止めて",android.os.SystemClock.uptimeMillis());}setStatus("視線・距離感の設定を保存しました",Color.CYAN);});return;}
             if(index==12){if(!isFullBodySelected()){setStatus("全身モードへ切り替えてください",Color.YELLOW);return;}if(quietCharacterVisuals()||geminiRequestActive||voiceRecording||mascotMode!=0){setStatus("会話・ナビ・録音の終了後に選べます",Color.YELLOW);return;}NavigationChoiceDialog.show(this,"採用画像：座位・休息",new String[]{"座位・考え中／傾聴","座位・脚組みA","座位・脚組みB","睡眠・脚を重ねる","休息・腕を下ろす","休息・手を重ねる（寄り）","休息・呼びかけに応じる","ソファでくつろぐ"},-1,(d,i)->{if(fullBodyImage!=null){showControlsTemporarily();fullBodyImage.previewQuietArtwork(i);}});return;}
             if(index==3){NavigationChoiceDialog.show(this,"自発的な仕草の頻度",new String[]{"オフ","少なめ（標準）","ときどき","多め"},CharacterMotionTuning.intimacy,(d,i)->{if(!CharacterMotionPreferences.saveIntimacy(this,i))setStatus("仕草の設定を保存できません",Color.YELLOW);});return;}
             if(index==4){showConversationGesturePreview();return;}
@@ -3435,7 +3456,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
         return isDisplayInteractive();
     }
 
+    private void restoreHeadGlanceSelection(boolean wasVisible,boolean wasInteractive,boolean wasHeadAwake){
+        boolean editing=input!=null&&input.isShown()&&input.getText()!=null&&input.getText().toString().trim().length()>0;
+        if(!HudResumePolicy.resetHeadGlance(wasVisible,wasInteractive,wasHeadAwake,editing,dialogInteractionActive()))return;
+        if(buttonPanel!=null)buttonPanel.setVisibility(View.VISIBLE);
+        armSafeDefaultFocus(700L);
+    }
+
     private void showHeadGlanceHud() {
+        final boolean wasVisible=glanceHudVisible,wasInteractive=isDisplayInteractive(),wasHeadAwake=headGlanceWake;
         this.headGlanceWake = true;
         this.handler.removeCallbacks(this.idleHudCleanupRunnable);
         if (this.input != null) {
@@ -3456,6 +3485,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             this.status.setVisibility(View.GONE);
         }
         setGlanceHudVisible(true);
+        restoreHeadGlanceSelection(wasVisible,wasInteractive,wasHeadAwake);
         this.handler.removeCallbacks(this.dimIdleHudRunnable);
         this.handler.postDelayed(this.dimIdleHudRunnable, IDLE_BRIGHTNESS_DELAY_MS);
     }
@@ -8019,9 +8049,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
     private void updateTopicButtonLabel() {
         updateTopicScreenPolicy();
-        if (morningButton == null) return;
-        String label = topicRunning() ? "STOP" : "TOPIC";
-        focusLabel(morningButton, label);
+        applyTopicButtonPresentation();
+    }
+    private void applyTopicButtonPresentation(){
+        if(morningButton==null)return;
+        focusLabel(morningButton,HudResumePolicy.topicLabel(ambientMode,ambientPausedForNavigation,pendingAmbientStart,topicRunning()));
+        morningButton.setContentDescription(HudResumePolicy.topicDescription(ambientMode,ambientPausedForNavigation,pendingAmbientStart,topicRunning()));
     }
     private void stopTopicFromButton() {
         handler.removeCallbacks(ambientTimer);
@@ -9989,6 +10022,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
 
     private void updateAmbientButtonLabel() {
+        applyTopicButtonPresentation();
         if (this.ambientButton != null) {
             focusLabel(this.ambientButton,
                     this.ambientMode && this.ambientPausedForNavigation ? "AMB休" : this.ambientMode ? "AMB " + (this.ambientInputMode == AMBIENT_INPUT_MIC
@@ -10081,6 +10115,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         releaseAmbientMediaProjection();
         this.ambientGeneration++;
         this.ambientMode = true;
+        focusSafeDefault();
         getPreferences().edit().putBoolean(KEY_AMBIENT_ENABLED, true).apply();
         this.ambientBackoffUntil = 0L;
         // The startup card is an AMB card too. Marking it visible prevents the
@@ -10298,7 +10333,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     }
                 }
                 postAmbientStatus(observation.optBoolean("imageUnavailable")||observation.optBoolean("audioUnavailable")?"AMB：一部の入力が取得できません":defaultAmbientWaitingStatus(),Color.GREEN);
-                Thread.sleep(15000);
+                Thread.sleep(6000);
             }catch(InterruptedException e){if(!ambientMode||generation!=ambientGeneration)break;}
             catch(GeminiHttpException e){ambientBackoffUntil=System.currentTimeMillis()+Math.max(30000,e.cooldownMs());postAmbientStatus("AMB：API待機 "+e.diagnosticSummary(),Color.YELLOW);}
             catch(Exception e){Log.w(TAG,"AMB scene skipped type="+e.getClass().getSimpleName());postAmbientStatus("AMB：取得・解析を再試行",Color.YELLOW);try{Thread.sleep(10000);}catch(InterruptedException ignored){}}
