@@ -1,0 +1,61 @@
+{
+  "distribution": "alpha",
+  "glassVersion": 757,
+  "phoneVersion": 321,
+  "healbeCompanionVersion": 6,
+  "apks": [
+    {
+      "app": "glass",
+      "version": 757,
+      "sha256": "c78d8ac7aac3c74a841f8205a0ddf147cd67eb74e9e276edb2ab784ea8acd28e",
+      "bytes": 443282212,
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "debuggable": false,
+      "allowBackup": false,
+      "instrumentationIncluded": false,
+      "privacyScanPassed": true,
+      "codeAndAssetsMatchTestedDevelopment": true,
+      "previousPublicCertificateMatches": true
+    },
+    {
+      "app": "phone",
+      "version": 321,
+      "sha256": "c4887637a0d159cbe7480bd30f001526f4aa86cadfb1f5ec89b6df162b8bb9fc",
+      "bytes": 87456208,
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "debuggable": false,
+      "allowBackup": false,
+      "instrumentationIncluded": false,
+      "privacyScanPassed": true,
+      "codeAndAssetsMatchTestedDevelopment": true,
+      "previousPublicCertificateMatches": true
+    },
+    {
+      "app": "healbe",
+      "version": 6,
+      "sha256": "a4f3013a5ade82405c186e641a7d61d486bf03449611acefe31551cad52c0704",
+      "bytes": 12761571,
+      "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+      "debuggable": false,
+      "allowBackup": false,
+      "instrumentationIncluded": false,
+      "privacyScanPassed": true,
+      "previousPublicCertificateMatches": true
+    }
+  ],
+  "isolatedAndroidGlassChecks": 17379,
+  "isolatedCameraPriorityChecks": 22,
+  "webQueueChecks": 20,
+  "webExternalRequests": 0,
+  "cameraOpenedDuringReleaseValidation": false,
+  "microphoneUsedDuringReleaseValidation": false,
+  "externalApiCallsDuringReleaseValidation": 0,
+  "productionPackagesReplaced": false,
+  "limits": [
+    "actual official camera/KEEP collision unverified",
+    "navigation movement issue not resolved or verified",
+    "long-duration battery/Doze/reboot not verified",
+    "manufacturer diagnostic logger may restart after standalone glasses reboot"
+  ],
+  "phoneIsolatedHarnessCleanupPendingUsb": true
+}
