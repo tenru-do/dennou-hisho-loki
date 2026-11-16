@@ -32,6 +32,16 @@ final class KeepAutoExposurePolicy {
   float limit=exposureNs<=0||iso<=0||exposureNs>33_333_333L||iso>=1600?2f/3f:1f;
   return Math.max(base,Math.min(s.median<30?1f:2f/3f,limit));
  }
- static int compensation(float ev,float step,int minimum,int maximum){if(!Float.isFinite(ev)||!Float.isFinite(step)||step<=0||minimum>maximum)return 0;return Math.max(minimum,Math.min(maximum,Math.round(Math.max(-1f,Math.min(1f,ev))/step)));}
+ static float ev(Stats s,long exposureNs,int iso,int hour,float step){
+  float base=ev(s,exposureNs,iso,hour);
+  // Four steps above the original night bias: two more than v759.
+  // Keep slow/noisy or unknown metering at the existing conservative setting.
+  if(hour<0||hour>23||!(hour>=17||hour<7)||s==null||s.samples<64||!Float.isFinite(s.clipped)
+    ||!Float.isFinite(step)||step<=0||base<0||s.median>=60||s.p90>=170||s.p90<4||s.clipped>=.02f
+    ||exposureNs<=0||exposureNs>33_333_333L||iso<=0||iso>=1600)return base;
+  float shutterLimit=(float)(Math.log(100_000_000d/exposureNs)/Math.log(2d));
+  return Math.max(base,Math.min(base+4f*step,Math.min(2f,shutterLimit)));
+ }
+ static int compensation(float ev,float step,int minimum,int maximum){if(!Float.isFinite(ev)||!Float.isFinite(step)||step<=0||minimum>maximum)return 0;return Math.max(minimum,Math.min(maximum,Math.round(Math.max(-1f,Math.min(2f,ev))/step)));}
  private KeepAutoExposurePolicy(){}
 }

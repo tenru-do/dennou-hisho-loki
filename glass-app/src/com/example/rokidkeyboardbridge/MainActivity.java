@@ -411,6 +411,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     if(attachmentKinds.toString().contains("video")){JSONObject policy=new JSONObject(fetchPhoneEndpointJson("transfer_policy"));GlassTransferNetwork.require(this,policy.getString("mode"));}
                     fetchPhoneEndpointJson("ack_command");acked=true;
                 }else{
+                    try(CameraPriority.ReadRequest priority=CameraPriority.SHARED.read()){
                     try{RecorderPhotoLocation.refresh(this);}catch(Exception unavailable){}
                     try(AutoCloseable pause=pauseMascotForCamera()){
                         byte[] original=TopicObservationCapture.recorderPhoto(this,()->generation!=requestGeneration||!activityForeground);
@@ -426,6 +427,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                         handler.post(()->{if(generation==requestGeneration)setStatus(savedStatus,readPhoto.saved()?Color.CYAN:Color.YELLOW);});
                         imageStage="normalize";jpeg=ImageQuestionBitmap.normalize(original,2048,ImageQuestionBitmap.MAX_IMAGE,ReadCaptureContext.lines(context));
                         captureContext=ReadCaptureContext.prompt(context);
+                    }
                     }
                 }
                 if(generation!=requestGeneration)throw new InterruptedException();
@@ -2636,7 +2638,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
 
     private int lastCharacterPhase=-1;private long buttonVisualEpoch,visualScenarioEpoch;
     private void syncCharacterStage(){
-        long now=SystemClock.uptimeMillis();ConversationStageMotion.transport(isNetworkReady());CharacterChoreography.update(mapNavigationActive||navigationPanel!=null&&navigationPanel.getVisibility()==View.VISIBLE,voiceRecording,speechRecognizerActive||continuousVoiceInput!=null&&continuousVoiceInput.recognizing(),geminiRequestActive,mascotMode==2,now);
+        long now=SystemClock.uptimeMillis();ConversationStageMotion.transport(isNetworkReady());CharacterChoreography.update(mapNavigationActive||navigationPanel!=null&&navigationPanel.getVisibility()==View.VISIBLE,voiceRecording,speechRecognizerActive||continuousVoiceInput!=null&&continuousVoiceInput.recognizing(),geminiRequestActive,mascotMode==2,imageQuestionDispatch.get()||imageQuestionBytes.get()!=null,now);
         int phase=CharacterChoreography.phase;if(phase==lastCharacterPhase)return;lastCharacterPhase=phase;int gesture=phase==CharacterChoreography.LISTEN?CharacterGestureLife.LISTEN:phase==CharacterChoreography.THINK?CharacterGestureLife.THINK:-1;if(gesture>=0){if(fullBodyImage!=null)fullBodyImage.previewConversationGesture(gesture,now,false);if(mascotView!=null&&mascotView.approvedFaceRenderer!=null)mascotView.approvedFaceRenderer.previewConversationGesture(gesture,now,false);}
     }
     String visualEnvironmentSummary(){return "\nNET："+(isNetworkReady()?"接続あり（スマホ到達は別確認）":"未接続")+" / ナビ："+mapNavigationActive+" / AI待機："+geminiRequestActive+" / マイク："+(voiceRecording||speechRecognizerActive)+" / 描画負荷："+CharacterRenderBudget.quality;}
@@ -2904,11 +2906,10 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private long photoImportPollAt;
     private void pollPhotoImportRequest(){
         long now=android.os.SystemClock.elapsedRealtime();if(now-photoImportPollAt<3000||isDestroyed()||photoTransferRunning.get()||!photoImportPollBusy.compareAndSet(false,true))return;photoImportPollAt=now;
-        String host=getPreferences().getString(KEY_LAST_PHONE_HOST,"");if(host.isEmpty()){photoImportPollBusy.set(false);return;}
-        new Thread(()->{try{JSONObject request=new JSONObject(fetchUrl("http://"+host+":8765/photo_import")).optJSONObject("request");if(request==null)return;String id=request.optString("id"),mode=request.optString("mode");long wall=System.currentTimeMillis(),created=request.optLong("createdAt"),expires=request.optLong("expiresAt");
+        new Thread(()->{try{JSONObject request=new JSONObject(fetchPhoneEndpointJson("photo_import")).optJSONObject("request");if(request==null)return;String id=request.optString("id"),mode=request.optString("mode");long wall=System.currentTimeMillis(),created=request.optLong("createdAt"),expires=request.optLong("expiresAt");
             if(!id.matches("[a-f0-9-]{36}")||!mode.matches("copy|move")||created<=0||wall<created||wall>expires||expires-created!=600000)return;
             SharedPreferences seen=getSharedPreferences("photo_import_receipts",MODE_PRIVATE);if(id.equals(seen.getString("lastId","")))return;
-            JSONObject accepted=new JSONObject(fetchUrl("http://"+host+":8765/photo_import_accept?id="+id));if(!accepted.optBoolean("execute"))return;
+            JSONObject accepted=new JSONObject(fetchPhoneEndpointJson("photo_import_accept?id="+id));if(!accepted.optBoolean("execute"))return;
             JSONObject current=accepted.optJSONObject("request");if(current==null||!id.equals(current.optString("id"))||!mode.equals(current.optString("mode")))return;
             if(!seen.edit().putString("lastId",id).putLong("acceptedAt",wall).commit())return;
             handler.post(()->{if(!isDestroyed())beginPhotoImport("move".equals(mode));});
@@ -19181,38 +19182,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
 
         private void initializeSecondaryLayers() {
-            try {
-                JSONObject manifest = readDenseManifest("v7_high_density_secondary.json");
-                org.json.JSONArray frames = manifest.getJSONArray("frames");
-                if (manifest.getInt("size") != FACE_CACHE_SIZE || frames.length() != MascotTurnPolicy.FRAME_COUNT)
-                    throw new java.io.IOException("Secondary manifest dimensions");
-                for (int pose = 0; pose < frames.length(); pose++) {
-                    JSONObject frame = frames.getJSONObject(pose);
-                    for (int part = 0; part < 2; part++) {
-                        org.json.JSONArray coordinates = frame.getJSONArray(part == 0 ? "fringe" : "sidehair");
-                        if (coordinates.length() != 4) throw new java.io.IOException("Secondary ROI length");
-                        Rect roi = new Rect(coordinates.getInt(0), coordinates.getInt(1),
-                                coordinates.getInt(2), coordinates.getInt(3));
-                        if (roi.left < 0 || roi.top < 0 || roi.right > FACE_CACHE_SIZE
-                                || roi.bottom > FACE_CACHE_SIZE || roi.isEmpty())
-                            throw new java.io.IOException("Secondary ROI bounds");
-                        denseHairRegions[pose][part] = roi;
-                    }
-                }
-                cacheSecondaryAtlas("v7_high_density_base.png", denseBareFaces, -1);
-                cacheSecondaryAtlas("v7_high_density_fringe.png", denseFringe, 0);
-                cacheSecondaryAtlas("v7_high_density_sidehair.png", denseSideHair, 1);
-                // No partial layer set can become visible.
-                secondaryLayersReady = true;
-            } catch (Exception error) {
-                for (int pose = 0; pose < MascotTurnPolicy.FRAME_COUNT; pose++) {
-                    if (denseBareFaces[pose] != null) denseBareFaces[pose].recycle();
-                    if (denseFringe[pose] != null) denseFringe[pose].recycle();
-                    if (denseSideHair[pose] != null) denseSideHair[pose].recycle();
-                    denseBareFaces[pose] = denseFringe[pose] = denseSideHair[pose] = null;
-                }
-                Log.w(TAG, "Secondary hair layers unavailable; keeping high-density face", error);
-            }
+            // Legacy line-art hair layers retired with their atlases.
         }
 
         private void cachePupilParts(int pose, int eye) {
@@ -19260,44 +19230,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
 
         private void loadDenseTurnAssets() {
-            if(approvedFaceRenderer!=null && approvedFaceRenderer.ready())return;
-            Bitmap faces = null, closed = null;
-            try {
-                faces = loadDenseBitmap("v7_high_density.png", 1600, 960);
-                closed = loadDenseBitmap("v7_high_density_eyes_closed.png", 320, 144);
-                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
-                try (InputStream stream = getContext().getAssets().open("v7_high_density_regions.json")) {
-                    byte[] buffer = new byte[4096];
-                    for (int count; (count = stream.read(buffer)) != -1;) bytes.write(buffer, 0, count);
-                }
-                JSONObject manifest = new JSONObject(bytes.toString("UTF-8"));
-                org.json.JSONArray frames = manifest.getJSONArray("frames");
-                if (manifest.getInt("size") != FACE_CACHE_SIZE || frames.length() != MascotTurnPolicy.FRAME_COUNT)
-                    throw new java.io.IOException("Invalid dense turn manifest");
-                for (int i = 0; i < frames.length(); i++) {
-                    JSONObject pose = frames.getJSONObject(i);
-                    org.json.JSONArray eyes = pose.getJSONArray("eyes");
-                    if (eyes.length() != 2) throw new java.io.IOException("Missing eye pair");
-                    for (int part = 0; part < 3; part++) {
-                        org.json.JSONArray coordinates = part < 2 ? eyes.getJSONArray(part) : pose.getJSONArray("mouth");
-                        if (coordinates.length() != 4) throw new java.io.IOException("Invalid face ROI");
-                        Rect region = new Rect(coordinates.getInt(0), coordinates.getInt(1),
-                                coordinates.getInt(2), coordinates.getInt(3));
-                        if (region.left < 0 || region.top < 0 || region.right > FACE_CACHE_SIZE
-                                || region.bottom > FACE_CACHE_SIZE || region.width() != (part < 2 ? 64 : 96)
-                                || region.height() != (part < 2 ? 24 : 40))
-                            throw new java.io.IOException("Face ROI out of bounds");
-                        denseRegions[i][part] = region;
-                    }
-                }
-                // Publish only a complete validated set. Missing optional assets use the old turn.
-                denseTurnSheet = faces;
-                denseClosedEyeSheet = closed;
-            } catch (Exception error) {
-                if (faces != null) faces.recycle();
-                if (closed != null) closed.recycle();
-                Log.w(TAG, "High-density turn unavailable; using cached legacy poses", error);
-            }
+            // Legacy line-art atlases retired. ApprovedFaceRenderer owns color turns.
         }
 
         private void initializeDenseOverlays() {
@@ -19796,197 +19729,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         }
 
         private void loadMascotArtwork() {
+            // Color portraits are the only supported artwork; no legacy line-art fallback.
             if (approvedFaceRenderer == null) approvedFaceRenderer = new ApprovedFaceRenderer(getContext());
-            if(approvedFaceRenderer.ready())return;
-            smoothTalkSheets[0] = loadSmoothAsset("mascot_sheet_v6_smooth_talk.png");
-            smoothTalkSheets[1] = loadSmoothAsset("mascot_sheet_v6_smooth_talk_part2.png");
-            headGestureSheet = loadSmoothAsset("mascot_sheet_head_gestures_16.png");
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v4_40.png");
-                try {
-                    this.mascotSheet = BitmapFactory.decodeStream(inputStreamOpen);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot sheet load failed", e);
-            }
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v5_extra_18.png");
-                try {
-                    this.mascotExtraSheet = BitmapFactory.decodeStream(inputStreamOpen);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot extra sheet load failed", e);
-            }
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v6_talk_16.png");
-                try {
-                    this.mascotTalkSheet = BitmapFactory.decodeStream(inputStreamOpen);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot talk sheet load failed", e);
-            }
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v7_actions_16.png");
-                try {
-                    BitmapFactory.Options actionOptions = new BitmapFactory.Options();
-                    actionOptions.inPreferredConfig = Bitmap.Config.RGB_565;
-                    this.mascotActionSheet = BitmapFactory.decodeStream(
-                            inputStreamOpen, null, actionOptions);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot action sheet load failed", e);
-            }
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v8_breathing_16.png");
-                try {
-                    BitmapFactory.Options breathingOptions = new BitmapFactory.Options();
-                    breathingOptions.inPreferredConfig = Bitmap.Config.RGB_565;
-                    this.mascotBreathingSheet = BitmapFactory.decodeStream(
-                            inputStreamOpen, null, breathingOptions);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot breathing sheet load failed", e);
-            }
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v9_grok_intense_16.jpg");
-                try {
-                    BitmapFactory.Options extremeOptions = new BitmapFactory.Options();
-                    extremeOptions.inPreferredConfig = Bitmap.Config.RGB_565;
-                    this.mascotExtremeSheet = BitmapFactory.decodeStream(
-                            inputStreamOpen, null, extremeOptions);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot extreme sheet load failed", e);
-            }
-            try {
-                InputStream inputStreamOpen = MainActivity.this.getAssets().open("mascot_sheet_v10_distress_16.jpg");
-                try {
-                    BitmapFactory.Options distressOptions = new BitmapFactory.Options();
-                    distressOptions.inPreferredConfig = Bitmap.Config.RGB_565;
-                    this.mascotDistressSheet = BitmapFactory.decodeStream(
-                            inputStreamOpen, null, distressOptions);
-                    inputStreamOpen.close();
-                } catch (Throwable th) {
-                    inputStreamOpen.close();
-                    throw th;
-                }
-            } catch (Exception e) {
-                Log.e(MainActivity.TAG, "mascot distress sheet load failed", e);
-            }
-            String[] emotionAssets = new String[]{
-                    "mascot_sheet_v11_emotion_a.png",
-                    "mascot_sheet_v11_emotion_b.png",
-                    "mascot_sheet_v11_emotion_c.png",
-                    "mascot_sheet_v11_emotion_d.png",
-                    "mascot_sheet_v11_emotion_e.png",
-                    "mascot_sheet_v11_emotion_f.png"
-            };
-            for (int emotionIndex = 0; emotionIndex < emotionAssets.length; emotionIndex++) {
-                try {
-                    InputStream stream = MainActivity.this.getAssets().open(emotionAssets[emotionIndex]);
-                    try {
-                        BitmapFactory.Options options = new BitmapFactory.Options();
-                        options.inPreferredConfig = Bitmap.Config.RGB_565;
-                        options.inSampleSize = 2;
-                        this.mascotEmotionV11Sheets[emotionIndex] = BitmapFactory.decodeStream(
-                                stream, null, options);
-                    } finally {
-                        stream.close();
-                    }
-                } catch (Exception error) {
-                    Log.e(MainActivity.TAG, "mascot v11 sheet load failed "
-                            + emotionAssets[emotionIndex], error);
-                }
-            }
-            String[] reclinedAssets = new String[]{
-                    "mascot_sheet_v12_reclined_a.png",
-                    "mascot_sheet_v12_reclined_b.png",
-                    "mascot_sheet_v12_reclined_c.png",
-                    "mascot_sheet_v12_reclined_d.png",
-                    "mascot_sheet_v12_reclined_e.png",
-                    "mascot_sheet_v12_reclined_f.png"
-            };
-            for (int reclinedIndex = 0; reclinedIndex < reclinedAssets.length; reclinedIndex++) {
-                try {
-                    InputStream stream = MainActivity.this.getAssets().open(reclinedAssets[reclinedIndex]);
-                    try {
-                        BitmapFactory.Options options = new BitmapFactory.Options();
-                        options.inPreferredConfig = Bitmap.Config.RGB_565;
-                        options.inSampleSize = 2;
-                        this.mascotReclinedV12Sheets[reclinedIndex] = BitmapFactory.decodeStream(
-                                stream, null, options);
-                    } finally {
-                        stream.close();
-                    }
-                } catch (Exception error) {
-                    Log.e(MainActivity.TAG, "mascot v12 sheet load failed "
-                            + reclinedAssets[reclinedIndex], error);
-                }
-            }
-            String[] motionAssets = new String[]{
-                    "mascot_sheet_v13_motion_a.png",
-                    "mascot_sheet_v13_motion_b.png",
-                    "mascot_sheet_v13_motion_c.png",
-                    "mascot_sheet_v13_motion_d.png",
-                    "mascot_sheet_v13_motion_e.png",
-                    "mascot_sheet_v13_motion_f.png"
-            };
-            for (int motionIndex = 0; motionIndex < motionAssets.length; motionIndex++) {
-                try {
-                    InputStream stream = MainActivity.this.getAssets().open(motionAssets[motionIndex]);
-                    try {
-                        BitmapFactory.Options options = new BitmapFactory.Options();
-                        options.inPreferredConfig = Bitmap.Config.RGB_565;
-                        options.inSampleSize = 2;
-                        this.mascotMotionV13Sheets[motionIndex] = BitmapFactory.decodeStream(
-                                stream, null, options);
-                    } finally {
-                        stream.close();
-                    }
-                } catch (Exception error) {
-                    Log.e(MainActivity.TAG, "mascot v13 sheet load failed "
-                            + motionAssets[motionIndex], error);
-                }
-            }
-            try {
-                InputStream stream = MainActivity.this.getAssets().open(
-                        "mascot_sheet_v14_post_intimacy_4.png");
-                try {
-                    BitmapFactory.Options options = new BitmapFactory.Options();
-                    options.inPreferredConfig = Bitmap.Config.RGB_565;
-                    options.inSampleSize = 2;
-                    this.mascotPostIntimacyV14Sheet = BitmapFactory.decodeStream(
-                            stream, null, options);
-                } finally {
-                    stream.close();
-                }
-            } catch (Exception error) {
-                Log.e(MainActivity.TAG, "mascot v14 post-intimacy sheet load failed", error);
-            }
         }
 
         private final java.util.IdentityHashMap<Bitmap,Boolean> cameraPurgeBitmaps=new java.util.IdentityHashMap<>();

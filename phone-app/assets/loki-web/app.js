@@ -21,11 +21,11 @@ let composerDraftRevision=0, generationParentRevision=0, recoveryRestoreGenerati
 function setComposerMessage(value){$('message').value=value;composerDraftRevision++;window.lokiConversationUi?.draftChanged();}
 function composerSnapshot(){return JSON.stringify([token,$('message').value,composerDraftRevision,chatImageGeneration,generatedParent,generationParentRevision,imageReferenceDraft?.key||'',imageReferenceDraft?.prefix||'']);}
 const note=text=>{$('notice').textContent=text;};
-let photoImportTimer=null,photoImportController=null,photoImportEpoch=0,photoImportUntil=0,photoImportFailures=0,photoImportPolls=0,photoImportRequestBusy=false;
+let photoImportTimer=null,photoImportController=null,photoImportEpoch=0,photoImportUntil=0,photoImportFailures=0,photoImportPolls=0,photoImportRequestBusy=false,photoImportListedBatch="";
 function stopPhotoImportPolling(clear=false){
  photoImportEpoch++;if(photoImportTimer!==null)clearTimeout(photoImportTimer);photoImportTimer=null;
  if(photoImportController)photoImportController.abort();photoImportController=null;
- if(clear){$('photoImportStatus').textContent='';$('photoImportConnection').textContent='';$('photoImportProgress').hidden=true;$('import').disabled=photoImportRequestBusy;}
+ if(clear){photoImportListedBatch='';$('photoImportStatus').textContent='';$('photoImportConnection').textContent='';$('photoImportProgress').hidden=true;$('import').disabled=photoImportRequestBusy;}
 }
 function startPhotoImportPolling(restart=true){
  if(!token||activeTab!=='photos'||document.hidden)return;
@@ -43,11 +43,15 @@ async function pollPhotoImportProgress(epoch){
   if(epoch!==photoImportEpoch||session!==token)return;
   photoImportFailures=0;again=progress.active===true;
   $('photoImportStatus').textContent=progress.label||'取り込み状況は未確認です。「状態を更新」で確認してください。';
-  $('photoImportConnection').textContent=progress.active?'進捗は約5秒ごとに確認します。写真一覧は「一覧を更新」で反映できます。':'';
+  $('photoImportConnection').textContent=progress.waitingForGlass?'グラスとの再接続を待っています。状態は約5秒ごとに確認します。':progress.active?'進捗は約5秒ごとに確認します。完了後に写真一覧を更新します。':'';
   const meter=$('photoImportProgress'),known=progress.totalKnown===true&&Number.isSafeInteger(progress.total)&&progress.total>=0;
   meter.hidden=!known||progress.total===0;
   if(known&&progress.total>0){meter.max=progress.total;meter.value=Math.max(0,Math.min(progress.total,Number(progress.confirmed||0)+Number(progress.retained||0)));}
   $('import').disabled=photoImportRequestBusy||progress.active===true;
+  if(!progress.active&&known&&Number(progress.confirmed)>0&&/^[a-f0-9-]{36}$/.test(progress.batchId||'')&&progress.batchId!==photoImportListedBatch&&!busy&&selected.size===0&&viewing<0){
+   const batch=progress.batchId;photoImportListedBatch=batch;
+   try{await loadPhotos();}catch(error){if(photoImportListedBatch===batch)photoImportListedBatch='';$('photoImportConnection').textContent='保存結果は受信しましたが一覧の更新に失敗しました。「一覧を更新」で確認できます。';}
+  }
  }catch(error){
   if(epoch!==photoImportEpoch||session!==token)return;
   again=true;delay=Math.min(30000,5000*2**Math.min(++photoImportFailures,3));

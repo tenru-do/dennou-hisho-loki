@@ -77,7 +77,7 @@ final class ApprovedQuietPoseRenderer {
   request(index,now);if(current==null)return false;
   // Keep the previous confirmed picture while decoding the next one of the SAME posture only.
   if(ApprovedQuietPosePolicy.seatedIndex(selected)!=ApprovedQuietPosePolicy.seatedIndex(index))return false;
-  boolean ordinarySeated=selected>=0&&selected<3&&index>=0&&index<3&&!manual;
+  boolean ordinarySeated=FullBodyIdlePolicy.ordinarySeat(selected)&&FullBodyIdlePolicy.ordinarySeat(index);
   if(ordinarySeated&&(natural||legArtwork!=null)){
    if(legArtwork().draw(c,width,height,now,animate,speaking||presentationMode==2,natural,held,
            presentationMode==1||presentationScene==1,warmth))return true;

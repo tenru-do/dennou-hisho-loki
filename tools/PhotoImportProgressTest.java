@@ -71,6 +71,12 @@ public final class PhotoImportProgressTest {
         }
         JSONObject minimal = PhotoImportProgress.view(workspace(row("RUNNING", 1, 0)).put("health", "private-fixture"), request(), NOW);
         check(!minimal.has("health") && !minimal.has("request"), "endpoint only exposes transfer summary");
+        JSONObject disconnected=PhotoImportProgress.view(new JSONObject().put("connected",false),request(),NOW);
+        check(disconnected.getBoolean("waitingForGlass")&&disconnected.getString("label").contains("Wi-Fi"),"disconnected queued request explains reconnection");
+        check(disconnected.isNull("confirmed")&&disconnected.isNull("total"),"disconnection never invents saved counts");
+        JSONObject connected=PhotoImportProgress.view(new JSONObject().put("connected",true),request(),NOW);
+        check(!connected.getBoolean("waitingForGlass"),"recent glass contact is not labelled disconnected");
+        check(PhotoImportProgress.view(workspace(row("COMPLETED",10,0)),request().put("expiresAt",NOW-1),NOW).getLong("confirmed")==10,"completed receipts survive request expiry");
         System.out.println("PASS " + checks + " KEEP progress policy checks (synthetic JSON; no devices/photos/API)");
     }
 }

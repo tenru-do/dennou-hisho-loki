@@ -83,6 +83,20 @@ let checks=0,external=0;const ok=(value,message)=>{assert.ok(value,message);chec
   ok(count()===beforeBudget&&(await page.locator('#photoImportConnection').innerText()).includes('30分'),'time budget stops automatic traffic');
   beforeBudget=count();await page.evaluate(()=>{photoImportUntil=Date.now()+60000;photoImportPolls=360;return pollPhotoImportProgress(photoImportEpoch);});
   ok(count()===beforeBudget,'request-count budget also stops traffic if clock changes');
+  await refresh({state:'QUEUED',active:true,totalKnown:false,waitingForGlass:true,label:'グラス接続待ち'});
+  ok((await page.locator('#photoImportConnection').innerText()).includes('再接続'),'waiting state explains missing glass contact');
+  await click('clearSelection');await page.evaluate(()=>closeViewer());
+  const photoCalls=()=>calls.filter(call=>call.name==='photos').length;
+  catalog=catalog.slice(0,2);const batch='12345678-1234-1234-1234-123456789abc',beforeAuto=photoCalls();
+  await refresh({state:'COMPLETED',active:false,totalKnown:true,total:2,confirmed:2,remaining:0,batchId:batch,label:'合成コピー完了'});
+  await page.waitForFunction(()=>document.getElementById('count').textContent==='2枚');
+  ok(photoCalls()===beforeAuto+1,'completion refreshes photo list exactly once');
+  await refresh(status);await page.waitForTimeout(100);ok(photoCalls()===beforeAuto+1,'same completed batch does not reload thumbnails repeatedly');
+  await page.evaluate(()=>{selected.add(items[0].id);updateSelected();});const beforeSelected=photoCalls();
+  await refresh({...status,batchId:'22345678-1234-1234-1234-123456789abc',label:'選択中の完了'});
+  ok(photoCalls()===beforeSelected&&await page.evaluate(()=>selected.size===1),'automatic refresh preserves active selection');
+  await click('clearSelection');await refresh(status);await page.waitForTimeout(150);
+  ok(photoCalls()===beforeSelected+1,'deferred list refresh works after selection clears');
   hold=true;await click('photoImportRefresh');for(let i=0;!held&&i<50;i++)await page.waitForTimeout(10);ok(!!held,'delayed status fixture captured');
   await page.evaluate(()=>{token='new-session';document.dispatchEvent(new Event('loki-session-cleared'));});
   try{await held.fulfill({contentType:'application/json',body:JSON.stringify({...running,label:'OLD PRIVATE COUNT'})});}catch{}

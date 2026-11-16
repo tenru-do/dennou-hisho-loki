@@ -5,6 +5,7 @@ final class KeepAutoExposureCycle {
  boolean needsAnalysis(){return !decided;}
  boolean correcting(){return appliedAt>=0;}
  float decide(KeepAutoExposurePolicy.Stats stats,long exposureNs,int iso){if(decided)return 0;decided=true;return KeepAutoExposurePolicy.ev(stats,exposureNs,iso,java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY));}
+ float decide(KeepAutoExposurePolicy.Stats stats,long exposureNs,int iso,float step){if(decided)return 0;decided=true;return KeepAutoExposurePolicy.ev(stats,exposureNs,iso,java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY),step);}
  void applied(long now){if(appliedAt<0)appliedAt=now;}
  boolean discardSettling(long now){if(appliedAt<0)return false;if(now<appliedAt||now-appliedAt>=900)return false;return settlingFrames++<2;}
 }
