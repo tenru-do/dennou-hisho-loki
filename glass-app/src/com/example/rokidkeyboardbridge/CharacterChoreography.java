@@ -4,7 +4,8 @@ final class CharacterChoreography {
  static final int IDLE=0,LISTEN=1,THINK=2,SPEAK=3,CLARIFY=4,NAV=5,READ=6;
  static volatile int phase,scene;static volatile float gain=1;static volatile int talkLevel=2,navLevel=0,readLevel=1;
  private static long phaseAt;private static int clarification;
- static void update(boolean navigation,boolean recording,boolean recognizing,boolean waiting,boolean speaking,long now){int next=navigation?NAV:recording||recognizing?LISTEN:waiting?THINK:speaking?SPEAK:IDLE;if(phase==CLARIFY&&next==IDLE&&now>=phaseAt&&now-phaseAt<2600)next=CLARIFY;ConversationStageMotion.update(next,now);if(next!=phase){phase=next;phaseAt=now;}scene=navigation?1:!speaking&&!waiting&&!recording&&!recognizing?2:0;int level=scene==1?navLevel:scene==2?readLevel:talkLevel;gain=level<=0?0:level==1?.45f:1f;}
+ static void update(boolean navigation,boolean recording,boolean recognizing,boolean waiting,boolean speaking,long now){update(navigation,recording,recognizing,waiting,speaking,false,now);}
+ static void update(boolean navigation,boolean recording,boolean recognizing,boolean waiting,boolean speaking,boolean reading,long now){int next=navigation?NAV:recording||recognizing?LISTEN:waiting?THINK:speaking?SPEAK:IDLE;if(phase==CLARIFY&&next==IDLE&&now>=phaseAt&&now-phaseAt<2600)next=CLARIFY;ConversationStageMotion.update(next,now);if(next!=phase){phase=next;phaseAt=now;}scene=navigation?1:reading?2:0;int level=scene==1?navLevel:scene==2?readLevel:talkLevel;gain=level<=0?0:level==1?.45f:1f;}
  static void clarify(long now){phase=CLARIFY;phaseAt=now;clarification++;}
  static boolean clarifying(long now){return phase==CLARIFY&&now>=phaseAt&&now-phaseAt<2600;}
  static int clarificationVariant(){return clarification%2;}

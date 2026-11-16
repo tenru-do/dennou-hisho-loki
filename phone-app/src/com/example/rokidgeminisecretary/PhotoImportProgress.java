@@ -21,6 +21,8 @@ final class PhotoImportProgress {
                 .put("totalKnown", false).put("total", JSONObject.NULL).put("confirmed", JSONObject.NULL)
                 .put("remaining", JSONObject.NULL).put("retained", 0).put("failed", 0).put("deferred", 0)
                 .put("label", "KEEP写真の取り込み状況は、コピーの依頼後に表示します。");
+        boolean glassConnected=workspace.optBoolean("connected");
+        out.put("glassConnected",glassConnected).put("waitingForGlass",false);
         long requestedAt = request.optLong("createdAt");
         boolean requested = request.optString("id").matches("[a-f0-9-]{36}") && requestedAt > 0;
         JSONObject row = latestPhoto(workspace);
@@ -40,7 +42,8 @@ final class PhotoImportProgress {
                     ? "グラスは受信済みですが、取り込み開始は未確認です。対象枚数・残り枚数はまだ取得できていません。"
                     : "グラスが受信しました。KEEPの停止・対象枚数の確認待ちです。まだ保存完了ではありません。"
                     : "グラスへ取り込みを依頼しました。受信・対象枚数の確認待ちです。まだ保存完了ではありません。";
-            return out.put("state", phase).put("active", true).put("label", text);
+            if(!glassConnected)text="グラスとの通信が未確認です。グラスのWi-Fi接続とロキの起動を確認してください。原本は保持しています。\n"+text;
+            return out.put("state", phase).put("active", true).put("waitingForGlass",!glassConnected).put("label", text);
         }
         JSONObject safe = TransferProgressPolicy.safe(row);
         long total = safe.getLong("expected"), confirmed = safe.getLong("confirmed"), retained = safe.getLong("retained");

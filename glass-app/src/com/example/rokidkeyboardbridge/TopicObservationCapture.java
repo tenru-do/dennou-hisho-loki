@@ -124,7 +124,7 @@ final class TopicObservationCapture {
         return photo(context,cancelled,recorder,exposureMode,false);
     }
     private static byte[] photo(Context context, BooleanSupplier cancelled, boolean recorder,int exposureMode,boolean keep) throws Exception {
-        try (CaptureLease lease = CaptureLease.acquire(CaptureLease.CAMERA, cancelled)) {
+        try (CaptureLease lease = CaptureLease.acquire(CaptureLease.CAMERA, cancelled,keep?3:12)) {
         HandlerThread thread = new HandlerThread("TopicCamera");thread.start();
         Handler cameraHandler=new Handler(thread.getLooper());
         CountDownLatch done=new CountDownLatch(1),openCompleted=new CountDownLatch(1),deviceClosed=new CountDownLatch(1);
@@ -133,6 +133,7 @@ final class TopicObservationCapture {
         java.util.concurrent.atomic.AtomicBoolean closing=new java.util.concurrent.atomic.AtomicBoolean();
         Runnable[] nextExposureFrame={null};int[] exposureFrames={0};long[] exposureStart={0};boolean[] aeStable={false};
         KeepAutoExposureCycle automatic=new KeepAutoExposureCycle();
+        CameraFrameGate frameGate=new CameraFrameGate();
         android.hardware.camera2.CaptureRequest.Builder[] exposureRequest={null};
         float[] evStep={0};int[] evMinimum={0},evMaximum={0},currentEv={0},sensitivity={0};long[] exposureNs={0};java.util.concurrent.atomic.AtomicReference<byte[]> autoReference=new java.util.concurrent.atomic.AtomicReference<>();
         try {
@@ -167,7 +168,7 @@ final class TopicObservationCapture {
                                 if(buffer.remaining()>(recorder?8000000:1000000))throw new IllegalStateException("JPEG buffer too large");
                                 byte[] bytes=new byte[buffer.remaining()];buffer.get(bytes);
                                 if(keep&&exposureMode==0&&automatic.needsAnalysis()&&evStep[0]>0&&(evMinimum[0]<0||evMaximum[0]>0)&&!cancelled.getAsBoolean()){
-                                    float ev=automatic.decide(KeepAutoExposureAnalyzer.analyze(bytes),exposureNs[0],sensitivity[0]);
+                                    float ev=automatic.decide(KeepAutoExposureAnalyzer.analyze(bytes),exposureNs[0],sensitivity[0],evStep[0]);
                                     int selected=KeepAutoExposurePolicy.compensation(ev,evStep[0],evMinimum[0],evMaximum[0]);
                                     if(selected!=currentEv[0]&&!cancelled.getAsBoolean()){
                                         autoReference.set(bytes);currentEv[0]=selected;
@@ -203,6 +204,7 @@ final class TopicObservationCapture {
                                         exposureStart[0]=SystemClock.elapsedRealtime();
                                         android.hardware.camera2.CameraCaptureSession.CaptureCallback callback=new android.hardware.camera2.CameraCaptureSession.CaptureCallback(){
                                             public void onCaptureCompleted(android.hardware.camera2.CameraCaptureSession s,android.hardware.camera2.CaptureRequest r,android.hardware.camera2.TotalCaptureResult result){
+                                                if(frameGate.complete())cameraHandler.post(nextExposureFrame[0]);
                                                 Integer state=result.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE);
                                                 Long shutter=result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME);Integer iso=result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY);exposureNs[0]=shutter==null?0:shutter;sensitivity[0]=iso==null?0:iso;
                                                 aeStable[0]=state!=null&&(state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_CONVERGED||state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED||state==android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_LOCKED);
@@ -210,7 +212,7 @@ final class TopicObservationCapture {
                                             }
                                             public void onCaptureFailed(android.hardware.camera2.CameraCaptureSession s,android.hardware.camera2.CaptureRequest r,android.hardware.camera2.CaptureFailure reason){failure[0]=new IllegalStateException("TOPIC capture failed: "+reason.getReason());done.countDown();}
                                         };
-                                        nextExposureFrame[0]=()->{if(closing.get()||cancelled.getAsBoolean()){done.countDown();return;}try{configured.capture(request.build(),callback,cameraHandler);}catch(Throwable error){failure[0]=error;done.countDown();}};
+                                        nextExposureFrame[0]=()->{if(closing.get()||cancelled.getAsBoolean()){done.countDown();return;}try{if(!frameGate.request())return;configured.capture(request.build(),callback,cameraHandler);}catch(Throwable error){failure[0]=error;done.countDown();}};
                                         nextExposureFrame[0].run();
                                     }catch(Throwable error){failure[0]=error;done.countDown();}
                                 }

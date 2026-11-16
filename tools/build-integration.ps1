@@ -65,6 +65,7 @@ foreach($entry in $output){Write-Output ([string]$entry)}
 if($exitCode -ne 0){throw "Android compilation failed: $exitCode"}
 if($App -eq 'glass'){& "$PSScriptRoot/Test-CharacterContinuity.ps1" -Classes $classes -Output "$build/character-tests"}
 if($App -eq 'glass'){& "$PSScriptRoot/Test-CameraPriority.ps1" -Classes $classes -Output "$build/camera-priority-tests"}
+if($App -eq 'glass'){& "$PSScriptRoot/Test-FullBodyIdle.ps1" -Classes $classes -Output "$build/fullbody-idle-tests"}
 if($App -eq 'phone'){& "$PSScriptRoot/Test-NewsSpeech.ps1" -Classes $classes -Output "$build/news-tests"}
 & "$env:JAVA_HOME/bin/jar.exe" cf "$build/program.jar" -C "$build/classes" .
 Check-Exit

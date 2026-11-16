@@ -11,7 +11,11 @@ final class CaptureLease implements AutoCloseable {
     private Semaphore resource;
     private CaptureLease(Semaphore resource) { this.resource = resource; }
     static CaptureLease acquire(Semaphore resource, BooleanSupplier cancelled) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        return acquire(resource,cancelled,3);
+    }
+    static CaptureLease acquire(Semaphore resource, BooleanSupplier cancelled,int timeoutSeconds) throws InterruptedException {
+        if(timeoutSeconds<1||timeoutSeconds>12)throw new IllegalArgumentException("capture timeout");
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
         while (!cancelled.getAsBoolean() && System.nanoTime() < deadline) {
             if (resource.tryAcquire(50, TimeUnit.MILLISECONDS)) {
                 if (cancelled.getAsBoolean()) { resource.release(); throw new InterruptedException("capture cancelled"); }

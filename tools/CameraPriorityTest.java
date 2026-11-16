@@ -14,6 +14,14 @@ public final class CameraPriorityTest {
   Thread read=new Thread(()->{try(CameraPriority.ReadRequest req=p.read()){requested.countDown();try(CaptureLease lease=CaptureLease.acquire(camera,()->false)){acquired.countDown();}}catch(Exception e){throw new RuntimeException(e);}});
   read.start();check(requested.await(1,TimeUnit.SECONDS));check(p.yieldKeep(ticket,14000));check(acquired.getCount()==1);owned.close();owned.close();check(acquired.await(1,TimeUnit.SECONDS));read.join(1000);check(!read.isAlive());check(camera.availablePermits()==1);check(p.keepTicket(15000)>=0);
   try{CaptureLease.acquire(camera,()->true);throw new AssertionError();}catch(InterruptedException expected){check(camera.availablePermits()==1);}
+  CameraFrameGate frames=new CameraFrameGate();
+  check(frames.request());check(!frames.request());check(!frames.request());check(frames.complete());
+  check(frames.request());check(!frames.complete());check(frames.request());check(!frames.complete());
+  // A READ waiter remains eligible while asynchronous camera teardown exceeds the old 3s limit.
+  CaptureLease slow=CaptureLease.acquire(camera,()->false);java.util.concurrent.atomic.AtomicReference<Throwable> error=new java.util.concurrent.atomic.AtomicReference<>();
+  Thread waiting=new Thread(()->{try(CaptureLease lease=CaptureLease.acquire(camera,()->false,12)){}catch(Throwable e){error.set(e);}});
+  waiting.start();Thread.sleep(3200);slow.close();waiting.join(1500);check(!waiting.isAlive()&&error.get()==null);check(camera.availablePermits()==1);
+  try{CaptureLease.acquire(camera,()->false,13);throw new AssertionError();}catch(IllegalArgumentException expected){check(camera.availablePermits()==1);}
   System.out.println("Camera priority PASS: "+n+" checks; no camera/audio/API calls");
  }
 }

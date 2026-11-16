@@ -889,7 +889,7 @@ viewportHeadGuard.apply(canvas,getWidth(),getHeight());super.draw(canvas);}catch
         boolean contactQuiet=getContext() instanceof MainActivity&&((MainActivity)getContext()).quietCharacterVisuals();
         if(recoverySelection>=0&&!contactQuiet){if(recoveryArtwork==null)recoveryArtwork=new RecoveryExerciseRenderer(this);if(recoveryArtwork.draw(canvas,getWidth(),getHeight(),recoverySelection,everydayNow,recoveryStrength,hostResumed&&!visualHeld&&breathingEnabled&&CharacterMotionTuning.body()>0&&CharacterRenderBudget.quality<2)){visualAction.frame(RecoveryExercisePolicy.posture(recoverySelection),everydayNow);return;}}
 
-        if(approvedQuietArtwork!=null&&(embodied.correctedRest()||!seatedContact()||quietArtworkChoice>=0||previewPose>=0||dramaticPreview>=0||approvedMotionPreview>=0))cancelSeatedLegMotion();
+        if(approvedQuietArtwork!=null&&FullBodyIdlePolicy.resetLeg(embodied.correctedRest(),seatedContact(),quietArtworkChoice,previewPose,dramaticPreview,approvedMotionPreview))cancelSeatedLegMotion();
         boolean legMotion=seatedLegMotionPending();
         if(contactQuiet)restReactions.clear();
         if(embodied.safeRestHold()&&!contactQuiet){restArtwork().request(0);if(drawRestLayer(canvas,restArtwork(),0,9,10000,everydayNow,mode==2&&mouthActive(),255))return;}

@@ -13,10 +13,12 @@ final class FullBodyEverydayGesture {
  static long variationOffset(long elapsed){return CharacterMotionTuning.variant(Math.max(0,elapsed)/period())*700L;}
  static int automatic(long elapsed,boolean seated,boolean thinking){
   long t=Math.max(0,elapsed)%period()-variationOffset(elapsed);
+  if(!seated&&t>=period()/4&&t<period()/4+4600)return clip(false,2);
+  if(!seated&&t>=period()*3/4&&t<period()*3/4+4600)return clip(false,3);
   if(t>=50000&&t<54600)return clip(seated,true);
   if(!thinking&&t>=12000&&t<16600)return clip(seated,false);
   return -1;
  }
- static long local(long elapsed,int clip){long t=Math.max(0,elapsed)%period()-variationOffset(elapsed);return Math.max(0,t-(clip>=2?50000:12000));}
+ static long local(long elapsed,int clip){long t=Math.max(0,elapsed)%period()-variationOffset(elapsed);return Math.max(0,t-(clip==4?period()/4:clip==6?period()*3/4:clip>=2?50000:12000));}
  static int frame(int clip,long elapsed){if(clip>=8)return KissGesturePolicy.bodyFrame((clip-8)/2,elapsed);int[] sequence=clip==2||clip==3||clip==7?EAR:clip>=2?OTHER:GREETING;long[] durations=clip>=2?EAR_MS:GREETING_MS;long t=Math.max(0,elapsed);for(int i=0;i<sequence.length;i++){if(t<durations[i])return sequence[i];t-=durations[i];}return 0;}
 }
