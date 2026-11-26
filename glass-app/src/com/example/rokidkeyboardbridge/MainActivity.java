@@ -291,7 +291,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private String workspaceCommandId="",workspaceCommandStatus="",workspaceCommandPhase="UNCONFIRMED";private long workspaceSyncAt;private final java.util.concurrent.atomic.AtomicBoolean workspaceBusy=new java.util.concurrent.atomic.AtomicBoolean();
     private void observationRecognition(String source,String phase,String text){try{observationRecognition=new JSONObject().put("source",source).put("phase",phase).put("text",text==null?"":text).put("at",System.currentTimeMillis());}catch(Exception ignored){}}
     private JSONObject assistantActivitySnapshot(){try{boolean speaking=nativeSpeechSession.active(android.os.SystemClock.elapsedRealtime())||(radioPlayback!=null&&radioPlayback.isSpeaking());String reason=ambientPausedForNavigation?"NAVIGATION":!activityForeground?"BACKGROUND":topicStopRequested?"STOPPING":topicMenuDepth>0?"MENU":pendingUserConversation()||editingUserDraft()?"USER_TURN":"";return new JSONObject().put("at",System.currentTimeMillis()).put("voice",AssistantActivityState.phase(voiceLoopMode,voiceRecording,speechRecognizerActive,voiceLoopMode&&geminiRequestActive,speaking&&voiceLoopMode,false)).put("topic",AssistantActivityState.phase(radioModeEnabled,radioObservationActive,false,radioTopicPending,radioPlayback!=null&&radioPlayback.isSpeaking(),!reason.isEmpty())).put("pauseReason",reason);}catch(Exception e){return new JSONObject();}}
-    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{try{drainAnswerOutbox();}catch(Exception pending){}JSONObject state=new JSONObject().put("wearPause",new JSONObject().put("status",wearPause.label()).put("removed",wearPause.removed()).put("known",!wearPause.label().contains("未取得"))).put("visualControl",fullBodyImage==null?new JSONObject():fullBodyImage.visualControlState()).put("answerSync",AnswerOutbox.summary(this)).put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("pronunciation",PronunciationDictionary.status(this)).put("installation",InstallationIdentity.snapshot(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("stabilityNavigation",stabilityNavigationEchoSnapshot()).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("latency",ConversationLatency.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("keep",KeepCaptureState.snapshot(this)).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
+    private void syncWorkspace(){if(System.currentTimeMillis()-workspaceSyncAt<5000||!workspaceBusy.compareAndSet(false,true))return;workspaceSyncAt=System.currentTimeMillis();new Thread(()->{try{try{drainAnswerOutbox();}catch(Exception pending){}JSONObject state=new JSONObject().put("wearPause",new JSONObject().put("status",wearPause.label()).put("removed",wearPause.removed()).put("known",!wearPause.label().contains("未取得"))).put("visualControl",fullBodyImage==null?new JSONObject():fullBodyImage.visualControlState()).put("answerSync",AnswerOutbox.summary(this)).put("at",System.currentTimeMillis()).put("referenceMode",secretaryCardFresh()?"inbox":getPreferences().getString("conversation_reference_mode","auto")).put("inboxTitle",secretaryCardFresh()?secretaryCard.optString("title"):"").put("referenceAt",getPreferences().getLong("image_question_context_at",0L)).put("referent",conversationReferentPreview()).put("recognition",observationRecognition).put("quiet",QuietHours.read(this)).put("pronunciation",PronunciationDictionary.status(this)).put("installation",InstallationIdentity.snapshot(this)).put("departure",DeviceReadiness.snapshot(this,mapNavigationActive,navigationFreshness.optBoolean("routeReady"),navigationFreshness.optLong("locationTime"))).put("stabilityNavigation",stabilityNavigationEchoSnapshot()).put("conversation",readConversationDelivery()).put("trace",ConversationTrace.snapshot()).put("latency",ConversationLatency.snapshot()).put("activity",assistantActivitySnapshot()).put("capture",new JSONObject().put("meetingService",MeetingRecorderService.active!=null).put("keepService",PhotoRecorderService.active!=null).put("keep",KeepCaptureState.snapshot(this,false)).put("imagePending",!imageGenerationPending.isEmpty()).put("videoPending",!videoGenerationPending.isEmpty()).put("resource",ResourceLoad.status).put("resourceAt",ResourceLoad.checkedAt)).put("transfers",TransferProgressStore.snapshot(this)).put("reservations",ReservationProgress.snapshot(this)).put("health",LocalHealthCheck.snapshot(this)).put("commandId",workspaceCommandId).put("commandPhase",workspaceCommandPhase).put("commandStatus",workspaceCommandStatus);long at=getPreferences().getLong("image_calendar_review_at",0L);if(at>0&&System.currentTimeMillis()-at>=0&&System.currentTimeMillis()-at<=600000){String encoded=getPreferences().getString("image_calendar_review","");if(!encoded.isEmpty())state.put("draftAt",at).put("calendarDraft",CalendarDraftEdits.publicCandidate(new JSONObject(new String(DeviceSecrets.photos().decrypt(Base64.decode(encoded,Base64.NO_WRAP)),StandardCharsets.UTF_8))));}postTopicForm("conversation_workspace","state="+URLEncoder.encode(state.toString(),"UTF-8"));}catch(Exception ignored){}finally{workspaceBusy.set(false);}},"ConversationWorkspaceSync").start();}
     private final ConversationPlaybackState conversationPlayback=new ConversationPlaybackState();
     private String conversationSpeechArm="",latencySpeechId="";
     private final SpeechQuickKey speechQuickKey=new SpeechQuickKey();
@@ -921,7 +921,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             long now=System.currentTimeMillis();
             enqueueEveningContext(now,proximityStateKnown&&glassWorn,
                     weatherUpdatedAt>0 && now-weatherUpdatedAt<=7200000L ? weatherCondition : "");
-            if (!radioObservationActive && CaptureLease.CAMERA.availablePermits()>0 && CaptureLease.MICROPHONE.availablePermits()>0
+            if (!radioObservationActive && (CaptureLease.CAMERA.availablePermits()>0||PhotoRecorderService.cameraIdleForSpeech()) && CaptureLease.MICROPHONE.availablePermits()>0
                     && !voiceRecording && !speechRecognizerActive && !geminiRequestActive && mascotMode!=2
                     && !morningPlaybackActive && !radioModeEnabled && !radioTopicPending
                     && !topicFetching && !topicControlPending && !ambientPausedForNavigation
@@ -1157,6 +1157,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         @Override
         public void run() {
             MainActivity.this.pollPhoneHealthAsync();
+            MainActivity.this.syncPhotoDeletionsAsync();
             MainActivity.this.handler.postDelayed(this, 20000L);
         }
     };
@@ -2763,48 +2764,12 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private long meetingStatePostedAt;
     private final java.util.concurrent.atomic.AtomicBoolean meetingStateBusy=new java.util.concurrent.atomic.AtomicBoolean();
     private final IdleStateSync meetingStateSync=new IdleStateSync();
-    private void publishMeetingState(){
-        if(System.currentTimeMillis()-meetingStatePostedAt<4000||!meetingStateBusy.compareAndSet(false,true))return;meetingStatePostedAt=System.currentTimeMillis();
-        try{MeetingRecorderService recorder=MeetingRecorderService.active;JSONObject snapshot=new JSONObject().put("recording",recorder!=null).put("sessionId",recorder==null?"":recorder.recordingId).put("mode",recorder==null?0:recorder.mode).put("photos",PhotoRecorderService.active!=null).put("topic",radioModeEnabled).put("status",MeetingRecorderService.status).put("progress",recorder==null?new JSONObject():recorder.progress()).put("requestId",meetingRemoteId).put("requestStatus",meetingRemoteStatus).put("requestPhase",meetingRemotePhase);
-            final String payload=snapshot.toString();
-            if(!meetingStateSync.shouldSend(payload,android.os.SystemClock.elapsedRealtime(),6000L)){meetingStateBusy.set(false);return;}
-            topicControlWorker.execute(()->{try{postTopicForm("meeting_state","state="+URLEncoder.encode(payload,"UTF-8"));meetingStateSync.delivered(payload,android.os.SystemClock.elapsedRealtime());}catch(Exception ignored){}finally{meetingStateBusy.set(false);}});
-        }catch(Exception ignored){meetingStateBusy.set(false);}
-    }
-    private void handleMeetingRemote(JSONObject request){
-        try{String id=request.getString("requestId"),action=request.getString("action");int selected=request.optInt("mode",0);
-            if(!id.matches("[a-fA-F0-9-]{36}")||selected<0||selected>3||!(action.equals("start")||action.equals("stop")||action.equals("transfer")||action.equals("mark")))throw new java.io.IOException("操作内容が不正です");
-            if(id.equals(meetingRemoteId)||id.equals(getPreferences().getString("meeting_remote_seen","")))return;
-            meetingRemoteId=id;meetingRemoteAction=action;meetingRemotePhase="RUNNING";getPreferences().edit().putString("meeting_remote_seen",id).apply();
-            if(request.optLong("expiresAt")<System.currentTimeMillis()){meetingRemotePhase="FAILED";meetingRemoteStatus="期限切れ：再操作してください";return;}
-            if(action.equals("mark")){addMeetingBookmark(id,request.optString("label","ここ重要"),request.optString("sessionId"));return;}
-            if(action.equals("start")){
-                if(MeetingRecorderService.active!=null||meetingTransferBusy.get()){meetingRemotePhase="FAILED";meetingRemoteStatus="開始できません：録音または転送が継続中です";return;}
-                if(checkSelfPermission("android.permission.RECORD_AUDIO")!=0||((selected==1||selected==2)&&checkSelfPermission("android.permission.CAMERA")!=0)){meetingRemotePhase="FAILED";meetingRemoteStatus="開始できません：グラスでマイク・カメラ権限を許可してください";return;}
-                meetingRemoteStatus="開始準備中";startMeetingMode(selected,id);
-            }else if(action.equals("stop")){MeetingRecorderService current=MeetingRecorderService.active;if(current==null){meetingRemotePhase="COMPLETED";meetingRemoteStatus="停止済み";return;}meetingRemoteStatus="終了・保存中";current.requestStop();}
-            else{meetingRemoteStatus="転送準備中";transferMeetingRecords();}
-        }catch(Exception error){meetingRemotePhase="FAILED";meetingRemoteStatus="操作失敗：入力または端末の状態を確認してください";}
-        finally{meetingStatePostedAt=0;publishMeetingState();}
-    }
+    private void publishMeetingState(){}
+    private void handleMeetingRemote(JSONObject request){meetingRemotePhase="FAILED";meetingRemoteStatus=MeetingFeatureRetired.MESSAGE;setStatus(meetingRemoteStatus,Color.YELLOW);}
     private void addMeetingBookmark(String id,String label,String expected){try{MeetingRecorderService recorder=MeetingRecorderService.active;if(recorder==null)throw new IllegalArgumentException("録音中だけしおりを付けられます");recorder.mark(id,label,expected.isEmpty()?recorder.recordingId:expected);setStatus("しおりの保存待ちです。録音は継続します",Color.CYAN);}catch(Exception e){if(id.equals(meetingRemoteId)){meetingRemotePhase="FAILED";meetingRemoteStatus="しおりを保存できません。録音・接続を確認してください";}setStatus("しおりを保存できません。録音中か確認してください",Color.YELLOW);}}
     void onMeetingBookmarkSaved(String id,long audioMs,boolean success){runOnUiThread(()->{if(id.equals(meetingRemoteId)){meetingRemotePhase=success?"COMPLETED":"FAILED";meetingRemoteStatus=success?"しおり保存済み "+audioMs/1000+"秒":"しおり保存に失敗（録音は継続）";meetingStatePostedAt=0;publishMeetingState();}setStatus(success?"しおり保存済み "+audioMs/1000+"秒":"しおり保存失敗・録音は継続",success?Color.CYAN:Color.YELLOW);});}
     private void startMeetingMode(int mode){startMeetingMode(mode,"");}
-    private void startMeetingMode(int mode,String ownerId){
-        if(MeetingRecorderService.active!=null){setStatus("MTGは継続中です。モード変更は終了後に行ってください",Color.YELLOW);return;}
-        if(meetingTransferBusy.get()){setStatus("録音の転送完了を待ってください",Color.YELLOW);return;}
-        java.util.ArrayList<String> missing=new java.util.ArrayList<>();
-        if(checkSelfPermission("android.permission.RECORD_AUDIO")!=0)missing.add("android.permission.RECORD_AUDIO");
-        if((mode==1||mode==2)&&checkSelfPermission("android.permission.CAMERA")!=0)missing.add("android.permission.CAMERA");
-        if(!missing.isEmpty()){requestPermissions(missing.toArray(new String[0]),20);setStatus("権限を許可してMTGから再度開始してください",Color.YELLOW);return;}
-        meetingStartOwnerId=ownerId;stopRadioPlayback();stopAmbientCapture();if(ambientMode)setAmbientMode(false);releaseSpeechRecognizer();setVoiceRecording(false);voiceLoopMode=false;pauseAmbientForUserAction(7200000L);
-        if(PhotoRecorderService.active!=null)stopPhotoRecorderImmediately();
-        changeTopicMode(false,currentTopicMode,currentTopicMinutes,()->{
-            if(MeetingRecorderService.active!=null)return;
-            try{startForegroundService(new Intent(this,MeetingRecorderService.class).putExtra("meetingMode",mode));setStatus("MTG開始準備："+MEETING_MODES[mode],Color.GREEN);}
-            catch(Exception error){if(!ownerId.isEmpty()&&ownerId.equals(meetingRemoteId)){meetingRemotePhase="FAILED";meetingRemoteStatus="MTGを開始できません";}setStatus("MTGを開始できません："+error.getClass().getSimpleName(),Color.YELLOW);}
-        });
-    }
+    private void startMeetingMode(int mode,String ownerId){setStatus(MeetingFeatureRetired.MESSAGE,Color.YELLOW);}
     void onMeetingRecorderStarted(MeetingRecorderService recorder){
         runOnUiThread(()->{
             if(MeetingRecorderService.active!=recorder||recorder.isStopping())return;
@@ -2817,30 +2782,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
     void onMeetingRecorderEnded(int mode){
         runOnUiThread(()->{if(meetingRemoteAction.equals("stop")||meetingRemoteAction.equals("start")&&!meetingStartOwnerId.isEmpty()&&meetingStartOwnerId.equals(meetingRemoteId)){meetingRemotePhase=MeetingRecorderService.lastSaveSucceeded?"COMPLETED":"FAILED";meetingRemoteStatus=(MeetingRecorderService.lastSaveSucceeded?"終了・保存済み：":"録音結果の確認が必要：")+MeetingRecorderService.status;}if(mode==2&&PhotoRecorderService.active!=null)stopPhotoRecorderImmediately();if(mode>0)changeTopicMode(false,currentTopicMode,currentTopicMinutes,null);});
     }
-    private void showMeetingControls(){
-        NavigationChoiceDialog.show(this,"MTG："+MeetingRecorderService.status,new String[]{MEETING_MODES[0],MEETING_MODES[1],MEETING_MODES[2],MEETING_MODES[3],"MTGを終了（録音・TOPIC・写真）","保存した録音をスマホへ転送","ここ重要：しおりを保存"},-1,(d,which)->{
-            if(which==6){addMeetingBookmark(java.util.UUID.randomUUID().toString(),"ここ重要","");return;}
-            if(which<4){
-                final int mode=which;
-                new LokiAlertDialogBuilder(this).setTitle(MEETING_MODES[mode]).setMessage(mode==0?"音声を最大2時間、端末に録音します。TOPICと連続写真は停止します。":("音声を最大2時間、端末に録音します。TOPIC用の周囲音"+(mode==3?"":"とカメラ画像")+"はGeminiへ送信します。"+(mode==2?"連続写真も保存します。録音中の撮影は30秒以上の間隔です。":"")))
-                    .setPositiveButton("開始",(dialog,w)->startMeetingMode(mode)).setNegativeButton("戻る",null).show();
-            }else if(which==4){
-                if(MeetingRecorderService.active==null){setStatus("MTGは停止中です",Color.YELLOW);return;}
-                new LokiAlertDialogBuilder(this).setTitle("MTGを終了しますか？").setMessage("ここまでの音声を保存し、このモードのTOPICと連続写真も停止します。")
-                    .setPositiveButton("終了",(dialog,w)->{MeetingRecorderService current=MeetingRecorderService.active;if(current!=null)current.requestStop();})
-                    .setNegativeButton("続ける",null).show();
-            }else {
-                transferMeetingRecords();
-            }
-        });
-    }
-    private void transferMeetingRecords(){
-        if(MeetingRecorderService.active!=null){meetingRemotePhase="FAILED";meetingRemoteStatus="転送できません：録音を終了してください";setStatus(meetingRemoteStatus,Color.YELLOW);return;}
-        if(!meetingTransferBusy.compareAndSet(false,true)){meetingRemotePhase="FAILED";meetingRemoteStatus="別の転送が継続中です";return;}
-        final String operationId=meetingRemoteAction.equals("transfer")?meetingRemoteId:"";
-        new Thread(()->{String batch="";try{batch=TransferProgressStore.begin(this,"meeting");final String batchId=batch;int sent=MeetingTransfer.send(this,form->postTopicForm("meeting_audio",form),(phase,expected,confirmed,units,done)->TransferProgressStore.update(this,"meeting",batchId,phase,expected,confirmed,0,0,0,units,done));handler.post(()->{if(!operationId.isEmpty()&&operationId.equals(meetingRemoteId)&&meetingRemoteAction.equals("transfer")){meetingRemotePhase="COMPLETED";meetingRemoteStatus="転送完了："+sent+"件";}setStatus("会議録音をスマホへ転送："+sent+"件。PCの会議記録で確認できます",Color.GREEN);});}
-            catch(Exception error){TransferProgressStore.failed(this,"meeting",batch);handler.post(()->{String failure="転送失敗："+(error instanceof java.io.IOException?error.getMessage():error.getClass().getSimpleName());if(!operationId.isEmpty()&&operationId.equals(meetingRemoteId)&&meetingRemoteAction.equals("transfer")){meetingRemotePhase="FAILED";meetingRemoteStatus=failure;}setStatus(failure+"。保存済み音声は保持しています",Color.YELLOW);});}finally{meetingTransferBusy.set(false);}},"MeetingTransfer").start();
-    }
+    private void showMeetingControls(){setStatus(MeetingFeatureRetired.MESSAGE,Color.YELLOW);}
+    private void transferMeetingRecords(){setStatus(MeetingFeatureRetired.MESSAGE,Color.YELLOW);}
     void onKeepPhotoSaved(){runOnUiThread(()->KeepCaptureFeedback.show(this));}
     void onPhotoRecorderStopped(String reason){runOnUiThread(()->{if(!isDestroyed())setStatus("連続撮影停止："+reason,Color.YELLOW);});}
     private String lastMeetingHudStatus="";
@@ -2876,9 +2819,8 @@ public final class MainActivity extends Activity implements SensorEventListener 
         catch(Exception e){setStatus("連続撮影を開始できません："+e.getClass().getSimpleName(),Color.YELLOW);}
     }
     private void showPhotoRecorder(){
-        PhotoExportProvider.prune(this);
         showControlsTemporarily();
-        NavigationChoiceDialog.show(this,"KEEP："+(PhotoRecorderService.active!=null?PhotoRecorderService.status:"停止中"),
+        android.app.AlertDialog dialog=NavigationChoiceDialog.show(this,keepMenuStatus()+"\n保存枚数を確認中…",
             new String[]{"開始：5秒間隔 / 上限5GB","開始：10秒間隔 / 上限5GB","撮影を停止","記録写真を復号して共有","停止してスマホへコピー（原本保持）","スマホへ移動（原本削除）","撮影の明るさ（日向・自動・夜道）"},-1,(d,which)->{
                 if(which==0||which==1)startPhotoRecorder(which==0?5000:10000);
                 else if(which==2)stopPhotoRecorderImmediately();
@@ -2887,6 +2829,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 else if(which==6)showKeepExposure();
                 else new LokiAlertDialogBuilder(this).setMessage("スマホ保存を確認した写真の原本をグラスから削除します。").setPositiveButton("停止して移動",(x,y)->beginPhotoImport(true)).setNegativeButton("戻る",null).show();
             });
+        new Thread(()->{
+            JSONObject state=KeepCaptureState.snapshot(this,true);
+            handler.post(()->{
+                if(!isDestroyed()&&dialog.isShowing()) NavigationChoiceDialog.updateHeading(dialog,
+                    keepMenuStatus()+"\n"+KeepCapturePolicy.menuCounts(state,PhotoRecorderService.active!=null));
+            });
+        },"KeepRetainedCount").start();
+    }
+    private String keepMenuStatus(){
+        if(PhotoRecorderService.active==null)return "KEEP：停止中";
+        String status=PhotoRecorderService.status;
+        return "KEEP："+(status.isEmpty()||status.startsWith("REC ")?"連続撮影中":status);
     }
     private void showKeepExposure(){
         try{JSONObject support=KeepExposureSupport.read(this);if(!support.optBoolean("supported")){new LokiAlertDialogBuilder(this).setTitle("KEEPの露出補正").setMessage("このカメラは露出補正を公開していません。自動露出で撮影します。保存後に白飛びした部分を復元することはできません。").setPositiveButton("閉じる",null).show();return;}}catch(Exception unavailable){setStatus("露出補正の対応状況を確認できません。撮影時にカメラの対応範囲で適用します",Color.YELLOW);}
@@ -2986,7 +2940,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
             final int done=sent,bad=failed,missing=metadataMissing,retained=previousDeleted,waiting=deferred;final String reason=lastFailure;
             handler.post(()->setStatus((bad>0||waiting>0?"取り込み未完了：":"取り込み完了：")+done+"枚 / スマホで削除済み"+retained+"枚"+(missing>0?"（撮影情報なし"+missing+"枚）":"")+(waiting>0?" / READ取り込み待ち"+waiting+"枚":"")+(bad>0?" / 保留"+bad+"枚："+reason:(move?"。スマホ・PCの記録写真で確認":"。グラスの原本も保持しています")),bad==0?Color.GREEN:Color.YELLOW));
         }catch(Exception error){TransferProgressStore.failed(this,"photo",batch);Log.w("LokiPhotoTransfer","transfer stopped: "+error.getClass().getSimpleName());handler.post(()->setStatus("写真転送中断："+error.getClass().getSimpleName()+"。未転送はグラスに保持",Color.YELLOW));}
-         finally{photoTransferRunning.set(false);}},"KeepPhotoTransfer").start();
+         finally{KeepCaptureState.refreshCountAfterTransfer();photoTransferRunning.set(false);}},"KeepPhotoTransfer").start();
     }    private void showPhotoExports(){
         if(PhotoRecorderService.active!=null){setStatus("撮影を停止してから書き出してください",Color.YELLOW);return;}
         new Thread(()->{try{
@@ -4467,6 +4421,30 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 presentExerciseAdvice(reply,reason);
             });
         },"ExerciseGeminiOnce").start();
+    }
+
+    private long photoDeletionCheckElapsed=-60000;
+    private void syncPhotoDeletionsAsync(){
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(now-photoDeletionCheckElapsed<60000||PhotoRecorderService.active!=null||!photoTransferRunning.compareAndSet(false,true))return;
+        photoDeletionCheckElapsed=now;
+        new Thread(()->{try{
+            PhotoArchive archive=PhotoArchiveStore.get(this);
+            for(int batch=0;batch<20;batch++){
+                if(isDestroyed()||PhotoRecorderService.active!=null)break;
+                JSONObject response=new JSONObject(fetchPhoneEndpointJson("photo_deletions"));
+                if(!response.optBoolean("ok"))break;JSONArray ids=response.getJSONArray("ids");
+                if(ids.length()>100)throw new java.io.IOException("deletion batch too large");
+                for(int i=0;i<ids.length();i++)if(!ids.getString(i).matches("[0-9]{13}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))throw new java.io.IOException("invalid deletion id");
+                if(ids.length()==0)break;JSONArray done=new JSONArray();
+                for(int i=0;i<ids.length();i++){if(isDestroyed()||PhotoRecorderService.active!=null)break;try{archive.removeAcknowledgedDeletion(ids.getString(i));done.put(ids.getString(i));}catch(java.io.IOException failure){Log.w("LokiPhotoDelete","original deletion deferred");}}
+                KeepCaptureState.refreshCountAfterTransfer();
+                if(done.length()==0)break;
+                JSONObject ack=new JSONObject(postTopicForm("photo_deletions_ack","request="+URLEncoder.encode(new JSONObject().put("ids",done).toString(),"UTF-8")));
+                if(!ack.optBoolean("ok")||done.length()<ids.length()||ack.optInt("pending")==0)break;
+            }
+        }catch(Exception unavailable){Log.w("LokiPhotoDelete","deletion confirmation deferred; retry on next connection");}
+        finally{KeepCaptureState.refreshCountAfterTransfer();photoTransferRunning.set(false);}},"PhotoDeletionSync").start();
     }
 
     private void pollPhoneHealthAsync() {
@@ -8172,7 +8150,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                 .setPositiveButton("開始",(a,b)->{setAmbientMode(false);changeTopicMode(true,"both",currentTopicMinutes,null);}).setNegativeButton("戻る",null).show();
             else if(which==2||which==3){changeTopicMode(false,currentTopicMode,currentTopicMinutes,null);ambientInputMode=which==2?AmbientScenePolicy.BOTH:AMBIENT_INPUT_PLAYBACK;getPreferences().edit().putInt(KEY_AMBIENT_INPUT_MODE,ambientInputMode).apply();setAmbientMode(true);}
             else if(which==4){setAmbientMode(false);changeTopicMode(false,currentTopicMode,currentTopicMinutes,null);if(morningPlaybackActive)handleMorningBriefingCommand("stop");}
-            else NavigationChoiceDialog.show(this,"TOPICの状態・記録",new String[]{"発言判定","認識した内容を見る・直す","会話の参照先","依頼・転送・動作チェック","MTG：会議記録"},-1,(a,b)->{if(b==0)showProactiveDecision();else if(b==1)showObservationRecognition();else if(b==2)showConversationReference();else if(b==3)showOperationOverview();else showMeetingControls();});
+            else NavigationChoiceDialog.show(this,"TOPICの状態・記録",new String[]{"発言判定","認識した内容を見る・直す","会話の参照先","依頼・転送・動作チェック"},-1,(a,b)->{if(b==0)showProactiveDecision();else if(b==1)showObservationRecognition();else if(b==2)showConversationReference();else showOperationOverview();});
         });
         dialog.setOnDismissListener(d -> topicMenuDepth--);
         dialog.show();
@@ -13971,7 +13949,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
                     if(!imageId.matches("[a-f0-9-]{36}")){imageQuestionDispatch.set(false);fetchPhoneEndpointJson("ack_command");return;}
                     handler.post(()->startImageQuestion("添付画像を読み取って",imageId,true));return;
                 }
-                if(strTrim3.startsWith("__LOKI_TRANSFER_ONCE__:")){JSONObject transfer=new JSONObject(strTrim3.substring("__LOKI_TRANSFER_ONCE__:".length()));String transferId=transfer.getString("id"),kind=transfer.getString("kind");if(!transferId.matches("[a-f0-9-]{36}")||!kind.matches("photo|meeting")||transfer.optLong("expiresAt")>System.currentTimeMillis()+180000)throw new IllegalArgumentException("transfer request");fetchPhoneEndpointJson("ack_command");if(transfer.optLong("expiresAt")<System.currentTimeMillis()){ReservationProgress.begin(MainActivity.this,transferId,kind,"EXPIRED","受信した予約の期限が切れています");return;}android.content.SharedPreferences once=getSharedPreferences("maintenance_transfer",0);if(once.getLong(transferId,0)>System.currentTimeMillis())return;android.content.SharedPreferences.Editor onceEdit=once.edit();for(String key:once.getAll().keySet())if(!key.equals("last")&&once.getLong(key,0)<System.currentTimeMillis())onceEdit.remove(key);if(!onceEdit.putLong(transferId,transfer.optLong("expiresAt")).commit())return;handler.post(()->{try{boolean busy=kind.equals("photo")?(PhotoRecorderService.active!=null||photoTransferRunning.get()):(MeetingRecorderService.active!=null||meetingTransferBusy.get());if(busy||getPreferences().getString(KEY_LAST_PHONE_HOST,"").isEmpty()){ReservationProgress.begin(MainActivity.this,transferId,kind,"REJECTED",busy?"グラスで記録中または転送中です。記録は停止していません":"スマホの接続先が未確認です");return;}ReservationProgress.begin(MainActivity.this,transferId,kind,"ACCEPTED","転送要求を受け付けました。保存は未確認です");if(kind.equals("photo"))transferRecorderPhotos();else transferMeetingRecords();}catch(Exception e){ReservationProgress.unstarted(MainActivity.this,kind);}});return;}
+                if(strTrim3.startsWith("__LOKI_TRANSFER_ONCE__:")){JSONObject transfer=new JSONObject(strTrim3.substring("__LOKI_TRANSFER_ONCE__:".length()));String transferId=transfer.getString("id"),kind=transfer.getString("kind");if(kind.equals("meeting")){fetchPhoneEndpointJson("ack_command");setStatus(MeetingFeatureRetired.MESSAGE,Color.YELLOW);return;}if(!transferId.matches("[a-f0-9-]{36}")||!kind.matches("photo|meeting")||transfer.optLong("expiresAt")>System.currentTimeMillis()+180000)throw new IllegalArgumentException("transfer request");fetchPhoneEndpointJson("ack_command");if(transfer.optLong("expiresAt")<System.currentTimeMillis()){ReservationProgress.begin(MainActivity.this,transferId,kind,"EXPIRED","受信した予約の期限が切れています");return;}android.content.SharedPreferences once=getSharedPreferences("maintenance_transfer",0);if(once.getLong(transferId,0)>System.currentTimeMillis())return;android.content.SharedPreferences.Editor onceEdit=once.edit();for(String key:once.getAll().keySet())if(!key.equals("last")&&once.getLong(key,0)<System.currentTimeMillis())onceEdit.remove(key);if(!onceEdit.putLong(transferId,transfer.optLong("expiresAt")).commit())return;handler.post(()->{try{boolean busy=kind.equals("photo")?(PhotoRecorderService.active!=null||photoTransferRunning.get()):(MeetingRecorderService.active!=null||meetingTransferBusy.get());if(busy||getPreferences().getString(KEY_LAST_PHONE_HOST,"").isEmpty()){ReservationProgress.begin(MainActivity.this,transferId,kind,"REJECTED",busy?"グラスで記録中または転送中です。記録は停止していません":"スマホの接続先が未確認です");return;}ReservationProgress.begin(MainActivity.this,transferId,kind,"ACCEPTED","転送要求を受け付けました。保存は未確認です");if(kind.equals("photo"))transferRecorderPhotos();else transferMeetingRecords();}catch(Exception e){ReservationProgress.unstarted(MainActivity.this,kind);}});return;}
                 if(strTrim3.startsWith("__LOKI_STORAGE_REPAIR__:")){JSONObject repair=new JSONObject(strTrim3.substring("__LOKI_STORAGE_REPAIR__:".length()));java.util.HashSet<String> wanted=new java.util.HashSet<>();JSONArray ids=repair.getJSONArray("ids");if(ids.length()<1||ids.length()>20)throw new IllegalArgumentException("repair selection");for(int j=0;j<ids.length();j++){String id=ids.getString(j);if(!id.matches("[0-9]{13}-[a-f0-9-]{36}"))throw new IllegalArgumentException("repair id");wanted.add(id);}fetchPhoneEndpointJson("ack_command");if(System.currentTimeMillis()<=repair.optLong("expiresAt"))handler.post(()->transferRecorderPhotos(wanted));return;}
                 if(strTrim3.startsWith("__LOKI_MEETING__:")){
                     final JSONObject meetingRequest=new JSONObject(strTrim3.substring("__LOKI_MEETING__:".length()));fetchPhoneEndpointJson("ack_command");handler.post(()->handleMeetingRemote(meetingRequest));return;

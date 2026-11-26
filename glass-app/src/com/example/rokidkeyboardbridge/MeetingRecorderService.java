@@ -16,12 +16,7 @@ public final class MeetingRecorderService extends Service {
     public IBinder onBind(Intent i){return null;}
     public void onCreate(){super.onCreate();((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel("loki_meeting","ロキの会議録音",NotificationManager.IMPORTANCE_LOW));}
     private Notification notification(){PendingIntent stop=PendingIntent.getActivity(this,882,new Intent(this,MainActivity.class).setAction("loki.meeting.controls"),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);return new Notification.Builder(this,"loki_meeting").setSmallIcon(android.R.drawable.ic_btn_speak_now).setContentTitle("ロキ：会議録音中（最大2時間）").setContentText(status).setOngoing(true).setContentIntent(stop).build();}
-    public int onStartCommand(Intent i,int flags,int id){if(i==null){stopSelf();return START_NOT_STICKY;}if(active!=null)return START_NOT_STICKY;
-        lastSaveSucceeded=false;mode=Math.max(0,Math.min(3,i.getIntExtra("meetingMode",0)));
-        started=SystemClock.elapsedRealtime();active=this;status="会議録音：開始準備中";
-        if(Build.VERSION.SDK_INT>=29){int types=android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;if(checkSelfPermission("android.permission.CAMERA")==0)types|=android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;startForeground(883,notification(),types);}else startForeground(883,notification());
-        wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"loki:meeting");wake.acquire(2*60*60*1000L+60000);
-        new Thread(this::store,"MeetingDisk").start();return START_NOT_STICKY;}
+    public int onStartCommand(Intent i,int flags,int id){stopSelf();return START_NOT_STICKY;}
     void requestStop(){reason="終了操作";stopping=true;}
     void assistantSpeech(long ms){speechUntil=SystemClock.elapsedRealtime()+ms;}
     boolean recentAssistantSpeech(){return speechUntil>0&&SystemClock.elapsedRealtime()-speechUntil<4000;}

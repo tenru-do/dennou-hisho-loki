@@ -1,0 +1,28 @@
+[
+  {
+    "app": "glass",
+    "version": 768,
+    "sha256": "09bb77e95d20835032fe26e33ee4c323979a4eebbe7bfd9434a02d18ab73c18d",
+    "bytes": 329538781,
+    "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+    "debuggable": false,
+    "allowBackup": false,
+    "instrumentationIncluded": false,
+    "privacyScanPassed": true,
+    "codeAndAssetsMatchTestedDevelopment": true,
+    "previousPublicCertificateMatches": true
+  },
+  {
+    "app": "phone",
+    "version": 326,
+    "sha256": "60de5d3ea964b2cea293af21744548ba8bb1b014d5a5aee65f44785d79255e8e",
+    "bytes": 53404287,
+    "certificateSha256": "4022edbcdf7973743f1fda819afd281f6fd4abd12e9886896206ac1e57a791d7",
+    "debuggable": false,
+    "allowBackup": false,
+    "instrumentationIncluded": false,
+    "privacyScanPassed": true,
+    "codeAndAssetsMatchTestedDevelopment": true,
+    "previousPublicCertificateMatches": true
+  }
+]

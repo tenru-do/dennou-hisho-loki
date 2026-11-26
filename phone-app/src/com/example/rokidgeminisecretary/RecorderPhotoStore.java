@@ -41,5 +41,11 @@ final class RecorderPhotoStore {
   if(photo.exists()&&!photo.delete())throw new IOException("photo deletion failed");
   File metadata=new File(directory,photo.getName().replace(".gcm",".meta.gcm"));if(metadata.exists()&&!metadata.delete())throw new IOException("metadata deletion failed");
  }
+ static synchronized void deleteEverywhere(android.content.Context c,File photo)throws Exception{
+  File directory=root(c).getCanonicalFile();String name=photo.getName();
+  if(!photo.getCanonicalFile().getParentFile().equals(directory)||!name.endsWith(".gcm"))throw new IOException("invalid deletion target");
+  String id=name.substring(0,name.length()-4);if(!PhotoDeletionSync.valid(id))throw new IOException("invalid deletion id");
+  PhotoDeletionSync.enqueue(c,id);delete(c,photo);
+ }
  static byte[] read(File f)throws Exception{return DeviceSecrets.photos().decrypt(Files.readAllBytes(f.toPath()));}
 }

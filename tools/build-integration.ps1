@@ -1,4 +1,4 @@
-﻿param([ValidateSet('glass','phone','camera','audio-relay')][string]$App,[switch]$Development,[switch]$Release,[string]$KeyStorePath,[string]$KeyAlias)
+param([ValidateSet('glass','phone','camera','audio-relay')][string]$App,[switch]$Development,[switch]$Release,[string]$KeyStorePath,[string]$KeyAlias)
 $ErrorActionPreference='Stop'
 if($Release){
     if($Development){throw 'Release cannot be combined with Development'}
@@ -11,6 +11,7 @@ if($App -eq 'glass'){& "$PSScriptRoot/Assert-ColorMigration.ps1"}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/Assert-ConversationPromptBaseline.ps1" -App $App}
 if($App -eq 'phone' -or $App -eq 'glass'){& "$PSScriptRoot/generate-loki-self-profile.ps1"}
 if($App -eq 'glass'){& "$PSScriptRoot/Test-ConversationCompletion.ps1"}
+if($App -eq 'glass'){& "$PSScriptRoot/Test-KeepSession.ps1"}
 $sdk=Join-Path $env:LOCALAPPDATA 'Android/Sdk'
 $env:JAVA_HOME='C:/Program Files/Android/Android Studio/jbr'
 $env:PATH="$env:JAVA_HOME/bin;$env:PATH"

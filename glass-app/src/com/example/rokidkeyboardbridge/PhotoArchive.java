@@ -2,9 +2,11 @@ package com.example.rokidkeyboardbridge;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.Pattern;
 /** Bounded archive. Only recorder-owned JPEGs can be evicted; keep markers survive restarts. */
 final class PhotoArchive {
  static final long LIMIT=5_000_000_000L,RESERVE=1_000_000_000L,BEFORE=120000,AFTER=60000;
+ private static final Pattern COMPLETED_PHOTO=Pattern.compile("[0-9]{13}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.jpg(?:\\.gcm)?");
  final File root; final long limit,reserve; private long keepUntil; private PhotoVaultCipher cipher;
  PhotoArchive(File root,PhotoVaultCipher cipher)throws IOException{this(root);this.cipher=cipher;}
  PhotoArchive(File root)throws IOException{this(root,LIMIT,RESERVE);}
@@ -13,7 +15,22 @@ final class PhotoArchive {
   if(!root.isDirectory()&&!root.mkdirs())throw new IOException("写真保存先を作成できません");
   File state=new File(root,"keep-until.txt");if(state.exists())keepUntil=Long.parseLong(new String(Files.readAllBytes(state.toPath()),java.nio.charset.StandardCharsets.US_ASCII).trim());
  }
- private File[] photos(){File[] files=root.listFiles(f->f.isFile()&&f.getName().matches("[0-9]{13}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\\.jpg(?:\\.gcm)?"));if(files==null)throw new IllegalStateException("写真保存先を読み取れません。0枚とは判定しません");Arrays.sort(files,Comparator.comparing(File::getName));return files;}
+ private static File[] completedPhotos(File directory){
+  File[] files=directory.listFiles(file->COMPLETED_PHOTO.matcher(file.getName()).matches()&&file.isFile());
+  if(files==null)throw new IllegalStateException("写真保存先を読み取れません。0枚とは判定しません");
+  return files;
+ }
+ private File[] photos(){File[] files=completedPhotos(root);Arrays.sort(files,Comparator.comparing(File::getName));return files;}
+ static int retainedCount(File directory){
+  if(Files.notExists(directory.toPath())){
+   File parent=directory.getParentFile();
+   if(parent!=null&&parent.isDirectory()&&parent.canRead())return 0;
+  }
+  Set<String> ids=new HashSet<>();
+  // Migration can briefly retain plain and encrypted copies of one original.
+  for(File file:completedPhotos(directory))ids.add(file.getName().substring(0,50));
+  return ids.size();
+ }
  private long time(File f){return Long.parseLong(f.getName().substring(0,13));}
  private File marker(File f){return new File(root,f.getName()+".keep");}
  synchronized long[] stats(){long count=0,bytes=0,kept=0;for(File f:photos()){count++;bytes+=f.length();if(marker(f).exists())kept++;}return new long[]{count,bytes,kept};}
@@ -75,6 +92,19 @@ final class PhotoArchive {
    if(sidecar.exists()&&!sidecar.delete())throw new IOException("deleted photo metadata cleanup failed");
   }
   if(!photo.delete())throw new IOException("phone-deleted original cleanup failed");
+ }
+ synchronized void removeAcknowledgedDeletion(String id)throws IOException{
+  if(id==null||!id.matches("[0-9]{13}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))throw new IOException("invalid deletion id");
+  for(String ending:new String[]{".jpg",".jpg.gcm"}){
+   File photo=new File(root,id+ending);
+   if(!photo.getCanonicalFile().getParentFile().equals(root.getCanonicalFile()))throw new IOException("outside archive");
+   if(photo.exists()&&!photo.delete())throw new IOException("photo deletion failed");
+   for(String suffix:new String[]{".meta.gcm",".meta.gcm.recovery",".keep",".read-pending",".phone-deleted"}){
+    File sidecar=new File(root,photo.getName()+suffix);
+    if(!sidecar.getCanonicalFile().getParentFile().equals(root.getCanonicalFile()))throw new IOException("outside archive");
+    if(sidecar.exists()&&!sidecar.delete())throw new IOException("photo sidecar deletion failed");
+   }
+  }
  }
  synchronized void encryptLegacy()throws IOException{
   if(cipher==null)return;
