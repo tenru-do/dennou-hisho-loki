@@ -38,6 +38,9 @@ let checks=0,external=0;const ok=(value,message)=>{assert.ok(value,message);chec
   await page.goto('http://keep.test/web/');
   await page.waitForFunction(()=>document.querySelectorAll('#grid .card').length===500);
   ok((await page.locator('#page').innerText()).includes('1〜500 / 1001枚'),'first page contains 500');
+  ok(await page.locator('#meetingsTab,#meetings,#meetingStart,#meetingAudio,#meetingUpload').count()===0,'meeting tab, recorder, player and import removed from DOM');
+  ok(await page.locator('#localRecordType option[value="meeting"]').count()===0,'retired meeting category absent from Web search');
+  ok(await page.locator('#chatTab').count()===1&&await page.locator('#photosTab').count()===1,'conversation and KEEP photo tabs remain');
   ok(await page.locator('#previous').innerText()==='前の500枚'&&await page.locator('#next').innerText()==='次の500枚','navigation labels use 500');
   await click('next');await page.waitForFunction(()=>document.getElementById('page').textContent.includes('501〜1000'));
   ok(await page.locator('#grid .card').count()===500,'second page contains 500');
@@ -66,6 +69,11 @@ let checks=0,external=0;const ok=(value,message)=>{assert.ok(value,message);chec
   ok(await page.evaluate(()=>photoImportTimer===null)&&await page.locator('#import').isEnabled(),'terminal partial retains unresolved count and stops polling');
   await refresh({state:'COMPLETED',active:false,totalKnown:true,total:0,confirmed:0,retained:0,remaining:0,label:'取り込み処理完了：対象0枚'});
   ok(await page.locator('#photoImportProgress').isHidden()&&(await page.locator('#photoImportStatus').innerText()).includes('対象0枚'),'known empty completion is explicit without invalid progress denominator');
+  await refresh({active:false,totalKnown:false,deletionPending:7,label:'削除後の保存枚数を照合中'});
+  ok((await page.locator('#photoImportConnection').innerText()).includes('削除反映待ち：7枚'),'pending original deletion is explicit, not claimed complete');
+  ok(await page.evaluate(()=>photoImportTimer!==null),'original deletion keeps polling even without an import');
+  await refresh({active:false,totalKnown:false,deletionPending:0,label:'削除反映確認済み'});
+  ok(await page.evaluate(()=>photoImportTimer===null),'confirmed deletion stops pending polling');
   const importsBefore=calls.filter(call=>call.name==='import').length;
   await page.evaluate(()=>{document.getElementById('import').click();document.getElementById('import').click();});
   await page.waitForFunction(()=>document.getElementById('photoImportStatus').textContent.includes('グラスへ依頼済み'));

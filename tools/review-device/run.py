@@ -1,7 +1,7 @@
 """Permission-free isolated tests. Never starts or accesses the user's Loki application."""
 from pathlib import Path
 import argparse,hashlib,json,os,re,subprocess,uuid,zipfile
-p=argparse.ArgumentParser();p.add_argument('--output',required=True,type=Path);p.add_argument('--only-stability',action='store_true');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',required=True,type=Path);p.add_argument('--only-stability',action='store_true');p.add_argument('--only-calendar',action='store_true');args=p.parse_args()
 r=Path(__file__).resolve().parents[2];src=Path(__file__).parent;sdk=Path('C:/Users/user/AppData/Local/Android/Sdk');bt=sdk/'build-tools/37.0.0';java=Path('C:/Program Files/Android/Android Studio/jbr/bin');adb=sdk/'platform-tools/adb.exe';pkg='com.example.lokireviewchecks';dest=args.output.resolve();dest.mkdir(parents=True,exist_ok=False);build=r/'.build-review-device';build.mkdir(exist_ok=True)
 def command(*parts,binary=False):
  q=subprocess.run(list(map(str,parts)),capture_output=True)
@@ -36,11 +36,11 @@ try:
   device('push',local,remote+'-'+name);device('shell','chmod','444',remote+'-'+name);device('shell','run-as',pkg,'cp',remote+'-'+name,folder+'/'+name);device('shell','run-as',pkg,'chmod','444',folder+'/'+name)
   if device('shell','run-as',pkg,'sha256sum',folder+'/'+name).split()[0]!=sha(local):raise RuntimeError('Test input copy hash mismatch')
  print('Running candidate APK classes under separate UID; no network/capture/playback permissions',flush=True)
- result=device('shell','am','instrument','-w','-e','run',run,*(['-e','poses','stability'] if args.only_stability else []),pkg+'/.Audit');(dest/'instrumentation.txt').write_text(result,encoding='utf-8')
+ result=device('shell','am','instrument','-w','-e','run',run,*(['-e','poses','calendar'] if args.only_calendar else ['-e','poses','stability'] if args.only_stability else []),pkg+'/.Audit');(dest/'instrumentation.txt').write_text(result,encoding='utf-8')
  if 'failure=' in result or 'INSTRUMENTATION_CODE: -1' not in result:raise RuntimeError('Isolated checks failed: '+result[:1200])
  report=json.loads(device('shell','run-as',pkg,'cat',folder+'/review/result.json'));report.update(sourceApkSha256=sourceHash,glassApkSha256=glassHash,testApkSha256=sha(build/'test.apk'),model='SM-S942Q');(dest/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report),flush=True)
  if report.get('navigationModeMatrix',{}).get('failed',0):raise RuntimeError('Navigation mode matrix failures; inspect result.json')
- for style in ['short','detailed']:(dest/('provider-'+style+'.json')).write_bytes(device('exec-out','run-as',pkg,'cat',folder+'/review/stream/provider-'+style+'.json',binary=True))
+ for style in ([] if args.only_calendar or args.only_stability else ['short','detailed']):(dest/('provider-'+style+'.json')).write_bytes(device('exec-out','run-as',pkg,'cat',folder+'/review/stream/provider-'+style+'.json',binary=True))
 finally:
  if installed:
   if 'Success' not in device('uninstall',pkg):raise RuntimeError('Reconnect phone to remove the diagnostic package')

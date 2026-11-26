@@ -17,11 +17,14 @@ final class PhotoImportProgress {
     }
 
     static JSONObject view(JSONObject workspace, JSONObject request, long now) throws Exception {
+        boolean glassConnected = workspace.optBoolean("connected");
+        JSONObject capture = workspace.optJSONObject("capture");
+        JSONObject keep = capture == null ? null : capture.optJSONObject("keep");
+        String overview = KeepCapturePolicy.overview(keep, glassConnected, now) + "\n";
         JSONObject out = new JSONObject().put("state", "IDLE").put("active", false).put("fresh", false)
                 .put("totalKnown", false).put("total", JSONObject.NULL).put("confirmed", JSONObject.NULL)
                 .put("remaining", JSONObject.NULL).put("retained", 0).put("failed", 0).put("deferred", 0)
-                .put("label", "KEEP写真の取り込み状況は、コピーの依頼後に表示します。");
-        boolean glassConnected=workspace.optBoolean("connected");
+                .put("label", overview + "KEEP写真の取り込み状況は、コピーの依頼後に表示します。");
         out.put("glassConnected",glassConnected).put("waitingForGlass",false);
         long requestedAt = request.optLong("createdAt");
         boolean requested = request.optString("id").matches("[a-f0-9-]{36}") && requestedAt > 0;
@@ -32,9 +35,9 @@ final class PhotoImportProgress {
         if (row == null) {
             if (!requested) return out;
             if (now < requestedAt) return out.put("state", "UNKNOWN")
-                    .put("label", "端末の時刻が変わったため、取り込み状況を確認できません。保存完了は未確認です。接続と原本を確認してください。");
+                    .put("label", overview + "端末の時刻が変わったため、取り込み状況を確認できません。保存完了は未確認です。接続と原本を確認してください。");
             if (now > request.optLong("expiresAt")) return out.put("state", "EXPIRED")
-                    .put("label", "取り込み要求の期限が切れました。保存完了は未確認です。接続と原本を確認してください。");
+                    .put("label", overview + "取り込み要求の期限が切れました。保存完了は未確認です。接続と原本を確認してください。");
             long acceptedAt = request.optLong("acceptedAt");
             boolean accepted = acceptedAt > 0 && acceptedAt <= now;
             String phase = accepted ? now - acceptedAt > 30000 ? "START_UNCONFIRMED" : "ACCEPTED" : "QUEUED";
@@ -43,7 +46,8 @@ final class PhotoImportProgress {
                     : "グラスが受信しました。KEEPの停止・対象枚数の確認待ちです。まだ保存完了ではありません。"
                     : "グラスへ取り込みを依頼しました。受信・対象枚数の確認待ちです。まだ保存完了ではありません。";
             if(!glassConnected)text="グラスとの通信が未確認です。グラスのWi-Fi接続とロキの起動を確認してください。原本は保持しています。\n"+text;
-            return out.put("state", phase).put("active", true).put("waitingForGlass",!glassConnected).put("label", text);
+            return out.put("state", phase).put("active", true).put("waitingForGlass",!glassConnected)
+                    .put("label", overview + text);
         }
         JSONObject safe = TransferProgressPolicy.safe(row);
         long total = safe.getLong("expected"), confirmed = safe.getLong("confirmed"), retained = safe.getLong("retained");
@@ -53,15 +57,16 @@ final class PhotoImportProgress {
         String status = phase.equals("RUNNING") ? "取り込み中" : phase.equals("COMPLETED") ? "取り込み処理完了"
                 : phase.equals("PARTIAL") ? "一部未完了" : phase.equals("FAILED") ? "取り込み失敗"
                 : phase.equals("INTERRUPTED") ? "取り込み中断" : "結果未確認";
-        String label = (fresh ? "" : "前回確認した状態（現在の進行は未確認）：") + status
+        String header = phase.equals("RUNNING")
+                ? (fresh ? "" : "前回確認した状態（現在の進行は未確認）：")
+                : "前回の取り込み結果：";
+        String label = header + status
                 + " ／ スマホ保存確認 " + confirmed + "枚 ／ 対象 " + total + "枚 ／ 残り未確認 " + remaining + "枚";
         if (phase.equals("COMPLETED") && total == 0) {
             phase = "EMPTY";
-            label = (fresh ? "" : "前回確認した状態（現在は未確認）：")
+            label = header
                     + "取り込み対象0枚：グラスで転送可能な写真を確認できませんでした。写真の保存・取り込み成功を示すものではありません。KEEPの停止理由と空き容量を確認してください。";
         }
-        JSONObject capture = workspace.optJSONObject("capture");
-        if (capture != null && capture.optJSONObject("keep") != null) label += " ／ " + KeepCapturePolicy.label(capture.getJSONObject("keep"));
         if (retained > 0) label += " ／ 削除状態の照合 " + retained + "枚（コピー枚数には含めません）";
         if (safe.optLong("failed") > 0) label += " ／ 失敗 " + safe.getLong("failed") + "枚";
         if (safe.optLong("deferred") > 0) label += " ／ 別処理待ち " + safe.getLong("deferred") + "枚";
@@ -70,7 +75,7 @@ final class PhotoImportProgress {
                 .put("batchId", safe.getString("batchId")).put("updatedAt", updatedAt).put("totalKnown", true)
                 .put("total", total).put("confirmed", confirmed).put("remaining", remaining)
                 .put("retained", retained).put("failed", safe.getLong("failed")).put("deferred", safe.getLong("deferred"))
-                .put("label", label);
+                .put("label", overview + label);
     }
 
     private PhotoImportProgress() { }

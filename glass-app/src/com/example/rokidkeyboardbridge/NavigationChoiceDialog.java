@@ -8,6 +8,7 @@ import android.widget.*;
 
 /** Navigation-only optical black surfaces; selection and focus remain distinct. */
 final class NavigationChoiceDialog {
+    private static final Object HEADING = new Object();
     private static int dp(Context c,int n){return Math.round(n*c.getResources().getDisplayMetrics().density);}
     private static Drawable background(Context c,boolean selected){
         StateListDrawable states=new StateListDrawable();
@@ -99,13 +100,19 @@ final class NavigationChoiceDialog {
     static AlertDialog showRoutes(Activity activity,String title,String[] labels,DialogInterface.OnClickListener action){
         return show(activity,title,labels,-1,action,true);
     }
+    static void updateHeading(AlertDialog dialog, String title) {
+        Window window = dialog.getWindow();
+        if (window == null) return;
+        TextView heading = window.getDecorView().findViewWithTag(HEADING);
+        if (heading != null) heading.setText(title);
+    }
     private static AlertDialog show(Activity activity,String title,String[] labels,int current,DialogInterface.OnClickListener action,boolean wrap){
         int theme=activity.getResources().getIdentifier("NavigationDialogTheme","style",activity.getPackageName());
         AlertDialog dialog=new LokiAlertDialogBuilder(activity,theme).create();
         Context context=dialog.getContext();
         LinearLayout root=new LinearLayout(context);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.BLACK);
         root.setPadding(dp(context,8),dp(context,6),dp(context,8),dp(context,6));
-        TextView heading=new TextView(context);heading.setText(title);heading.setTextColor(Color.WHITE);heading.setTextSize(18);heading.setBackgroundColor(Color.BLACK);root.addView(heading);
+        TextView heading=new TextView(context);heading.setTag(HEADING);heading.setText(title);heading.setTextColor(Color.WHITE);heading.setTextSize(18);heading.setBackgroundColor(Color.BLACK);root.addView(heading);
         ScrollView scroll=new ScrollView(context);scroll.setBackgroundColor(Color.BLACK);scroll.setFillViewport(false);scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout choices=new LinearLayout(context);choices.setOrientation(LinearLayout.VERTICAL);choices.setBackgroundColor(Color.BLACK);scroll.addView(choices);
         int available=activity.getWindow().getDecorView().getHeight();if(available<=0)available=context.getResources().getDisplayMetrics().heightPixels;

@@ -54,23 +54,23 @@ public final class RecorderGalleryActivity extends Activity {
   });
  }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"写真を開けません",Toast.LENGTH_LONG).show());}});}
  private void confirmDelete(File file){
-  new AlertDialog.Builder(this).setTitle("スマホ内の写真を削除")
-   .setMessage("スマホに取り込んだこの1枚を削除します。削除記録により、この写真は再取り込みされません。保存先に書き出したJPEGは削除しません。")
+  new AlertDialog.Builder(this).setTitle("写真を両端末から削除")
+   .setMessage("この1枚をスマホから削除し、接続時にグラス原本も削除します。削除記録により、この写真は再取り込みされません。保存先に書き出したJPEGは削除しません。")
    .setPositiveButton("削除",(dialog,which)->deleteAndAdvance(file))
    .setNegativeButton("キャンセル",null).show();
  }
  private void deleteAndAdvance(File file){worker.execute(()->{try{
-    RecorderPhotoStore.delete(this,file);final File next=afterDeletion(file,photos());
-    runOnUiThread(()->{if(isDestroyed())return;listDirty=true;if(next!=null&&photoDialog!=null)preview(next);else if(photoDialog!=null)photoDialog.dismiss();else{listDirty=false;pageStart=0;showList();}Toast.makeText(this,"スマホから削除しました",Toast.LENGTH_SHORT).show();});
+    RecorderPhotoStore.deleteEverywhere(this,file);final File next=afterDeletion(file,photos());
+    runOnUiThread(()->{if(isDestroyed())return;listDirty=true;if(next!=null&&photoDialog!=null)preview(next);else if(photoDialog!=null)photoDialog.dismiss();else{listDirty=false;pageStart=0;showList();}Toast.makeText(this,"スマホから削除しました。グラス原本は接続時に反映します",Toast.LENGTH_SHORT).show();});
    }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"削除できませんでした",Toast.LENGTH_LONG).show());}});}
  private void selectPagePhotos(){if(batchBusy)return;checked.clear();Collections.addAll(checked,pagePhotos());showList();}
  private File[] pagePhotos(){File[] all=photos();int start=Math.min(pageStart,all.length);return Arrays.copyOfRange(all,start,Math.min(all.length,start+PAGE_SIZE));}
  private void confirmDeleteAll(){if(batchBusy)return;final File[] all=photos();if(all.length==0)return;new AlertDialog.Builder(this).setTitle("全写真 "+all.length+"枚を削除")
-  .setMessage("表示していないページも含め、ロキに取り込んだスマホ内の全写真を削除します。ギャラリーに保存済みのJPEGは残ります。削除した写真は再取り込みされません。")
+  .setMessage("表示していないページも含め、ロキに取り込んだ全写真をスマホから削除し、グラス原本も接続時に削除します。ギャラリーに保存済みのJPEGは残ります。削除した写真は再取り込みされません。")
   .setPositiveButton("全"+all.length+"枚を削除",(d,w)->runBatch(all,true)).setNegativeButton("キャンセル",null).show();}
  private void updateSelection(){if(selectionCount==null)return;selectionCount.setText("選択："+checked.size()+"枚（表示中のページのみ）");bulkSave.setEnabled(!batchBusy&&!checked.isEmpty());bulkDelete.setEnabled(!batchBusy&&!checked.isEmpty());if(deleteAll!=null)deleteAll.setEnabled(!batchBusy&&photos().length>0);}
- private void confirmBatch(boolean delete){if(batchBusy||checked.isEmpty())return;final File[] files=checked.toArray(new File[0]);new AlertDialog.Builder(this).setTitle(files.length+"枚を"+(delete?"削除":"保存")).setMessage(delete?"選択したスマホ内の写真だけを削除します。ギャラリーに保存済みのJPEGは残ります。削除した写真は再取り込みされません。":"選択した写真をJPEGとしてギャラリーのLokiアルバムへ保存します。").setPositiveButton(delete?"削除":"保存",(d,w)->runBatch(files,delete)).setNegativeButton("キャンセル",null).show();}
- private void runBatch(File[] files,boolean delete){if(batchBusy)return;if(!delete&&Build.VERSION.SDK_INT<29&&checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)!=android.content.pm.PackageManager.PERMISSION_GRANTED){permissionPendingBatch=files;requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},453);return;}batchBusy=true;updateSelection();worker.execute(()->{int success=0;final Set<File> done=new HashSet<>();for(File f:files){try{if(delete)RecorderPhotoStore.delete(this,f);else writeGallery(f);done.add(f);success++;}catch(Exception failure){}}final int count=success;runOnUiThread(()->{batchBusy=false;checked.removeAll(done);if(isDestroyed())return;showList();Toast.makeText(this,count+"枚を"+(delete?"削除":"保存")+"しました"+(count<files.length?"。失敗した"+(files.length-count)+"枚は削除・保存せず残っています":""),Toast.LENGTH_LONG).show();});});}
+ private void confirmBatch(boolean delete){if(batchBusy||checked.isEmpty())return;final File[] files=checked.toArray(new File[0]);new AlertDialog.Builder(this).setTitle(files.length+"枚を"+(delete?"削除":"保存")).setMessage(delete?"選択した写真をスマホから削除し、グラス原本も接続時に削除します。ギャラリーに保存済みのJPEGは残ります。削除した写真は再取り込みされません。":"選択した写真をJPEGとしてギャラリーのLokiアルバムへ保存します。").setPositiveButton(delete?"削除":"保存",(d,w)->runBatch(files,delete)).setNegativeButton("キャンセル",null).show();}
+ private void runBatch(File[] files,boolean delete){if(batchBusy)return;if(!delete&&Build.VERSION.SDK_INT<29&&checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)!=android.content.pm.PackageManager.PERMISSION_GRANTED){permissionPendingBatch=files;requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},453);return;}batchBusy=true;updateSelection();worker.execute(()->{int success=0;final Set<File> done=new HashSet<>();for(File f:files){try{if(delete)RecorderPhotoStore.deleteEverywhere(this,f);else writeGallery(f);done.add(f);success++;}catch(Exception failure){}}final int count=success;runOnUiThread(()->{batchBusy=false;checked.removeAll(done);if(isDestroyed())return;showList();Toast.makeText(this,count+"枚を"+(delete?"削除":"保存")+"しました"+(count<files.length?"。失敗した"+(files.length-count)+"枚は削除・保存せず残っています":""),Toast.LENGTH_LONG).show();});});}
  private File permissionPendingPhoto;
  private void saveToGallery(File file){
   if(android.os.Build.VERSION.SDK_INT<29&&checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)!=android.content.pm.PackageManager.PERMISSION_GRANTED){permissionPendingPhoto=file;requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},452);return;}

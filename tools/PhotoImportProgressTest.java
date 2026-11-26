@@ -60,7 +60,8 @@ public final class PhotoImportProgressTest {
         check(!emptyView.getString("label").contains("処理完了") && emptyView.getString("label").contains("保存・取り込み成功を示すものではありません"), "empty gives capture diagnosis");
         JSONObject keep = new JSONObject().put("phase","FAILED").put("reason","LOW_SPACE").put("saved",0).put("at",NOW).put("availableBytes",900000000).put("image","private-fixture");
         JSONObject diagnosed = PhotoImportProgress.view(workspace(empty).put("capture",new JSONObject().put("keep",keep)),request(),NOW);
-        check(diagnosed.getString("label").contains("空き容量不足") && diagnosed.getString("label").contains("保存成功 0枚"), "capture failure survives empty import");
+        check(diagnosed.getString("label").contains("空き容量不足")
+                && diagnosed.getString("label").contains("撮影累計（保存成功） 0枚"), "capture failure survives empty import");
         check(!diagnosed.toString().contains("private-fixture"), "capture images never exposed");
         JSONObject clean=KeepCapturePolicy.safe(keep.put("saved",-1).put("reason","private-fixture"));
         check(clean.getInt("saved")==0 && clean.getString("reason").isEmpty() && !clean.has("image"), "capture metadata is bounded and allowlisted");
@@ -77,6 +78,37 @@ public final class PhotoImportProgressTest {
         JSONObject connected=PhotoImportProgress.view(new JSONObject().put("connected",true),request(),NOW);
         check(!connected.getBoolean("waitingForGlass"),"recent glass contact is not labelled disconnected");
         check(PhotoImportProgress.view(workspace(row("COMPLETED",10,0)),request().put("expiresAt",NOW-1),NOW).getLong("confirmed")==10,"completed receipts survive request expiry");
+        JSONObject afterDelete = new JSONObject().put("phase", "STOPPED").put("saved", 226)
+                .put("retainedPhotos", 0).put("retainedPhotosAt", NOW);
+        JSONObject afterDeleteResult = workspace(row("COMPLETED", 0, 226).put("expected", 226))
+                .put("capture", new JSONObject().put("keep", KeepCapturePolicy.safe(afterDelete)));
+        JSONObject deleted = PhotoImportProgress.view(afterDeleteResult, request(), NOW);
+        String[] labels = deleted.getString("label").split("\n");
+        check(labels.length == 3 && labels[0].contains("グラスの現在の保存写真 0枚")
+                && labels[1].contains("撮影累計（保存成功） 226枚")
+                && labels[2].contains("前回の取り込み結果") && labels[2].contains("対象 226枚"),
+                "existing storage, capture total and import receipts appear on separate lines");
+        check(deleted.getLong("confirmed") == 0 && deleted.getLong("retained") == 226,
+                "the current storage count never changes the transfer counts");
+        check(PhotoImportProgress.view(afterDeleteResult, request().put("previousBatchId", BATCH), NOW)
+                .getString("label").contains("グラスの現在の保存写真 0枚"), "new request still shows inventory");
+        afterDeleteResult.remove("transfers");
+        afterDeleteResult.getJSONObject("capture").getJSONObject("keep").put("retainedPhotos", 12);
+        check(PhotoImportProgress.view(afterDeleteResult, new JSONObject(), NOW).getString("label")
+                .contains("グラスの現在の保存写真 12枚"), "idle view shows inventory without a transfer");
+        String aged = PhotoImportProgress.view(afterDeleteResult, new JSONObject(), NOW + 30001).getString("label");
+        check(aged.contains("現在の保存写真：未確認") && aged.contains("前回確認 12枚"), "aged inventory is historical");
+        String offline = PhotoImportProgress.view(afterDeleteResult.put("connected", false), new JSONObject(), NOW).getString("label");
+        check(offline.contains("現在の保存写真：未確認") && offline.contains("前回確認 12枚"), "offline inventory is historical");
+        String future = PhotoImportProgress.view(afterDeleteResult.put("connected", true), new JSONObject(), NOW - 1).getString("label");
+        check(future.contains("現在の保存写真：未確認") && !future.contains("12枚"), "future glass clock does not supply history");
+        check(diagnosed.getString("label").contains("現在の保存写真：未確認"), "legacy payload may omit inventory");
+        for (Object invalid : new Object[]{-1, 0.5, "0", JSONObject.NULL, (long) Integer.MAX_VALUE + 1}) {
+            JSONObject invalidCount = new JSONObject().put("retainedPhotos", invalid).put("retainedPhotosAt", NOW);
+            check(!KeepCapturePolicy.safe(invalidCount).has("retainedPhotos"), "reject invalid inventory count");
+        }
+        check(!KeepCapturePolicy.safe(new JSONObject().put("retainedPhotos", 0)).has("retainedPhotos"),
+                "missing measurement time never invents an inventory record");
         System.out.println("PASS " + checks + " KEEP progress policy checks (synthetic JSON; no devices/photos/API)");
     }
 }

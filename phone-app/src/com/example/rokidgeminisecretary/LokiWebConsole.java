@@ -160,6 +160,7 @@ final class LokiWebConsole {
             }
             JSONObject session=authenticate(owner,token);if(session==null){json(socket,401,new JSONObject().put("error","スマホで接続コードを発行し、接続してください"));return true;}
             if(method.equals("POST")&&session.optString("scope","full").equals("read")&&!path.equals("/web/api/logout")&&!path.equals("/web/api/answer-correction-view")){json(socket,403,new JSONObject().put("error","この接続端末は閲覧のみです。権限変更はスマホで行ってください"));return true;}
+            if(MeetingFeatureRetired.blocksPath(path)){json(socket,410,new JSONObject().put("error",MeetingFeatureRetired.MESSAGE));return true;}
             circuit=path;FeatureResilience.check(circuit,android.os.SystemClock.elapsedRealtime());admitted=true;
             if(method.equals("POST")&&path.equals("/web/api/secretary-inbox-action")){json(socket,200,SecretaryInbox.action(owner,new JSONObject(body)));return true;}
             if(method.equals("POST")&&path.equals("/web/api/media-drop-status")) {
@@ -194,7 +195,7 @@ final class LokiWebConsole {
                 String requestId=digest(session.getString("hash")+":"+rawId);
                 json(socket,200,ImageQuestions.enqueue(owner,requestId,input.optString("message",""),jpeg,input.optInt("imageCount",1),input.optJSONArray("kinds")));return true;
             }
-            if(method.equals("GET")&&path.equals("/web/api/photo-import-status")){json(socket,200,PhotoImportProgress.view(ConversationWorkspace.snapshot(owner),PhotoImportRequests.current(owner),System.currentTimeMillis()));return true;}
+            if(method.equals("GET")&&path.equals("/web/api/photo-import-status")){json(socket,200,PhotoImportProgress.view(ConversationWorkspace.snapshot(owner),PhotoImportRequests.current(owner),System.currentTimeMillis()).put("deletionPending",PhotoDeletionSync.pending(owner).getInt("pending")));return true;}
             if(method.equals("GET")&&path.equals("/web/api/photos")) {
                 int offset=Math.max(0,Integer.parseInt(query.getOrDefault("offset","0")));ArrayList<File> all=photos(owner);offset=Math.min(offset,Math.max(0,((all.size()-1)/PHOTO_PAGE_SIZE)*PHOTO_PAGE_SIZE));JSONArray items=new JSONArray();
                 for(int i=offset;i<Math.min(all.size(),offset+PHOTO_PAGE_SIZE);i++){File f=all.get(i);items.put(new JSONObject().put("id",id(f)).put("time",Long.parseLong(id(f).substring(0,13))).put("metadata",RecorderPhotoStore.metadata(f)));}
@@ -241,13 +242,13 @@ final class LokiWebConsole {
             }
             if(method.equals("POST")&&path.equals("/web/api/delete")) {
                 JSONObject input=new JSONObject(body);JSONArray ids=input.getJSONArray("ids");if(ids.length()<1||ids.length()>PHOTO_PAGE_SIZE)throw new IllegalArgumentException("1ページの選択範囲で削除してください");
-                ArrayList<File> selected=new ArrayList<>();for(int i=0;i<ids.length();i++)selected.add(photo(owner,ids.getString(i)));int deleted=0;for(File f:selected){RecorderPhotoStore.delete(owner,f);deleted++;}
+                ArrayList<File> selected=new ArrayList<>();for(int i=0;i<ids.length();i++)selected.add(photo(owner,ids.getString(i)));int deleted=0;for(File f:selected){RecorderPhotoStore.deleteEverywhere(owner,f);deleted++;}
                 json(socket,200,new JSONObject().put("deleted",deleted));return true;
             }
             if(method.equals("POST")&&path.equals("/web/api/delete-all")) {
                 JSONObject input=new JSONObject(body);ArrayList<File> all=photos(owner);
                 String revision=digest(all.toString());if(!input.optString("revision").equals(revision)){json(socket,409,new JSONObject().put("error","写真の一覧が変わりました。もう一度確認してください"));return true;}
-                int deleted=0;for(File f:all){RecorderPhotoStore.delete(owner,f);deleted++;}json(socket,200,new JSONObject().put("deleted",deleted));return true;
+                int deleted=0;for(File f:all){RecorderPhotoStore.deleteEverywhere(owner,f);deleted++;}json(socket,200,new JSONObject().put("deleted",deleted));return true;
             }
             if(method.equals("GET")&&path.equals("/web/api/delete-preview")){ArrayList<File> all=photos(owner);json(socket,200,new JSONObject().put("count",all.size()).put("revision",digest(all.toString())));return true;}
             if(method.equals("GET")&&path.equals("/web/api/operations")){json(socket,200,OperationOverview.read(owner));return true;}

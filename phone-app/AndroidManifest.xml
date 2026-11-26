@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"
     package="com.example.rokidgeminisecretary"
-    android:versionCode="322"
-    android:versionName="0.9.322-keep-import-reconnect">
+    android:versionCode="326"
+    android:versionName="0.9.326-official-meetings">
 
     <queries>
         <package android:name="com.example.lokihealbe" />
@@ -48,7 +48,6 @@
         android:label="電脳秘書ロキ Bridge"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <service android:name=".MeetingProcessingService" android:exported="false" android:foregroundServiceType="dataSync" />
         <activity android:name=".ImageQuestionActivity" android:exported="false" />
         <provider android:name=".ImageQuestionCameraProvider" android:authorities="com.example.rokidgeminisecretary.image-camera" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".RecorderGalleryActivity" android:exported="false" />
